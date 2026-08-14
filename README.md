@@ -45,7 +45,7 @@ loop every N seconds:
 
 | Component | Purpose |
 |---|---|
-| Raspberry Pi Zero 2 W | Main compute — runs the person-detection model |
+| Orange Pi 3B | Main compute — runs the person-detection model |
 | Pi NoIR Camera Module | Video feed, functions in low light with IR |
 | IR Illuminator Module | Invisible-to-humans illumination for dim rooms |
 | Light Sensor (LDR) | Detects ambient brightness, triggers IR illuminator |
