@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLASSCAN — Classroom Monitor</title>
+  <meta name="description" content="Real-time classroom headcount dashboard for the CLASSCAN intelligent monitoring system." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & Tokens ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #0a0d14;
+      --surface:      #111622;
+      --surface-2:    #18202e;
+      --border:       rgba(255,255,255,0.07);
+      --accent:       #3b82f6;
+      --accent-glow:  rgba(59,130,246,0.25);
+      --green:        #22c55e;
+      --amber:        #f59e0b;
+      --red:          #ef4444;
+      --text:         #e2e8f0;
+      --text-muted:   #64748b;
+      --radius:       14px;
+      --radius-sm:    8px;
+      --mono:         'JetBrains Mono', monospace;
+      --sans:         'Inter', sans-serif;
+      --transition:   0.2s cubic-bezier(.4,0,.2,1);
+    }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow-x: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 32px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(10,13,20,0.8);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), #6366f1);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .logo-name { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.05em; }
+    .logo-sub  { font-size: 0.7rem; color: var(--text-muted); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      transition: var(--transition);
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      animation: pulse-dot 2s infinite;
+    }
+    .status-pill.connected  .status-dot { background: var(--green); }
+    .status-pill.error      .status-dot { background: var(--red); animation: none; }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    /* ── Main layout ─────────────────────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 24px;
+      padding: 28px 32px;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* ── Cards ───────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(59,130,246,0.04) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .card-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 16px;
+    }
+
+    /* ── Headcount hero ─────────────────────────────────────────────── */
+    .count-hero {
+      text-align: center;
+      padding: 40px 24px;
+    }
+    .count-number {
+      font-size: clamp(5rem, 12vw, 8rem);
+      font-weight: 900;
+      line-height: 1;
+      background: linear-gradient(135deg, #fff 30%, var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      transition: var(--transition);
+      font-variant-numeric: tabular-nums;
+    }
+    .count-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 8px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .count-glow {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 60%, var(--accent-glow) 0%, transparent 65%);
+      pointer-events: none;
+      transition: var(--transition);
+    }
+
+    /* ── Snapshot ────────────────────────────────────────────────────── */
+    .snapshot-wrapper {
+      aspect-ratio: 4/3;
+      background: var(--surface-2);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+    }
+    #snapshot-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+    .snapshot-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+    .snapshot-placeholder svg { opacity: 0.3; }
+
+    .snapshot-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    /* ── Zone grid ───────────────────────────────────────────────────── */
+    .zone-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .zone-cell {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      transition: var(--transition);
+      cursor: default;
+    }
+    .zone-cell:hover { border-color: var(--accent); }
+    .zone-name {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .zone-count {
+      font-size: 1.6rem;
+      font-weight: 700;
+      font-family: var(--mono);
+      color: var(--text);
+    }
+    .zone-bar {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .zone-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #6366f1);
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.5s ease;
+    }
+
+    /* ── Right panel ─────────────────────────────────────────────────── */
+    .panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── Mode switch ─────────────────────────────────────────────────── */
+    .mode-row {
+      display: flex;
+      gap: 8px;
+    }
+    .mode-btn {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      color: var(--text-muted);
+      font-family: var(--sans);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .mode-btn:hover   { border-color: var(--accent); color: var(--text); }
+    .mode-btn.active  { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ── Command log ─────────────────────────────────────────────────── */
+    .log-scroll {
+      height: 180px;
+      overflow-y: auto;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .log-scroll::-webkit-scrollbar { width: 4px; }
+    .log-scroll::-webkit-scrollbar-track { background: transparent; }
+    .log-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .log-entry { line-height: 1.4; }
+    .log-entry .ts  { color: var(--accent); margin-right: 8px; }
+    .log-entry.err  { color: var(--red); }
+    .log-entry.ok   { color: var(--green); }
+
+    /* ── Zone check buttons ──────────────────────────────────────────── */
+    .zone-cmd-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .zone-cmd-btn {
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .zone-cmd-btn:hover { border-color: var(--accent); background: var(--accent-glow); }
+
+    /* ── Pi URL input ────────────────────────────────────────────────── */
+    .url-row {
+      display: flex;
+      gap: 8px;
+    }
+    .url-input {
+      flex: 1;
+      padding: 8px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      outline: none;
+      transition: var(--transition);
+    }
+    .url-input:focus { border-color: var(--accent); }
+    .connect-btn {
+      padding: 8px 16px;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #fff;
+      font-family: var(--sans);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .connect-btn:hover { opacity: 0.85; }
+
+    /* ── Footer ──────────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 14px 32px;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* ── Animations ──────────────────────────────────────────────────── */
+    @keyframes count-pop {
+      0%   { transform: scale(1.12); }
+      100% { transform: scale(1); }
+    }
+    .count-pop { animation: count-pop 0.25s ease forwards; }
+
+    /* ── Responsive ──────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">📡</div>
+    <div>
+      <div class="logo-name">CLASSCAN</div>
+      <div class="logo-sub">Classroom Headcount Monitor</div>
+    </div>
+  </div>
+  <div class="status-pill" id="status-pill">
+    <div class="status-dot"></div>
+    <span id="status-text">Disconnected</span>
+  </div>
+</header>
+
+<!-- ── Main ────────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Left column -->
+  <div style="display:flex; flex-direction:column; gap:20px;">
+
+    <!-- Headcount hero -->
+    <div class="card count-hero">
+      <div class="count-glow" id="count-glow"></div>
+      <div class="card-label">Current Occupancy</div>
+      <div class="count-number" id="count-display">—</div>
+      <div class="count-label">people detected</div>
+    </div>
+
+    <!-- Live snapshot -->
+    <div class="card">
+      <div class="card-label">Latest Snapshot</div>
+      <div class="snapshot-wrapper">
+        <img id="snapshot-img" alt="Latest classroom snapshot" />
+        <div class="snapshot-placeholder" id="snapshot-placeholder">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="4" width="20" height="16" rx="2"/>
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M6 4v0a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2"/>
+          </svg>
+          <span>Waiting for first snapshot…</span>
+        </div>
+      </div>
+      <div class="snapshot-meta">
+        <span id="snapshot-time">—</span>
+        <span id="snapshot-dims">—</span>
+      </div>
+    </div>
+
+    <!-- Zone grid -->
+    <div class="card">
+      <div class="card-label">Zone Occupancy (last scan)</div>
+      <div class="zone-grid" id="zone-grid">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right panel -->
+  <div class="panel">
+
+    <!-- Connection -->
+    <div class="card">
+      <div class="card-label">Pi 3B Connection</div>
+      <div class="url-row">
+        <input id="pi-url" class="url-input" type="text" value="http://192.168.1.100:8080"
+               placeholder="http://<pi-ip>:8080" />
+        <button class="connect-btn" id="connect-btn" onclick="togglePolling()">Connect</button>
+      </div>
+    </div>
+
+    <!-- Mode control -->
+    <div class="card">
+      <div class="card-label">Detection Mode</div>
+      <div class="mode-row">
+        <button class="mode-btn active" id="btn-sweep" onclick="sendCommand('MODE_SWEEP')">Sweep</button>
+        <button class="mode-btn"        id="btn-zone"  onclick="sendCommand('MODE_ZONE')">Zone Check</button>
+      </div>
+    </div>
+
+    <!-- Zone commands -->
+    <div class="card">
+      <div class="card-label">Check Specific Zone</div>
+      <div class="zone-cmd-grid">
+        <button class="zone-cmd-btn" onclick="sendCommand('ZONE_Q1')">Q1</button>
+        <button class="zone-cmd-btn" onclick="sendCommand('ZONE_Q2')">Q2</button>
+        <button class="zone-cmd-btn" onclick="sendCommand('ZONE_Q3')">Q3</button>
+        <button class="zone-cmd-btn" onclick="sendCommand('ZONE_Q4')">Q4</button>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="card" style="flex:1;">
+      <div class="card-label">Event Log</div>
+      <div class="log-scroll" id="log-scroll"></div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ── Footer ──────────────────────────────────────────────────────────── -->
+<footer>
+  <span>CLASSCAN · PCU-D Capstone</span>
+  <span id="footer-ts">—</span>
+</footer>
+
+<script>
+  // ── State ───────────────────────────────────────────────────────────────
+  const ZONES     = ["Q1", "Q2", "Q3", "Q4"];
+  const MAX_SEATS = 10;  // per zone — must match Pi config.py
+
+  let polling     = false;
+  let pollTimer   = null;
+  let lastCount   = null;
+  let zoneData    = {};
+
+  // ── Init zone grid ──────────────────────────────────────────────────────
+  function initZoneGrid() {
+    const grid = document.getElementById("zone-grid");
+    grid.innerHTML = "";
+    ZONES.forEach(z => {
+      grid.innerHTML += `
+        <div class="zone-cell" id="zone-${z}">
+          <div class="zone-name">${z}</div>
+          <div class="zone-count" id="zone-count-${z}">—</div>
+          <div class="zone-bar"><div class="zone-bar-fill" id="zone-bar-${z}"></div></div>
+        </div>`;
+    });
+  }
+
+  // ── Logging ─────────────────────────────────────────────────────────────
+  function log(msg, type = "") {
+    const scroll = document.getElementById("log-scroll");
+    const ts     = new Date().toLocaleTimeString("en-US", {hour12: false});
+    const entry  = document.createElement("div");
+    entry.className = `log-entry ${type}`;
+    entry.innerHTML = `<span class="ts">${ts}</span>${msg}`;
+    scroll.appendChild(entry);
+    scroll.scrollTop = scroll.scrollHeight;
+    // Cap log at 200 entries
+    while (scroll.children.length > 200) scroll.removeChild(scroll.firstChild);
+  }
+
+  // ── Status pill ─────────────────────────────────────────────────────────
+  function setStatus(state, label) {
+    const pill = document.getElementById("status-pill");
+    const text = document.getElementById("status-text");
+    pill.className = `status-pill ${state}`;
+    text.textContent = label;
+  }
+
+  // ── Count update ────────────────────────────────────────────────────────
+  function updateCount(n) {
+    const el = document.getElementById("count-display");
+    if (n !== lastCount) {
+      el.textContent = n;
+      el.classList.remove("count-pop");
+      void el.offsetWidth;  // reflow
+      el.classList.add("count-pop");
+      log(`Headcount updated → ${n}`, "ok");
+      lastCount = n;
+    }
+    document.getElementById("footer-ts").textContent =
+      "Last update: " + new Date().toLocaleTimeString();
+  }
+
+  // ── Snapshot update ─────────────────────────────────────────────────────
+  function updateSnapshot(b64, timestamp) {
+    const img  = document.getElementById("snapshot-img");
+    const ph   = document.getElementById("snapshot-placeholder");
+    img.src    = "data:image/jpeg;base64," + b64;
+    img.style.display = "block";
+    ph.style.display  = "none";
+    document.getElementById("snapshot-time").textContent = timestamp;
+    document.getElementById("snapshot-dims").textContent = "JPEG";
+  }
+
+  // ── Zone update ─────────────────────────────────────────────────────────
+  function updateZones(zones) {
+    // zones = {Q1: n, Q2: n, ...}  (optional, from server)
+    if (!zones) return;
+    Object.entries(zones).forEach(([name, count]) => {
+      const countEl = document.getElementById(`zone-count-${name}`);
+      const barEl   = document.getElementById(`zone-bar-${name}`);
+      if (countEl) {
+        countEl.textContent = count;
+        barEl.style.width   = Math.min(100, (count / MAX_SEATS) * 100) + "%";
+      }
+    });
+  }
+
+  // ── Polling loop ────────────────────────────────────────────────────────
+  async function poll() {
+    const url = document.getElementById("pi-url").value.replace(/\/$/, "");
+    try {
+      const res  = await fetch(`${url}/status`, {signal: AbortSignal.timeout(3000)});
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setStatus("connected", "Connected");
+
+      if (data.count !== undefined)   updateCount(data.count);
+      if (data.snapshot)              updateSnapshot(data.snapshot, data.timestamp || "—");
+      if (data.zones)                 updateZones(data.zones);
+
+    } catch (err) {
+      setStatus("error", "Connection error");
+      log(`Poll error: ${err.message}`, "err");
+    }
+    if (polling) pollTimer = setTimeout(poll, 2000);
+  }
+
+  function togglePolling() {
+    const btn = document.getElementById("connect-btn");
+    if (!polling) {
+      polling = true;
+      btn.textContent = "Disconnect";
+      log("Connecting to Pi 3B…");
+      poll();
+    } else {
+      polling = false;
+      clearTimeout(pollTimer);
+      btn.textContent = "Connect";
+      setStatus("", "Disconnected");
+      log("Disconnected.");
+    }
+  }
+
+  // ── Command send ────────────────────────────────────────────────────────
+  async function sendCommand(cmd) {
+    const url = document.getElementById("pi-url").value.replace(/\/$/, "");
+    log(`→ CMD: ${cmd}`);
+
+    // Update mode button state immediately
+    if (cmd === "MODE_SWEEP") {
+      document.getElementById("btn-sweep").classList.add("active");
+      document.getElementById("btn-zone").classList.remove("active");
+    } else if (cmd === "MODE_ZONE") {
+      document.getElementById("btn-zone").classList.add("active");
+      document.getElementById("btn-sweep").classList.remove("active");
+    }
+
+    try {
+      const res = await fetch(`${url}/command`, {
+        method:  "POST",
+        headers: {"Content-Type": "application/json"},
+        body:    JSON.stringify({command: cmd}),
+        signal:  AbortSignal.timeout(3000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      log(`← ACK: ${cmd}`, "ok");
+    } catch (err) {
+      log(`Command failed: ${err.message}`, "err");
+    }
+  }
+
+  // ── Boot ────────────────────────────────────────────────────────────────
+  initZoneGrid();
+  log("CLASSCAN dashboard ready. Enter Pi IP and connect.");
+</script>
+
+</body>
+</html>
