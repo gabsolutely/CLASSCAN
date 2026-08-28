@@ -1,6 +1,6 @@
 /*
  * CLASSCAN — ESP32 Firmware
- * main.ino
+ * main.cpp (PlatformIO / Arduino Framework)
  *
  * Responsibilities:
  *   - Read LDR and toggle illumination module
