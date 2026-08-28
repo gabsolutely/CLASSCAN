@@ -1,0 +1,14 @@
+# CLASSCAN — Pi 3B Python Dependencies
+
+# Computer vision & camera
+opencv-python-headless>=4.9
+
+# TFLite inference (install tflite-runtime on-device; use tensorflow as fallback on dev machines)
+# On Pi (ARM): pip install tflite-runtime
+# On dev machine: pip install tensorflow
+# tflite-runtime>=2.14  # uncomment on device
+
+# Serial (USB serial to ESP32)
+pyserial>=3.5
+
+# JSON is stdlib — no package needed
