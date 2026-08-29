@@ -8,14 +8,14 @@ the numbers don't reconcile within tolerance.
 
 
 class ZoneReconciler:
-    def __init__(self, zones: dict, tolerance: int = 1):
+    def __init__(self, zone_names: list[str] | None = None, tolerance: int = 1):
         """
-        zones:     dict of zone_name → max_seats (used for sanity bound)
-        tolerance: allowed difference between summed zone counts and
-                   last reported total before a re-scan is flagged.
+        zone_names: list of active zone identifiers (e.g. ['Q1', 'Q2', 'Q3', 'Q4'])
+        tolerance:  allowed difference between summed zone counts and
+                    last reported total before a re-scan is flagged.
         """
-        self.zones     = zones
-        self.tolerance = tolerance
+        self.zone_names = zone_names or ["Q1", "Q2", "Q3", "Q4"]
+        self.tolerance  = tolerance
 
     def reconcile(
         self,
