@@ -8,7 +8,9 @@ opencv-python-headless>=4.9
 # On dev machine: pip install tensorflow
 # tflite-runtime>=2.14  # uncomment on device
 
-# Serial (USB serial to ESP32)
+# Serial (USB serial to ESP32) — optional for bench testing, used when ESP32 connected
 pyserial>=3.5
 
+# Web server uses stdlib http.server — no extra web framework needed
 # JSON is stdlib — no package needed
+

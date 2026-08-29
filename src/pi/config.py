@@ -26,7 +26,9 @@ class Config:
 
     # ── Zone/Quadrant Config ───────────────────────────────────────────────
     # Named zones with (pan_deg, tilt_deg) servo positions.
-    # Fill in actual calibrated values after mounting.
+    # Calibrate physical servo angles per deployment.
+    # Note: Headcount per zone is counted dynamically by the detector,
+    # not configured or pre-set.
     ZONE_POSITIONS = {
         "Q1": (0,   30),
         "Q2": (90,  30),
@@ -34,10 +36,3 @@ class Config:
         "Q4": (270, 30),
     }
 
-    # Expected total seats per zone (used by reconciler)
-    ZONES = {
-        "Q1": 10,
-        "Q2": 10,
-        "Q3": 10,
-        "Q4": 10,
-    }
