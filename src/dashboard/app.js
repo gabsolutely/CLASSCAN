@@ -178,6 +178,12 @@ async function sendCommand(cmd) {
 document.addEventListener("DOMContentLoaded", () => {
   initZoneGrid();
 
+  // Auto-detect current origin when served from the Pi HTTP server
+  const urlInput = document.getElementById("pi-url");
+  if (urlInput && window.location.protocol.startsWith("http")) {
+    urlInput.value = window.location.origin;
+  }
+
   // Bind Connect button
   const connectBtn = document.getElementById("connect-btn");
   if (connectBtn) {
@@ -198,5 +204,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  log("CLASSCAN dashboard ready. Enter Pi IP and connect.");
+  log("CLASSCAN dashboard ready. Click Connect to start monitoring.");
 });
+
