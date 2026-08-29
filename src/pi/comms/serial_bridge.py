@@ -17,14 +17,22 @@ import serial
 
 class SerialBridge:
     def __init__(self, port: str, baud: int):
-        self._ser = serial.Serial(port, baud, timeout=0.1)
+        self.port = port
+        self.baud = baud
         self._state = "idle"
         self._lock  = threading.Lock()
+        self._ser   = None
+        self._is_mock = False
 
-        # Background reader thread keeps state up-to-date
-        self._reader = threading.Thread(target=self._read_loop, daemon=True)
-        self._reader.start()
-        print(f"[SerialBridge] Connected on {port} @ {baud}")
+        try:
+            self._ser = serial.Serial(port, baud, timeout=0.1)
+            # Background reader thread keeps state up-to-date
+            self._reader = threading.Thread(target=self._read_loop, daemon=True)
+            self._reader.start()
+            print(f"[SerialBridge] Connected on {port} @ {baud}")
+        except Exception as e:
+            self._is_mock = True
+            print(f"[SerialBridge] Port {port} unavailable ({e}). Running in simulated serial mode.")
 
     def _read_loop(self):
         while True:
@@ -46,13 +54,15 @@ class SerialBridge:
             return self._state
 
     def send_count(self, count: int):
-        msg = json.dumps({"type": "count", "value": count}) + "\n"
-        self._ser.write(msg.encode("utf-8"))
+        if self._ser and self._ser.is_open:
+            msg = json.dumps({"type": "count", "value": count}) + "\n"
+            self._ser.write(msg.encode("utf-8"))
 
     def send_command(self, cmd: str):
-        msg = json.dumps({"type": "command", "value": cmd}) + "\n"
-        self._ser.write(msg.encode("utf-8"))
+        if self._ser and self._ser.is_open:
+            msg = json.dumps({"type": "command", "value": cmd}) + "\n"
+            self._ser.write(msg.encode("utf-8"))
 
     def close(self):
-        if self._ser.is_open:
+        if self._ser and self._ser.is_open:
             self._ser.close()
