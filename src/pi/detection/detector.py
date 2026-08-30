@@ -113,7 +113,8 @@ class Detector:
         return counts
 
     def release(self):
-        self.cap.release()
+        if hasattr(self, "cap"):
+            self.cap.release()
 
     def __del__(self):
         self.release()
