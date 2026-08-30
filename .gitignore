@@ -19,5 +19,6 @@ Thumbs.db
 .vscode/launch.json
 .vscode/ipch/
 .vscode 
+.pytest_cache/
 
 NOTES.md
