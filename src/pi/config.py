@@ -3,6 +3,13 @@ CLASSCAN — Pi 3B Configuration
 All tuneable constants in one place. Override per-deployment.
 """
 
+import os
+from pathlib import Path
+
+# Paths
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+MODELS_DIR = BASE_DIR / "models"
+
 class Config:
     # ── Serial (Pi 3B ↔ ESP32) ─────────────────────────────────────────────
     SERIAL_PORT   = "/dev/ttyUSB0"   # Adjust to actual device path
@@ -13,8 +20,13 @@ class Config:
     DASHBOARD_PORT = 8080
 
     # ── TFLite Model ───────────────────────────────────────────────────────
-    MODEL_PATH      = "models/mobilenet_v2_ssd_classcan.tflite"
-    CONF_THRESHOLD  = 0.50            # Person-class confidence cutoff
+    # Primary: YOLOLite CPU (Nano) trained for single 'head' detection
+    # Fallback: mobilenet_v2_ssd_classcan.tflite for smoke testing
+    _PRIMARY_MODEL = str(MODELS_DIR / "yololite_nano_head_classcan.tflite")
+    _FALLBACK_MODEL = str(MODELS_DIR / "mobilenet_v2_ssd_classcan.tflite")
+
+    MODEL_PATH = _PRIMARY_MODEL if os.path.isfile(_PRIMARY_MODEL) else _FALLBACK_MODEL
+    CONF_THRESHOLD  = 0.50            # Head-detection confidence cutoff
 
     # ── Detection Timing ───────────────────────────────────────────────────
     HEARTBEAT_INTERVAL = 10.0         # Seconds between periodic scans
@@ -35,4 +47,3 @@ class Config:
         "Q3": (180, 30),
         "Q4": (270, 30),
     }
-
