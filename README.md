@@ -3,7 +3,7 @@
 
 A ceiling-mounted smart camera turret that automatically detects and counts people in a classroom in real time, displaying the live headcount on an LED display and a wireless laptop dashboard — no manual attendance checking, no facial recognition, just occupancy (and optionally, seat-zone presence).
 
-**Status:** Core software pipeline operational and bench-tested. Raspberry Pi 3B is in hand and running on **Raspberry Pi OS Lite (64-bit)** with working TFLite person detection (`detector.py`, `change_trigger.py`, `zone_reconciler.py`, and dashboard server verified on real test data). Fine-tuning dataset preparation and physical hardware integration are currently active.
+**Status:** Core software pipeline operational and bench-tested. Raspberry Pi 3B is in hand and running on **Raspberry Pi OS Lite (64-bit)**. Model architecture pivoted from MobileNetV2-SSD full-body to **YOLOLite CPU (Nano)** fine-tuned for a single **"head"** class (head-and-shoulders) on SCUT-HEAD (2,000 images) + 35 local classroom images to solve far-row desk occlusion. Training and physical hardware assembly currently active.
 
 ---
 
@@ -35,7 +35,7 @@ Most schools still rely on manual headcount and attendance checking — slow, er
 ## System Architecture
 
 ```
-[Camera — OV4689 BSI USB module] → [Raspberry Pi 3B — Raspberry Pi OS Lite (64-bit) + TFLite inference]
+[Camera — OV4689 BSI USB module] → [Raspberry Pi 3B — Raspberry Pi OS Lite (64-bit) + TFLite inference (YOLOLite CPU Nano)]
                     │
                     ├──◄► Onboard Wi-Fi ◄►  [Laptop Dashboard]
                     │      (count + snapshots out;    (data in;
@@ -52,7 +52,7 @@ Commands from the dashboard (e.g. "switch to zone-check mode", "check quadrant 2
 
 ### Division of Labor
 
-**Raspberry Pi 3B — the brain.** Runs headless **Raspberry Pi OS Lite (64-bit)**. The quad-core Cortex-A53 CPU is dedicated to running TFLite inference (`ai-edge-litert` / `tflite-runtime`), change detection, and communication bridging. Live continuous-stream inference is treated as a known risk (a Raspberry Pi 4 reportedly struggled with it in a comparable live-detection project); CLASSCAN instead defaults to periodic snapshot detection with immediate re-trigger on significant frame change, cutting sustained compute load. Detection model: MobileNetV2-SSD (COCO-pretrained base, fine-tuning for ceiling-mount classroom scenario) — chosen over EfficientDet-Lite and YOLO variants for the best speed/accuracy trade-off on CPU-only inference at this performance tier. Handles all networking directly (count/snapshots to laptop, commands from laptop) via onboard Wi-Fi. Talks to the ESP32 over USB serial — translates dashboard commands into serial messages and relays headcount/status back.
+**Raspberry Pi 3B — the brain.** Runs headless **Raspberry Pi OS Lite (64-bit)**. The quad-core Cortex-A53 CPU is dedicated to running TFLite inference (`ai-edge-litert` / `tflite-runtime`), change detection, and communication bridging. Live continuous-stream inference is treated as a known risk (a Raspberry Pi 4 reportedly struggled with it in a comparable live-detection project); CLASSCAN instead defaults to periodic snapshot detection with immediate re-trigger on significant frame change, cutting sustained compute load. Detection model: **YOLOLite CPU (Nano)** with an ImageNet-pretrained backbone, fine-tuned on classroom-specific head datasets for a single **"head"** class — chosen over generic full-body models for superior accuracy under desk occlusion and high CPU throughput. Handles all networking directly (count/snapshots to laptop, commands from laptop) via onboard Wi-Fi. Talks to the ESP32 over USB serial — translates dashboard commands into serial messages and relays headcount/status back.
 
 **ESP32 — the hands.** Fully isolated from networking (its Wi-Fi radio is unused by design — networking stays on the Pi 3B); handles physical I/O only: servo positioning (sweep or quadrant-targeted), LDR-triggered custom illumination module, and driving the LED matrix. Receives commands only via USB serial from the Pi 3B — never connects to the network directly. Runs autonomously in default sweep mode — sweep and lighting logic continue even if the network or laptop dashboard drops. Reports its own state (idle/moving) back over serial so the Pi 3B's change-detection trigger can distinguish the turret's own motion from an actual change in the room. Supports a calibrated quadrant/seat pan-tilt lookup table for targeted mode, switchable with general sweep mode via dashboard command.
 
@@ -61,6 +61,7 @@ Commands from the dashboard (e.g. "switch to zone-check mode", "check quadrant 2
 ### Design Rationale & OS Decision
 
 - **Operating System Selection (Debloated Android vs. Raspberry Pi OS Lite 64-bit):** An ultra-lean Android build was initially evaluated based on prior SBC edge AI precedent. However, after technical assessment against project timelines and solo-development maintenance constraints, **Raspberry Pi OS Lite (64-bit)** was deliberately adopted. Raspberry Pi OS Lite provides a headless, low-overhead Linux environment with zero display-server burden, first-class V4L2/UVC camera stability, native PySerial support, and official LiteRT/TFLite wheels — avoiding Android HAL and driver maintenance risks without sacrificing inference efficiency.
+- **Model Selection & Pivot Rationale (MobileNetV2-SSD vs. YOLOLite CPU Nano):** Baseline tests with a stock MobileNetV2-SSD full-body model failed completely (0 detections) on far-row classroom seating due to armchair occlusion and steep ceiling angles. Pivoting to **YOLOLite CPU (Nano)** with a dedicated single **"head"** class provides the spatial resolution and head-and-shoulders feature representation necessary to reliably detect seated students while maintaining real-time edge CPU performance on the Cortex-A53.
 - **Compute-aware detection strategy:** periodic snapshot + change-triggered re-detection (rather than continuous live inference) keeps sustained CPU load low on hardware known to struggle with live detection, while still responding immediately when something actually changes.
 - **Quadrant-based zoning with self-consistency checking:** dividing the room into quadrants (rather than per-seat zones) shortens the full-scan cycle and blind-spot window, absorbs in-quadrant seat shuffling as a non-event, and cuts inference calls per cycle. A reconciliation check flags and re-scans when per-quadrant counts don't add up to the expected total, rather than silently trusting a possibly-stale scan.
 - **Reduced hardware risk:** onboard Wi-Fi and Bluetooth on the Pi 3B eliminate the USB Wi-Fi dongle chipset-compatibility risk present in earlier alternative SBC paths.
@@ -70,9 +71,9 @@ Commands from the dashboard (e.g. "switch to zone-check mode", "check quadrant 2
 
 ---
 
-## Progress & Validated Benchmarks (Smoke Tests)
+## Progress & Validated Benchmarks (The Pivot Justification)
 
-The core software pipeline (`detector.py` with LiteRT/TFLite interpreter) was bench-tested on real representative scene images to evaluate the baseline performance of the quantized MobileNetV2-SSD model:
+Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite interpreter) evaluated a stock quantized MobileNetV2-SSD model across real representative test scenes:
 
 | Test Scenario | Ground Truth | Detected | Confidence Scores | Outcome & Observations |
 |---|---|---|---|---|
@@ -80,35 +81,35 @@ The core software pipeline (`detector.py` with LiteRT/TFLite interpreter) was be
 | **Multi-Person Group (Seated & Standing Mix)** | 3 people | 3 people | **0.50 – 0.67** | All 3 subjects detected successfully across medium depth. |
 | **Multi-Person Foreground/Midground Scene** | 4 people | 4 people | **0.76 – 0.98** | 4/4 detected with high confidence; accurate bounding boxes. |
 | **Angled Overhead / Partial Profile** | 1 person | 1 person | **0.80** | Successfully detected upper body / torso under tilted angle. |
-| **Distant Classroom Wide Shot (Far Rows / Desks)** | Multiple | 0 people | **N/A (< 0.50 cutoff)** | **0 detections.** Model failed to resolve distant subjects partially occluded by desks. |
+| **Distant Classroom Wide Shot (Far Rows / Desks)** | Multiple | 0 people | **N/A (< 0.50 cutoff)** | **0 detections.** Model completely failed to resolve distant subjects occluded by desks. |
 
-### What These Results Demonstrated
-1. **Pipeline Validation:** Confirms the end-to-end Python/OpenCV/LiteRT inference loop, tensor preprocessing, and bounding-box extraction are functional on hardware.
-2. **Key Insight & Problem Identification:** Stock COCO-trained MobileNetV2-SSD excels when full bodies or clear torsos are visible at eye level, but breaks down on far-row students seated behind armchairs viewed from an elevated angle.
-3. **Direct Action:** This failure directly motivates our dataset curation and model fine-tuning strategy below, shifting from a generic full-body model to a dedicated **head-and-shoulders** detector for elevated classroom perspectives.
+### What These Results Proved & Why We Pivoted
+1. **Pipeline Validation:** The underlying software stack (LiteRT runtime, preprocessing, coordinate scaling, change triggering, and dashboard server) is fully functional on hardware.
+2. **Methodology Justification for Model Swap:** While the stock full-body model succeeded on close and unobstructed subjects (0.50–0.98 confidence), it broke down completely (0 detections) on the distant classroom shot where students were seated behind armchairs. Stock full-body models require torso/limb cues that are physically occluded in classroom seating.
+3. **The Solution:** Rather than relying on generic full-body COCO weights, we pivoted to **YOLOLite CPU (Nano)** fine-tuned specifically for a single **"head"** (head-and-shoulders) class on elevated classroom datasets.
 
 ---
 
-## Dataset & Fine-Tuning Strategy
+## Dataset & Training Strategy
 
-To solve the distant/seated occlusion problem observed during smoke tests, the model is being fine-tuned on custom and domain-specific classroom data:
+To resolve the distant and occluded seating limitation, the new detector is being trained on targeted head detection data:
 
-1. **SCUT-HEAD Part A Benchmark Dataset:**
-   - Sourced directly from the official research repository (under academic/research use terms, avoiding unverified third-party mirrors).
-   - Contains thousands of annotated classroom and surveillance images with dense seating and elevated perspectives.
-2. **Local Classroom Dataset (35 Images):**
-   - 35 high-resolution images captured specifically across Philippine public school classrooms.
-   - Shot at realistic ceiling-mount pitch angles (**30°–50° pitch**) capturing local wooden armchairs, ambient fluorescent/natural lighting, student uniform profiles, and high-density layouts.
+1. **Backbone & Architecture:**
+   - **YOLOLite CPU (Nano):** Extremely lightweight single-stage detector optimized for edge CPU execution without hardware acceleration.
+   - **Pre-trained Backbone:** Initialized from an ImageNet-pretrained backbone to accelerate feature convergence.
+2. **Training Datasets:**
+   - **SCUT-HEAD Part A (2,000 Images):** Large-scale academic benchmark dataset for head detection in dense classroom and indoor surveillance environments (academic-research-use license, sourced directly from the original research repository).
+   - **Local Classroom Dataset (35 Images):** High-resolution photos captured inside Philippine public school classrooms at realistic ceiling pitch angles (**30°–50° pitch**), accounting for local wooden armchairs, ambient fluorescent/sunlight variations, and high student density.
 3. **Annotation & Labeling Convention:**
-   - **Head-and-Shoulders Bounding Boxes:** Abandoning COCO full-body labeling in favor of tight head-and-shoulder annotations, ensuring students remain detectable even when lower bodies are completely blocked by chairs and desks.
-   - **Augmentation via Roboflow:** Exposure variation (simulating dim mornings/evenings), perspective warping, scale shifts, and minor blur to handle camera motion during pan/tilt operations.
-4. **Target Deployment:** Quantized `uint8` MobileNetV2-SSD `.tflite` model optimized for CPU inference latency on the Cortex-A53.
+   - **Single "head" Class (Head-and-Shoulders Bounding Boxes):** Replacing full-body bounding boxes with tight head-and-shoulder annotations so students remain detectable even when 80%+ of their body is blocked by furniture.
+   - **Augmentations via Roboflow:** Random exposure shifts (simulating morning/evening lighting), perspective warping, scale variation, and minor motion blur.
+4. **Target Deployment:** Quantized `uint8` / `float32` `.tflite` model optimized for low-latency inference on the Raspberry Pi 3B Cortex-A53 CPU.
 
 ---
 
-## Known Limitations & Active Work
+## Known Limitations & Active Engineering
 
-- **Distant Subject Misses on Stock Model:** As proven by the 0-detection wide shot benchmark, the stock COCO model is unsuited for far-row classroom occupancy without fine-tuning. Fine-tuning on SCUT-HEAD Part A + local head-and-shoulders data is currently in progress to resolve this.
+- **Stock Full-Body Inadequacy:** Proven empirically by the 0-detection wide-shot result. Training the single-class "head" YOLOLite model is the active engineering solution to close this gap.
 - **Physical Camera Feed Verification:** The software inference stack is confirmed working on images; driverless UVC frame capture (`cv2.VideoCapture`) will be validated in hardware once the physical OV4689 camera arrives.
 - **Single-Camera Blind Spots:** By design, a sweeping turret only observes one field of view at a time. Zone-occupancy reflects the latest quadrant scan rather than continuous instantaneous truth, which is handled via change-triggered re-scans and reconciler consistency checks.
 
@@ -132,9 +133,10 @@ Full itemized BOM and cost breakdown: see `/docs` (update path once added).
 
 **Current Progress & Open Items:**
 - [x] **Compute & OS:** Raspberry Pi 3B running headless Raspberry Pi OS Lite (64-bit) with all dependencies (`ai-edge-litert`, OpenCV, NumPy, PySerial).
-- [x] **Inference Pipeline:** Core `Detector` implementation verified with MobileNetV2-SSD; inference execution and person detection confirmed working on real test images.
+- [x] **Inference Pipeline:** Core `Detector` implementation verified on hardware; inference execution and person detection confirmed working on real test images.
 - [x] **Logic & Communications:** `ChangeTrigger` (frame difference thresholding), `ZoneReconciler` (quadrant counts & consistency verification), `DashboardServer`, and serial bridge modules implemented and unit tested.
-- [ ] **Model Fine-Tuning:** Complete annotation and training on SCUT-HEAD Part A + local classroom head-and-shoulders dataset.
+- [ ] **Model Training & Export:** Complete fine-tuning of YOLOLite CPU (Nano) on SCUT-HEAD (2,000 images) + 35 local classroom images; export quantized `.tflite` model.
+- [ ] **Detector Post-Processing Update:** Update `detector.py` output parsing and NMS logic once the exported YOLOLite tensor signatures are inspected.
 - [ ] **Physical Camera Integration:** Connect and verify OV4689 UVC video stream with `Detector.capture_frame()` once the camera module arrives.
 - [ ] **Illumination Module:** Finalize circuit design (LED array, driver transistor, LDR threshold) and wire to ESP32 ADC/GPIO.
 - [ ] **Turret & Quadrant Calibration:** Calibrate physical pan/tilt servo angles for Quadrants 1–4 once mounted in the dome enclosure.
@@ -163,7 +165,7 @@ ESP32 loop (autonomous, runs independent of network):
 Pi 3B loop:
     capture camera frame
     if ESP32 reports "idle" and frame differs significantly from last checked frame:
-        run TFLite (MobileNetV2-SSD) person-detection inference immediately
+        run TFLite (YOLOLite CPU Nano) head-detection inference immediately
     else:
         run detection on regular heartbeat interval instead
     count detections per zone; sum and compare against last full-cycle total

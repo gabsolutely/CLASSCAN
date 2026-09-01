@@ -10,12 +10,12 @@ PCU-D Capstone · Computer Vision + Embedded Systems
 ```
 CLASSCAN/
 ├── src/
-│   ├── pi/                     ← Raspberry Pi 3B (Python)
+│   ├── pi/                     ← Raspberry Pi 3B (Python, Raspberry Pi OS Lite 64-bit)
 │   │   ├── main.py             ← Main detection + comms loop
 │   │   ├── config.py           ← All tuneable constants
 │   │   ├── requirements.txt
 │   │   ├── detection/
-│   │   │   ├── detector.py         ← TFLite MobileNetV2-SSD wrapper
+│   │   │   ├── detector.py         ← TFLite YOLOLite CPU (Nano) / model wrapper
 │   │   │   ├── change_trigger.py   ← Frame-diff re-detect trigger
 │   │   │   └── zone_reconciler.py  ← Quadrant count self-consistency check
 │   │   └── comms/
@@ -37,7 +37,7 @@ CLASSCAN/
 │       ├── styles.css          ← Dark-mode design system & animations
 │       └── app.js              ← Polling logic, event handlers & UI state
 │
-├── models/                     ← TFLite model files (add after training)
+├── models/                     ← TFLite model files (YOLOLite Nano .tflite)
 ├── docs/                       ← Scope, BOM, design docs
 ├── cad/                        ← Enclosure CAD files
 ├── hardware/                   ← Wiring diagrams, pinouts
