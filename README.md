@@ -129,7 +129,7 @@ To resolve the distant and occluded seating limitation, the new detector is bein
 | 18650 Battery + Charging Module | **In hand** — Swappable, untethered power |
 | 3D-Printed Dome Enclosure | **In design** — Houses all components, ceiling-mounted |
 
-Full itemized BOM and cost breakdown: see `/docs` (update path once added).
+Full itemized BOM and cost breakdown: see [`docs/bom.md`](docs/bom.md).
 
 **Current Progress & Open Items:**
 - [x] **Compute & OS:** Raspberry Pi 3B running headless Raspberry Pi OS Lite (64-bit) with all dependencies (`ai-edge-litert`, OpenCV, NumPy, PySerial).
