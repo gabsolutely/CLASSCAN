@@ -81,3 +81,91 @@ $$\text{Mean Absolute Error (MAE)} = \frac{1}{N} \sum_{i=1}^N |\text{Detected Co
 | **Group B: Standard Classroom** | Fluorescent lights (150–300 lux)| Medium (11–25 students) | Precision $\ge 90\%$, MAE $\le 1.0$ |
 | **Group C: High Density Seating** | Standard lighting | High (26–45 students) | Precision $\ge 85\%$, MAE $\le 2.0$ |
 | **Group D: Dim / Evening** | Low ambient (< 100 lux) + LED Module | Variable | Precision $\ge 85\%$, MAE $\le 1.5$ |
+
+---
+
+## 5. Custom CLASSCAN Head Detector — Inference Results
+
+Results for the trained Keras multi-scale MobileNetV2 head detector.
+Best checkpoint: **epoch 55** (box_loss_weight=2.0 phase, Drive-verified).
+
+### 5a. YOLOLite Nano Intermediate Result (Roboflow, Abandoned)
+
+| Metric | Value | Notes |
+|---|:---:|---|
+| Training epochs | 92 | Loss plateaued at 0.1638 |
+| mAP@50 | **16.6%** | Non-zero but weak |
+| Precision | 29.1% | |
+| Recall | 29.0% | |
+| Outcome | **Abandoned** | Roboflow credits exhausted; not enough to retry |
+
+---
+
+### 5b. Epoch-50 Inference + NMS Check (box_loss_weight=1.0)
+
+Test image: validation sample with 13 ground-truth head boxes.
+Threshold: objectness ≥ 0.35, NMS IoU ≤ 0.45.
+
+| Metric | Value |
+|---|:---:|
+| Ground truth boxes | 13 |
+| Raw model predictions | 13 |
+| After NMS | **13** |
+| Count match | **✅ Exact (13/13)** |
+| Confidence scores | ~0.38–0.49 range |
+| Box tightness | Somewhat loose/offset vs. ground truth |
+| Duplicate suppression | No duplicates to suppress (NMS clean) |
+
+**Observation:** Model has learned to cluster predictions on the real group of people
+(correctly ignoring empty chairs). Box tightness is loose and offset from ground truth —
+expected at this training stage with box_loss_weight=1.0.
+
+---
+
+### 5c. Epoch-55 Inference + NMS Check (box_loss_weight=2.0)
+
+Same test image, same thresholds. Continuing from epoch-50 with box_loss_weight bumped to 2.0.
+
+| Metric | Value | Δ vs. Epoch-50 |
+|---|:---:|:---:|
+| Ground truth boxes | 13 | — |
+| Raw model predictions | 13 | Same |
+| After NMS | **13** | Same |
+| Count match | **✅ Exact (13/13)** | Same |
+| val_loss at epoch 55 | 0.2519 | ↓ from 0.2564 (marginal improvement) |
+| Box tightness | Improved — boxes closer to GT boundaries | ✅ Better |
+| val_loss by epoch 60 | 0.2531 (rising) | Plateau confirmed |
+
+**Epoch 55 is the best checkpoint.** val_loss bottomed at epoch 55 and started rising by
+epoch 60 — plateau reached. No benefit to additional training epochs.
+
+**Box tightness assessment:** The box_loss_weight=2.0 bump produced a visible improvement
+in box regression at epoch 55 vs. epoch 50 — bounding boxes are closer to ground-truth
+head boundaries. Confidence scores remain in the ~0.4 range, which is expected from focal
+loss's conservative bias (threshold of 0.35 is appropriate for deployment).
+
+---
+
+### 5d. Training Loss Convergence Summary
+
+| Epoch | train_loss | val_loss | Notes |
+|:---:|:---:|:---:|---|
+| 1 | 3.2571 | 1.1443 | Start (from scratch, run 2) |
+| 10 | — | — | Smooth decrease throughout |
+| 30 | 0.2524 | 0.2687 | Run 2 end — val still decreasing |
+| 50 | 0.2239 | 0.2564 | Val plateau (~ep47-50) |
+| 55 | 0.2115 | **0.2519** | ← **Best checkpoint** (box_loss_weight=2.0) |
+| 60 | — | 0.2531 | Val rising — overfitting signal, stopped |
+
+---
+
+### 5e. Live Camera Results (Pending — OV4689 in Transit)
+
+*This section will be filled in after physical camera bring-up.*
+
+| Test | Environment | Count GT | System Count | Outcome |
+|---|---|:---:|:---:|---|
+| Camera verify (camera_verify.py) | Lab desk | TBD | TBD | Pending |
+| Single student | PCU-D classroom | 1 | TBD | Pending |
+| Full class (seated, fluorescent) | PCU-D classroom | 25–35 | TBD | Pending |
+
