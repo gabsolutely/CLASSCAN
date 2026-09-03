@@ -20,13 +20,15 @@ class Config:
     DASHBOARD_PORT = 8080
 
     # ── TFLite Model ───────────────────────────────────────────────────────
-    # Primary: YOLOLite CPU (Nano) trained for single 'head' detection
-    # Fallback: mobilenet_v2_ssd_classcan.tflite for smoke testing
-    _PRIMARY_MODEL = str(MODELS_DIR / "yololite_nano_head_classcan.tflite")
+    # Primary: Custom Keras multi-scale MobileNetV2 head detector (epoch-55 best ckpt)
+    #   Export: python scripts/export_to_tflite.py --weights ckpt_ep55.weights.h5
+    # Fallback: COCO MobileNetV2-SSD (smoke-test only — undercounts occluded students)
+    _PRIMARY_MODEL  = str(MODELS_DIR / "classcan_head_v1.tflite")
     _FALLBACK_MODEL = str(MODELS_DIR / "mobilenet_v2_ssd_classcan.tflite")
 
-    MODEL_PATH = _PRIMARY_MODEL if os.path.isfile(_PRIMARY_MODEL) else _FALLBACK_MODEL
-    CONF_THRESHOLD  = 0.50            # Head-detection confidence cutoff
+    MODEL_PATH      = _PRIMARY_MODEL if os.path.isfile(_PRIMARY_MODEL) else _FALLBACK_MODEL
+    CONF_THRESHOLD  = 0.35            # Objectness threshold — tuned for CLASSCAN model
+                                      # (use 0.50 if falling back to COCO SSD model)
 
     # ── Detection Timing ───────────────────────────────────────────────────
     HEARTBEAT_INTERVAL = 10.0         # Seconds between periodic scans
