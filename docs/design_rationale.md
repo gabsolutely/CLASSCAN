@@ -67,13 +67,15 @@ Adopt a decoupled, dual-tier architecture mirroring industrial robotics:
 
 ---
 
-## ADR-03: Vision Model Selection & Pivot — MobileNetV2-SSD vs. YOLOLite CPU (Nano) Single-Class "Head"
+## ADR-03: Vision Model Selection & Final Architecture — Custom Keras Multi-Scale MobileNetV2 Head Detector
 
 ### Context
 Initial baseline testing of the computer vision pipeline utilized a standard MobileNetV2-SSD model pre-trained on the COCO dataset (80 full-body classes).
 
-### The Pivot Driver (Empirical Failure Analysis)
-During physical benchmark trials across realistic classroom test photographs, MobileNetV2-SSD performed well on unobstructed, close-to-medium subjects (confidence scores: 0.72 – 0.98). However, when evaluated on a realistic wide-angle classroom shot with seated students in distant rows, the model recorded **0 detections** (all detections fell below the 0.50 confidence threshold).
+### The Decision Path (Three-Stage Failure Trail)
+
+**Stage 1 — COCO MobileNetV2-SSD fails (empirical):**
+During benchmark trials on realistic classroom test photographs, the COCO model performed well on unobstructed close/medium subjects (confidence 0.72–0.98) but recorded **0 detections** on a wide-angle classroom shot with seated students behind desks.
 
 ```
 Why Full-Body Models Fail in Classrooms:
@@ -88,16 +90,27 @@ Why Full-Body Models Fail in Classrooms:
 └────────────────────────────────────────────────────────┘
 ```
 
-### Decision
-Pivot model architecture to **YOLOLite CPU (Nano)** fine-tuned specifically for a single **"head"** (head-and-shoulders) class on elevated classroom datasets (SCUT-HEAD Part A + Local Classroom images).
+**Stage 2 — YOLOLite CPU Nano (Roboflow) weak result:**
+Attempted a YOLOLite CPU (Nano) fine-tune on Roboflow: 92 epochs, loss plateaued at 0.1638, final mAP@50=16.6%, precision=29.1%, recall=29.0%. Non-zero but weak. Roboflow free credits exhausted after this run — could not retry.
 
-### Rationale & Trade-offs
-1. **Overcoming Desk Occlusion:**
-   - Classroom furniture (standard wooden armchairs, study desks) physically conceals 70%–85% of a seated student's body. Full-body models rely heavily on limb, torso, and leg features. Training the detector to recognize cranial and shoulder contours ensures robust detection regardless of desk depth.
-2. **Cortex-A53 Inference Throughput:**
-   - YOLOLite CPU (Nano) features an ultra-compact single-stage architecture with a streamlined depthwise separable backbone. It is explicitly optimized for real-time edge CPU inference without requiring an NPU/GPU coprocessor, achieving low inference latencies on the Raspberry Pi 3B.
-3. **Single-Class Efficiency:**
-   - Reducing the classification head from 80 COCO classes to a single `head` class eliminates output tensor bloat and simplifies post-processing overhead.
+**Stage 3 — TF Object Detection API dead end:**
+Attempted fine-tuning via the TF Object Detection API in Colab. Hit a hard dependency wall: `tensorflow_io` had no available build for the Colab environment's Python version. This path was abandoned without forcing an older Python version or a full custom build.
+
+### Decision
+**Custom Keras/TF training pipeline** with a MobileNetV2 backbone and 3-scale FPN detection heads. Built entirely from scratch to avoid all external dependency friction.
+
+### Architecture Summary
+- **Backbone:** MobileNetV2 (300×300, ImageNet weights, fine-tuned)
+- **Feature Pyramid:** P3 (38×38, stride 8), P4 (19×19, stride 16), P5 (10×10, stride 32)
+- **Target Encoding:** Occupancy-based overflow routing (NOT size-gated — all boxes in this dataset are small/overhead-angle with max(h,w) ≤ 0.07, no scale variety)
+- **Loss:** Focal loss (objectness, from_logits) + Smooth-L1 (boxes, masked to positive cells)
+- **Training:** Adam lr=1e-5, batch=8, ~60 epochs total, best checkpoint at epoch 55
+
+### Rationale
+1. **Desk Occlusion Solved:** Head-and-shoulders annotation + elevated dataset ensures detection works regardless of desk depth.
+2. **No External Dependency Friction:** Pure Keras/TF — no PyTorch→ONNX→TFLite conversion pipeline, no `tensorflow_io` ABI constraints.
+3. **Full Control Over Multi-Scale Design:** Occupancy-based routing solves the dense-crowd cell-collision problem specific to this dataset's characteristics (all-small-box, high-density overhead shots).
+4. **Cortex-A53 Deployment:** Exported to TFLite via `scripts/export_to_tflite.py`, NMS baked into the graph, clean 3-tensor output interface for `detector.py`.
 
 ---
 
@@ -185,3 +198,40 @@ Implement a custom visible-spectrum LED array controlled via an analog Light Dep
    - Visible auxiliary lighting preserves natural color and contrast on the live MJPEG dashboard stream viewed by instructors or administrators.
 3. **Closed-Loop Thresholding:**
    - The ESP32 continuously polls the LDR on ADC channel 34. Hysteresis thresholding prevents rapid oscillation near the ambient light boundary.
+
+---
+
+## ADR-07: LoRa Wireless Rejected — USB Serial Sufficient for Single-Room Scope
+
+### Context
+During hardware sourcing, a colleague offered LoRa modules cheaply (potentially free) as an additional wireless communication layer between the Pi and ESP32.
+
+### Decision
+LoRa was explicitly **rejected** for the current project scope.
+
+### Rationale
+1. **Single-Room Deployment:** CLASSCAN is designed as a single-room system. Pi and ESP32 are co-mounted in the same ceiling unit, communicating over USB serial at 115200 baud. There is no range problem to solve.
+2. **Unnecessary Complexity:** Adding LoRa introduces an additional radio stack, additional firmware on the ESP32, and additional failure modes (signal, antenna placement, duty-cycle limits) with zero benefit for the current use case.
+3. **Scope Discipline:** The Sept 28, 2026 PoC deadline does not leave room for scope expansion. Adding wireless protocols is explicitly deferred.
+
+### Revisit Condition
+LoRa (or equivalent LPWAN) would be worth considering if the project scope expands to multi-room or multi-building deployments where each classroom has its own CLASSCAN unit and counts need to aggregate over a building-wide network.
+
+---
+
+## ADR-08: TF Object Detection API / tensorflow_io — Abandoned Path
+
+### Context
+After the YOLOLite Roboflow fine-tune produced weak results (mAP@50=16.6%) and credits were exhausted, the next approach was to fine-tune the literal MobileNetV2-SSD architecture using the TensorFlow Object Detection API in Google Colab.
+
+### Decision
+This path was **abandoned** as a dead end.
+
+### Root Cause
+`tensorflow_io` — required by the TF Object Detection API's TFRecord ingestion pipeline — had no available pre-built wheel compatible with the Colab environment's Python version at the time of the attempt. Forcing an older Python version or building `tensorflow_io` from source would have introduced significant environment management overhead and Colab compatibility risks.
+
+### Resolution
+The project moved to a custom Keras/TF training pipeline (see ADR-03) that:
+- Uses `tf.io.parse_single_example` and `tf.data.TFRecordDataset` directly — no `tensorflow_io` dependency
+- Maintains full control over the model architecture, loss function, and target encoding
+- Runs in a standard Colab GPU environment with no special Python version requirements
