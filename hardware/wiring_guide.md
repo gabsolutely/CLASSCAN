@@ -114,3 +114,105 @@ ESP32 GPIO 19 (Tilt PWM) ──────────────────�
 | **DIN** | `GPIO 23` | Yellow | SPI Master-Out Slave-In (MOSI) |
 | **CS / LOAD** | `GPIO 5` | Green | SPI Chip Select / Latch |
 | **CLK** | `GPIO 14` | Blue | SPI Clock |
+
+---
+
+## 5. Active Cooling Fan Wiring (Raspberry Pi 3B)
+
+The Raspberry Pi acrylic case incorporates a 5V brushless DC miniature cooling fan (30×30mm or 40×40mm) to dissipate heat from the Broadcom BCM2837 SoC heatsink.
+
+```
+       Raspberry Pi 3B GPIO Header (Top Corner Pins 1-6)
+       
+              [Pin 1: 3.3V]  [Pin 2: 5.0V]
+              [Pin 3: GPIO2] [Pin 4: 5.0V] ◄── Red Wire (+) [5V Mode]
+              [Pin 5: GPIO3] [Pin 6: GND ] ◄── Black Wire (-) [Ground]
+                                   │
+               ┌───────────────────┴───────────────────┐
+               │                                       │
+               ▼                                       ▼
+     [ Black Wire: GND ]                     [ Red Wire: +5V / +3.3V ]
+     ┌───────────────────────────────────────────────────────────────┐
+     │                Miniature Brushless Cooling Fan                │
+     │                    (Mounted to Acrylic Lid)                   │
+     └───────────────────────────────────────────────────────────────┘
+```
+
+### Fan Pin Connection Options:
+
+| Operating Mode | Red Wire (+) Connection | Black Wire (-) Connection | Voltage | Cooling Effect | Noise Level |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **5V Performance (Recommended)** | **Physical Pin 4** (5V DC Rail) | **Physical Pin 6** (Ground) | 5.0V | SoC stabilizes at **~34°C – 40°C** | Soft steady hum |
+| **3.3V Quiet Mode** | **Physical Pin 1** (3.3V DC Rail) | **Physical Pin 6** (Ground) | 3.3V | SoC stabilizes at **~39°C – 45°C** | Virtually silent |
+
+> [!TIP]
+> **Airflow Orientation:** Mount the fan with the label facing **inward / downward** toward the Raspberry Pi processor so cool air is pushed directly onto the aluminum heatsink.
+
+---
+
+## 6. OV4689 Camera Module Wiring & Pinout
+
+The **OmniVision OV4689 4MP Back-Side Illuminated (BSI)** camera module arrives with an M12 lens, lens cover, and a 4-wire interface cable with white plastic connector tips.
+
+```
+ OV4689 Camera PCB (Rear)                       Raspberry Pi 3B
+┌───────────────────────────┐                ┌───────────────────┐
+│                           │                │ USB 2.0 Port 2    │
+│  [4-Pin White JST Socket] │                │ (Bottom-Left)     │
+│   ┌───────────────────┐   │                │                   │
+│   │ [1] [2] [3] [4]   │   │  USB Cable     │  ┌─────────────┐  │
+│   └───┬───┬───┬───┬───┘   │═══════════════►│  │ USB-A Plug  │  │
+│       │   │   │   │       │                │  └─────────────┘  │
+└───────┼───┼───┼───┼───────┘                └───────────────────┘
+        │   │   │   │
+        │   │   │   └─ Pin 4: GND    (Black Wire)  ── Ground Reference
+        │   │   └───── Pin 3: D+     (Green Wire)  ── USB Data Plus
+        │   └───────── Pin 2: D-     (White Wire)  ── USB Data Minus
+        └───────────── Pin 1: VCC/5V (Red Wire)    ── +5V Bus Power
+```
+
+### Connector Pinout Details:
+
+| Pin # | Signal Name | Wire Color | Function | Notes |
+|:---:|---|:---:|---|---|
+| **1** | **VCC / 5V** | **Red** | USB Bus Power (+5.0V) | Powers sensor and onboard ISP controller |
+| **2** | **D-** | **White** | USB Data Negative | High-speed differential USB 2.0 data line |
+| **3** | **D+** | **Green** | USB Data Positive | High-speed differential USB 2.0 data line |
+| **4** | **GND** | **Black** | Power / Signal Ground | Common system ground reference |
+
+### Physical Setup Steps:
+1. **Plug the White Connector Tip:** Locate the 4-pin white female socket on the reverse side of the OV4689 camera PCB. Align the small polarizing guides/notches on the white connector plug with the socket and push gently until fully seated.
+2. **Connect to Pi USB:** Plug the USB Type-A end of the cable into **USB Port 2 (Bottom-Left)** of the Raspberry Pi 3B.
+3. **Remove Lens Cover:** Remove the protective plastic lens cap / film from the front of the M12 lens.
+4. **Adjust Focus:** The OV4689 features an adjustable M12 screw-thread lens. If the initial video feed appears soft or out of focus:
+   - Loosen the locking set-screw if present.
+   - Gently rotate the outer lens barrel clockwise or counter-clockwise until subjects at **2.0m – 6.0m (classroom desk distance)** appear crisp and sharp.
+
+---
+
+## 7. Quick Hardware Verification Commands (On Pi Terminal)
+
+Execute these commands via SSH on the Raspberry Pi 3B to confirm both peripherals are functioning:
+
+```bash
+# 1. Verify CPU cooling fan and monitor SoC temperature:
+vcgencmd measure_temp
+# Expected: temp=34.0'C to 40.0'C (with active fan running)
+
+# 2. Check if the OV4689 camera is recognized on the USB bus:
+lsusb
+# Look for OmniVision Technologies or USB 2.0 Camera device
+
+# 3. Check V4L2 video capture devices:
+v4l2-ctl --list-devices
+# Expected: OmniVision OV4689 Camera (/dev/video0, /dev/video1)
+
+# 4. Run standalone camera hardware verification (no model required):
+cd /path/to/CLASSCAN
+python scripts/camera_verify.py --camera-only --save-raw
+# Captures 5 test frames, prints frame latency, and saves camera_raw_test.jpg
+
+# 5. Run full camera + detection inference verification:
+python scripts/camera_verify.py --save
+# Runs live detection and outputs camera_verify_output.jpg with bounding boxes
+```
