@@ -121,23 +121,23 @@ To resolve the distant and occluded seating limitation, the new detector is bein
 |---|---|
 | Raspberry Pi 3B (1GB RAM) | **In hand & running** — Main compute: Raspberry Pi OS Lite (64-bit) + TFLite inference; onboard Wi-Fi + Bluetooth |
 | ESP32 | **In hand** — Physical I/O controller: servos, LDR, illumination, LED matrix, USB serial link to Pi 3B |
-| OV4689 4MP BSI USB Camera Module (UVC, Type-C) | **Sourced / in transit** — Video feed for detection: back-side-illuminated sensor for improved performance in dim/evening classroom lighting, standard driverless UVC interface |
+| OV4689 4MP BSI USB Camera Module (UVC, Type-C/A) | **In hand & connected** — Video feed for detection: back-side-illuminated sensor for improved performance in dim/evening classroom lighting, standard driverless UVC interface |
 | Light Sensor (LDR) | **In hand** — Detects ambient brightness, triggers illumination module |
 | Custom illumination LED module (self-built, LDR-triggered) | **In development** — Brightens scene in dim conditions: built in-house rather than a packaged IR unit, driven by the ESP32 |
 | Pan/Tilt Servos (MG90S x2) | **In hand** — Rotates the turret to sweep or target quadrants |
 | LED Matrix Display | **In hand** — Shows live headcount locally |
 | 18650 Battery + Charging Module | **In hand** — Swappable, untethered power |
-| 3D-Printed Dome Enclosure | **In design** — Houses all components, ceiling-mounted |
+| 3D-Printed Dome Enclosure | **In design** — Houses all components, ceiling-mounted (Pi running in acrylic case + active fan) |
 
 Full itemized BOM and cost breakdown: see [`docs/bom.md`](docs/bom.md).
 
 **Current Progress & Open Items:**
-- [x] **Compute & OS:** Raspberry Pi 3B running headless Raspberry Pi OS Lite (64-bit) with all dependencies (`ai-edge-litert`, OpenCV, NumPy, PySerial).
+- [x] **Compute & OS:** Raspberry Pi 3B running headless Raspberry Pi OS Lite (64-bit) with all dependencies (`ai-edge-litert`, OpenCV, NumPy, PySerial) in acrylic case with active cooling fan (GPIO Pins 4/6).
 - [x] **Inference Pipeline:** Core `Detector` implementation verified on hardware; inference execution and person detection confirmed working on real test images.
 - [x] **Logic & Communications:** `ChangeTrigger` (frame difference thresholding), `ZoneReconciler` (quadrant counts & consistency verification), `DashboardServer`, and serial bridge modules implemented and unit tested.
-- [ ] **Model Training & Export:** Complete fine-tuning of YOLOLite CPU (Nano) on SCUT-HEAD (2,000 images) + 35 local classroom images; export quantized `.tflite` model.
-- [ ] **Detector Post-Processing Update:** Update `detector.py` output parsing and NMS logic once the exported YOLOLite tensor signatures are inspected.
-- [ ] **Physical Camera Integration:** Connect and verify OV4689 UVC video stream with `Detector.capture_frame()` once the camera module arrives.
+- [x] **Custom Model Training:** Keras multi-scale MobileNetV2 head detector trained (60 epochs, best checkpoint epoch-55 verified on Drive, 13/13 validation count match).
+- [x] **Physical Camera Integration:** Connected OV4689 UVC camera module via 4-pin harness to Pi USB Port 2; verification tool ready (`scripts/camera_verify.py`).
+- [ ] **TFLite Model Export:** Export epoch-55 weights to `models/classcan_head_v1.tflite` via `scripts/export_to_tflite.py`.
 - [ ] **Illumination Module:** Finalize circuit design (LED array, driver transistor, LDR threshold) and wire to ESP32 ADC/GPIO.
 - [ ] **Turret & Quadrant Calibration:** Calibrate physical pan/tilt servo angles for Quadrants 1–4 once mounted in the dome enclosure.
 - [ ] **Full-System Benchmarking:** Record end-to-end latency, temperature, and detection accuracy under live classroom lighting conditions.

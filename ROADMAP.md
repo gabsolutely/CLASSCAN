@@ -35,8 +35,8 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [x] `classcan_training_pipeline.py` committed to `/scripts`
 - [ ] Export epoch-55 checkpoint to `models/classcan_head_v1.tflite`
       (`python scripts/export_to_tflite.py --weights ckpt_ep55.weights.h5`)
-- [ ] Connect physical OV4689 UVC camera module once delivered
-- [ ] Live end-to-end camera feed detection verification (`scripts/camera_verify.py`)
+- [x] Connect physical OV4689 UVC camera module (4-pin harness to USB Port 2)
+- [/] Live end-to-end camera feed verification (`scripts/camera_verify.py` with `--camera-only` & model mode)
 
 ## Full-System Integration (Post-PoC)
 
@@ -55,9 +55,9 @@ Prove the core detection pipeline works end-to-end on target hardware:
 | Component | Status |
 |---|---|
 | Raspberry Pi 3B (1GB) | **In hand & running** (Raspberry Pi OS Lite 64-bit) |
-| Pi Acrylic Case (clear, enclosed, with fan) | **✅ Installed** |
+| Pi Acrylic Case (clear, enclosed, with active fan) | **✅ Installed & Wired** (GPIO Pin 4/6, ~36°C operating temp) |
 | ESP32 | **In hand** (firmware development underway) |
-| OV4689 4MP BSI USB Camera (UVC, Type-C) | **Sourced / in transit** |
+| OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & connected** (USB Port 2, 4-pin JST harness) |
 | Light Sensor (LDR) + Illumination LEDs | **In hand / circuit in development** |
 | Pan/Tilt Servos (MG90S x2) | **In hand** |
 | LED Matrix Display | **In hand** |
