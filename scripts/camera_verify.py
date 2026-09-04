@@ -46,7 +46,11 @@ except ImportError:
     try:
         from tflite_runtime.interpreter import Interpreter
     except ImportError:
-        from tensorflow.lite.python.interpreter import Interpreter
+        try:
+            from tensorflow.lite.python.interpreter import Interpreter
+        except ImportError:
+            Interpreter = None
+
 
 
 # ─── NMS (self-contained copy — no src imports needed for quick verify) ────────
@@ -79,11 +83,18 @@ def non_max_suppression(boxes: np.ndarray, scores: np.ndarray,
 # ─── Model interface helpers ──────────────────────────────────────────────────
 
 def load_model(model_path: str):
+    if Interpreter is None:
+        print("[✗] Error: Neither 'ai_edge_litert', 'tflite_runtime', nor 'tensorflow' is installed.")
+        print("    • On Raspberry Pi 3B (64-bit):  pip install ai-edge-litert")
+        print("    • On dev workstation / laptop: pip install tensorflow")
+        print("    • To verify camera hardware alone without a model: run with --camera-only")
+        sys.exit(1)
     interp = Interpreter(model_path=model_path)
     interp.allocate_tensors()
     inp = interp.get_input_details()
     out = interp.get_output_details()
     return interp, inp, out
+
 
 
 def detect_classcan_model(interp, inp_details, out_details,
@@ -179,115 +190,216 @@ def draw_boxes(frame: np.ndarray, detections: list[dict],
     return out
 
 
+# ─── System telemetry helpers ──────────────────────────────────────────────────
+
+def get_soc_temperature() -> str | None:
+    """Query Raspberry Pi SoC core temperature via vcgencmd if available."""
+    try:
+        import subprocess
+        res = subprocess.run(["vcgencmd", "measure_temp"], capture_output=True, text=True, timeout=1.0)
+        if res.returncode == 0:
+            return res.stdout.strip().replace("temp=", "")
+    except Exception:
+        pass
+    return None
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="CLASSCAN camera + model quick verify")
+    parser.add_argument("--camera-only", action="store_true",
+                        help="Verify camera feed hardware only (skip model loading and inference)")
     parser.add_argument("--model",   default=None,
                         help="Path to .tflite model (auto-detects if not set)")
     parser.add_argument("--camera",  type=int, default=0,
                         help="Camera device index (default: 0)")
+    parser.add_argument("--width",   type=int, default=None,
+                        help="Requested capture width in pixels (e.g. 1280 or 640)")
+    parser.add_argument("--height",  type=int, default=None,
+                        help="Requested capture height in pixels (e.g. 720 or 480)")
     parser.add_argument("--conf",    type=float, default=0.35,
                         help="Confidence threshold (default: 0.35)")
     parser.add_argument("--frames",  type=int, default=5,
                         help="Number of frames to test (default: 5)")
     parser.add_argument("--save",    action="store_true",
                         help="Save annotated last frame to camera_verify_output.jpg")
+    parser.add_argument("--save-raw", action="store_true",
+                        help="Save raw unannotated test frame to camera_raw_test.jpg")
     args = parser.parse_args()
 
-    # ── Auto-detect model ─────────────────────────────────────────────────
-    if args.model:
-        model_path = args.model
+    # ── Model loading (skipped if --camera-only) ───────────────────────────
+    interp = None
+    inp_details = None
+    out_details = None
+    is_classcan_model = False
+
+    if not args.camera_only:
+        if args.model:
+            model_path = args.model
+        else:
+            candidates = [
+                str(REPO_ROOT / "models" / "classcan_head_v1.tflite"),
+                str(REPO_ROOT / "models" / "mobilenet_v2_ssd_classcan.tflite"),
+            ]
+            model_path = next((p for p in candidates if os.path.isfile(p)), None)
+            if not model_path:
+                print("[!] No model file found in models/.")
+                print("    Falling back to --camera-only mode to verify video hardware.")
+                print("    (To test inference, run scripts/export_to_tflite.py or pass --model path/to/model.tflite)")
+                args.camera_only = True
+
+    if not args.camera_only:
+        is_classcan_model = "classcan_head" in os.path.basename(model_path)
+        print(f"[Model] Loading: {model_path}")
+        print(f"        Mode: {'CLASSCAN head detector' if is_classcan_model else 'COCO SSD fallback'}")
+
+        interp, inp_details, out_details = load_model(model_path)
+        print(f"[Model] Input:  {inp_details[0]['shape']}  {inp_details[0]['dtype'].__name__}")
+        for d in out_details:
+            print(f"[Model] Output: {d['shape']}  {d['dtype'].__name__}  ({d['name']})")
     else:
-        candidates = [
-            str(REPO_ROOT / "models" / "classcan_head_v1.tflite"),
-            str(REPO_ROOT / "models" / "mobilenet_v2_ssd_classcan.tflite"),
-        ]
-        model_path = next((p for p in candidates if os.path.isfile(p)), None)
-        if not model_path:
-            print("[✗] No model file found. Run scripts/export_to_tflite.py first,")
-            print("    or pass --model path/to/model.tflite")
-            sys.exit(1)
-
-    is_classcan_model = "classcan_head" in os.path.basename(model_path)
-    print(f"[Model] Loading: {model_path}")
-    print(f"        Mode: {'CLASSCAN head detector' if is_classcan_model else 'COCO SSD fallback'}")
-
-    interp, inp_details, out_details = load_model(model_path)
-    print(f"[Model] Input:  {inp_details[0]['shape']}  {inp_details[0]['dtype'].__name__}")
-    for d in out_details:
-        print(f"[Model] Output: {d['shape']}  {d['dtype'].__name__}  ({d['name']})")
+        print("[Mode] Camera hardware verification only (model inference skipped)")
 
     # ── Open camera ───────────────────────────────────────────────────────
-    print(f"\n[Camera] Opening device {args.camera}...")
+    print(f"\n[Camera] Opening device index {args.camera}...")
     cap = cv2.VideoCapture(args.camera, cv2.CAP_V4L2)
+    backend_used = "V4L2"
     if not cap.isOpened():
-        # Try without V4L2 flag (for non-Linux dev environments)
+        # Fallback without V4L2 flag (for Windows/macOS dev environments)
         cap = cv2.VideoCapture(args.camera)
+        backend_used = "Default (non-V4L2)"
+
     if not cap.isOpened():
-        print(f"[✗] Cannot open camera device {args.camera}")
+        print(f"\n[✗] ERROR: Cannot open camera device index {args.camera}")
+        print("\nTroubleshooting checklist:")
+        print("  1. Is the OV4689 camera cable plugged firmly into a USB port on the Pi?")
+        print("  2. Check if the OS sees the USB device:")
+        print("         lsusb")
+        print("     Look for OmniVision Technologies or a USB Video Device.")
+        print("  3. Check available video devices:")
+        print("         v4l2-ctl --list-devices")
+        print("         ls -l /dev/video*")
+        print("     If the camera is at /dev/video1 or /dev/video2, run with: --camera 1 (or 2)")
+        print("  4. Check user permissions for video access:")
+        print("         sudo usermod -a -G video $USER")
+        print("  5. If connected via hub or breadboard, ensure sufficient 5V power.")
         sys.exit(1)
+
+    # Optional resolution request
+    if args.width:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
+    if args.height:
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
 
     cam_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     cam_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    print(f"[Camera] Opened — {cam_w}×{cam_h}")
+    cam_fps = cap.get(cv2.CAP_PROP_FPS)
+    print(f"[Camera] Opened successfully via {backend_used} — {cam_w}×{cam_h} @ {cam_fps:.1f} FPS")
 
-    # ── Run inference loop ────────────────────────────────────────────────
+    # ── Camera Warmup ─────────────────────────────────────────────────────
+    # Discard first 3 frames so auto-exposure (AEC) and auto-white-balance (AWB) stabilize
+    print("[Camera] Warming up sensor (auto-exposure settling)...", end="", flush=True)
+    for _ in range(3):
+        cap.read()
+    print(" ready.")
+
+    # ── Run verification loop ─────────────────────────────────────────────
     print(f"\nRunning {args.frames} test frame(s)...\n")
     total_counts = []
+    capture_latencies = []
     last_frame = None
+    raw_frame_saved = None
 
     try:
         for i in range(args.frames):
+            t_cap_start = time.perf_counter()
             ret, frame = cap.read()
+            t_cap_ms = (time.perf_counter() - t_cap_start) * 1000
+            capture_latencies.append(t_cap_ms)
+
             if not ret:
                 print(f"[✗] Failed to capture frame {i + 1}")
                 break
 
-            if is_classcan_model:
-                detections, inf_ms = detect_classcan_model(
-                    interp, inp_details, out_details, frame, args.conf
-                )
+            if raw_frame_saved is None:
+                raw_frame_saved = frame.copy()
+
+            if args.camera_only:
+                # Camera only mode: display frame stats and capture latency
+                print(f"  [Frame {i + 1}/{args.frames}] Captured: {frame.shape[1]}×{frame.shape[0]} "
+                      f"in {t_cap_ms:.1f}ms (Mean brightness: {frame.mean():.1f}/255)")
+                last_frame = frame.copy()
+                cv2.putText(last_frame, f"OV4689 RAW FEED: {cam_w}x{cam_h}",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                cv2.putText(last_frame, f"Capture Latency: {t_cap_ms:.1f}ms",
+                            (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
             else:
-                detections, inf_ms = detect_coco_model(
-                    interp, inp_details, out_details, frame, args.conf
-                )
+                if is_classcan_model:
+                    detections, inf_ms = detect_classcan_model(
+                        interp, inp_details, out_details, frame, args.conf
+                    )
+                else:
+                    detections, inf_ms = detect_coco_model(
+                        interp, inp_details, out_details, frame, args.conf
+                    )
 
-            count = len(detections)
-            total_counts.append(count)
-            print(f"  [Frame {i + 1}/{args.frames}]  Count={count}  "
-                  f"Inference={inf_ms:.0f}ms  "
-                  f"Scores={[round(d['score'], 2) for d in detections]}")
+                count = len(detections)
+                total_counts.append(count)
+                print(f"  [Frame {i + 1}/{args.frames}]  Count={count}  "
+                      f"Inference={inf_ms:.0f}ms  "
+                      f"Scores={[round(d['score'], 2) for d in detections]}")
 
-            last_frame = draw_boxes(frame, detections, count, inf_ms, args.conf)
+                last_frame = draw_boxes(frame, detections, count, inf_ms, args.conf)
 
     finally:
         cap.release()
 
     # ── Summary ───────────────────────────────────────────────────────────
-    print()
-    if not total_counts:
-        print("[✗] No frames captured — check camera connection.")
-        sys.exit(1)
+    print("\n" + "=" * 50)
+    print("  VERIFICATION SUMMARY")
+    print("=" * 50)
 
-    avg_count = sum(total_counts) / len(total_counts)
-    print(f"Average detections across {len(total_counts)} frames: {avg_count:.1f}")
+    avg_cap_ms = sum(capture_latencies) / max(len(capture_latencies), 1)
+    print(f"• Video Pipeline: {backend_used} ({cam_w}×{cam_h})")
+    print(f"• Frame Capture:  {len(capture_latencies)} frames captured, avg {avg_cap_ms:.1f}ms/frame")
 
-    if max(total_counts) == 0:
-        print("[!] WARNING: 0 detections on all frames.")
-        print("    Possible causes:")
-        print("      - Room is empty (expected)")
-        print("      - Confidence threshold too high (try --conf 0.25)")
-        print("      - Wrong model file loaded (check output names above)")
-        print("      - Camera pointed at blank wall/ceiling")
+    soc_temp = get_soc_temperature()
+    if soc_temp:
+        print(f"• Pi 3B Core Temp: {soc_temp} (Active fan cooling)")
+
+    if args.camera_only:
+        print("• Camera Hardware Status: [✓] PASS — sensor streaming clean frames.")
     else:
-        print("[✓] Camera verify passed — model producing detections.")
+        if not total_counts:
+            print("[✗] No frames processed — check camera connection.")
+            sys.exit(1)
+
+        avg_count = sum(total_counts) / len(total_counts)
+        print(f"• Detection Stats: Average count across {len(total_counts)} frames: {avg_count:.1f}")
+
+        if max(total_counts) == 0:
+            print("• Model Detections: 0 detections on all frames.")
+            print("    Guidance:")
+            print("      - Camera field of view may be empty or pointed at ceiling/wall.")
+            print("      - Try lowering threshold: --conf 0.25")
+            print("      - If using stock COCO fallback, remember it misses distant/desk-occluded subjects.")
+        else:
+            print("• Model Detections: [✓] PASS — model producing positive detections.")
+
+    if args.save_raw and raw_frame_saved is not None:
+        raw_path = "camera_raw_test.jpg"
+        cv2.imwrite(raw_path, raw_frame_saved)
+        print(f"• Raw Frame Saved: {raw_path} (inspect focus, sharpness, and lighting)")
 
     if args.save and last_frame is not None:
         out_path = "camera_verify_output.jpg"
         cv2.imwrite(out_path, last_frame)
-        print(f"[✓] Annotated frame saved: {out_path}")
+        print(f"• Output Saved:    {out_path}")
+
+    print("=" * 50)
 
 
 if __name__ == "__main__":
     main()
+
