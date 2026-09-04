@@ -23,7 +23,7 @@ _cv2_stub.CAP_V4L2 = 800
 _cv2_stub.COLOR_BGR2RGB = 4
 _cv2_stub.resize.return_value = np.zeros((300, 300, 3), dtype=np.uint8)
 _cv2_stub.cvtColor.return_value = np.zeros((300, 300, 3), dtype=np.uint8)
-sys.modules.setdefault("cv2", _cv2_stub)
+sys.modules["cv2"] = _cv2_stub
 
 # tflite_runtime stub so the try/except in detector.py resolves cleanly
 _tflite_stub = MagicMock()
