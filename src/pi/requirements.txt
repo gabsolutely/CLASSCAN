@@ -13,4 +13,4 @@ pyserial>=3.5
 
 # Web server uses stdlib http.server — no extra web framework needed
 # JSON is stdlib — no package needed
-
+pip install ai-edge-litert

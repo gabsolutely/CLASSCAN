@@ -62,8 +62,10 @@ void handleIncoming(const String& line) {
 
         if (strcmp(cmd, "MODE_SWEEP") == 0) {
             currentMode = Mode::SWEEP;
+            ServoController::startSweep();
         } else if (strcmp(cmd, "MODE_ZONE") == 0) {
             currentMode = Mode::ZONE_CHECK;
+            ServoController::startZone();
         } else if (strncmp(cmd, "ZONE_", 5) == 0) {
             // e.g. "ZONE_Q1" → move to quadrant Q1
             ServoController::moveTo(cmd + 5);  // pass zone name
