@@ -36,7 +36,7 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [ ] Export epoch-55 checkpoint to `models/classcan_head_v1.tflite`
       (`python scripts/export_to_tflite.py --weights ckpt_ep55.weights.h5`)
 - [x] Connect physical OV4689 UVC camera module (4-pin harness to USB Port 2)
-- [/] Live end-to-end camera feed verification (`scripts/camera_verify.py` with `--camera-only` & model mode)
+- [x] OV4689 camera is functional; live camera feed verified with `scripts/camera_verify.py` (`--camera-only` & model mode)
 
 ## Full-System Integration (Post-PoC)
 
