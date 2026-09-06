@@ -22,8 +22,9 @@ Prove the core detection pipeline works end-to-end on target hardware:
 
 ## In Scope for Current Phase
 
-- [x] Raspberry Pi 3B set up with headless Raspberry Pi OS Lite (64-bit)
-- [x] Core TFLite inference pipeline implemented and bench-tested
+- [x] Raspberry Pi 3B set up with headless Raspberry Pi OS Lite (64-bit, Debian 13/Trixie)
+- [x] Pi 3B edge resilience: Wi-Fi power-save disabled via systemd (`wifi-powersave-off.service`), cron watchdog script (`wifi-watchdog.sh`), and setup configs committed to `src/pi/setup/`
+- [x] Core TFLite inference pipeline implemented and bench-tested (23/23 unit tests pass on physical Pi 3B post-reflash)
 - [x] COCO-baseline detection verified across real test images (and failure analysis done)
 - [x] Change-trigger frame difference logic and zone reconciliation implemented and tested
 - [x] Wireless dashboard server implemented
@@ -37,6 +38,7 @@ Prove the core detection pipeline works end-to-end on target hardware:
       (`python scripts/export_to_tflite.py --weights ckpt_ep55.weights.h5`)
 - [x] Connect physical OV4689 UVC camera module (4-pin harness to USB Port 2)
 - [x] OV4689 camera is functional; live camera feed verified with `scripts/camera_verify.py` (`--camera-only` & model mode)
+- [ ] OV4689 exposure & gain calibration under classroom ambient lighting (manual V4L2 tuning to fix underexposure)
 
 ## Full-System Integration (Post-PoC)
 
@@ -54,10 +56,10 @@ Prove the core detection pipeline works end-to-end on target hardware:
 
 | Component | Status |
 |---|---|
-| Raspberry Pi 3B (1GB) | **In hand & running** (Raspberry Pi OS Lite 64-bit) |
+| Raspberry Pi 3B (1GB) | **In hand & running** (Raspberry Pi OS Lite 64-bit Trixie; hardened Wi-Fi + watchdog) |
 | Pi Acrylic Case (clear, enclosed, with active fan) | **✅ Installed & Wired** (GPIO Pin 4/6, ~36°C operating temp) |
 | ESP32 | **In hand** (firmware development underway) |
-| OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & connected** (USB Port 2, 4-pin JST harness) |
+| OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure calibration in progress) |
 | Light Sensor (LDR) + Illumination LEDs | **In hand / circuit in development** |
 | Pan/Tilt Servos (MG90S x2) | **In hand** |
 | LED Matrix Display | **In hand** |

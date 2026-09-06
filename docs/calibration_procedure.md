@@ -124,15 +124,46 @@ The `ZoneReconciler` verifies that the sum of quadrant counts matches the full-r
 
 ---
 
-## 6. Field Commissioning Checklist
+## 6. Camera Exposure & Gain Calibration (OV4689 / V4L2)
+
+Under standard fluorescent or diffuse indoor classroom lighting, the OV4689 sensor's default hardware auto-exposure (AEC) tends to underexpose frames. Severe underexposure darkens head/hair contours and lowers bounding box confidence in the TFLite inference model.
+
+### V4L2 Parameter Tuning:
+1. List available camera controls on `/dev/video0`:
+   ```bash
+   v4l2-ctl -d /dev/video0 -l
+   ```
+2. Disable auto-exposure to switch to manual control:
+   ```bash
+   # 1 = Manual Mode, 3 = Aperture Priority / Auto
+   v4l2-ctl -d /dev/video0 -c auto_exposure=1
+   ```
+3. Tune exposure time and analog gain to match room ambient lux:
+   ```bash
+   # Recommended baseline for typical classroom fluorescent lighting (300-500 lux):
+   v4l2-ctl -d /dev/video0 -c exposure_time_absolute=500
+   v4l2-ctl -d /dev/video0 -c gain=64
+   ```
+4. Verify image brightness and dynamic range using the test tool:
+   ```bash
+   python scripts/camera_verify.py --camera-only --save-raw
+   ```
+   Inspect `camera_raw_test.jpg` to ensure heads and background desk rows are cleanly separated without blown-out fluorescent ceiling glare.
+
+---
+
+## 7. Field Commissioning Checklist
 
 | Step | Verification Task | Expected Result | Pass/Fail |
 |:---:|---|---|:---:|
 | **1** | Power-on initialization | Pi 3B boots headless; ESP32 initializes servos to home ($90^\circ, 30^\circ$) | [ ] |
-| **2** | Serial communication link | ESP32 reports `{"type":"state","value":"idle"}` to Pi over USB serial | [ ] |
-| **3** | Web dashboard connectivity | Browser loads `http://<pi-ip>:8080`, live MJPEG stream is active | [ ] |
-| **4** | LDR illumination trigger | Dimming room switches LED array ON; ADC reading drops below threshold | [ ] |
-| **5** | Continuous sweep mode | Turret smoothly sweeps between $0^\circ$ and $180^\circ$ pan | [ ] |
-| **6** | Zone mode step & dwell | Turret cycles through Q1 $\to$ Q2 $\to$ Q3 $\to$ Q4, dwelling 800ms at each | [ ] |
-| **7** | Real-time detection accuracy | Seated test students in Q1–Q4 detected with bounding boxes and HUD count | [ ] |
-| **8** | LED Matrix update | Local MAX7219 matrix displays exact integer headcount reported by Pi | [ ] |
+| **2** | Network resilience | Wi-Fi power-save disabled; watchdog active; SSH connectivity stable | [ ] |
+| **3** | Serial communication link | ESP32 reports `{"type":"state","value":"idle"}` to Pi over USB serial | [ ] |
+| **4** | Camera & exposure check | OV4689 active at `/dev/video0`; exposure tuned for indoor classroom lux | [ ] |
+| **5** | Web dashboard connectivity | Browser loads `http://<pi-ip>:8080`, live MJPEG stream is active | [ ] |
+| **6** | LDR illumination trigger | Dimming room switches LED array ON; ADC reading drops below threshold | [ ] |
+| **7** | Continuous sweep mode | Turret smoothly sweeps between $0^\circ$ and $180^\circ$ pan | [ ] |
+| **8** | Zone mode step & dwell | Turret cycles through Q1 $\to$ Q2 $\to$ Q3 $\to$ Q4, dwelling 800ms at each | [ ] |
+| **9** | Real-time detection accuracy | Seated test students in Q1–Q4 detected with bounding boxes and HUD count | [ ] |
+| **10** | LED Matrix update | Local MAX7219 matrix displays exact integer headcount reported by Pi | [ ] |
+
