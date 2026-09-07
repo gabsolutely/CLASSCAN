@@ -3,9 +3,12 @@
 **Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
-**Status (as of Sept 3, 2026):** Core software pipeline operational and bench-tested.
+**Status (as of Sept 7, 2026):** Core software pipeline operational and bench-tested.
 Custom Keras multi-scale head detector **fully trained** (60 epochs, best checkpoint epoch-55,
 Drive-verified). TFLite export + live camera integration are the remaining PoC steps.
+Full model evaluation history complete: NMS threshold sweep, formal mAP@50 eval, and 3 ruled-out
+improvement attempts (CrowdHuman augment, naive ensemble, COCO standalone) all benchmarked —
+original epoch-55 model (P=18.7% / R=16.7% / F1=17.6%) remains the best.
 Hard deadline: **September 28, 2026**.
 
 ---
@@ -39,6 +42,16 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [x] Connect physical OV4689 UVC camera module (4-pin harness to USB Port 2)
 - [x] OV4689 camera is functional; live camera feed verified with `scripts/camera_verify.py` (`--camera-only` & model mode)
 - [ ] OV4689 exposure & gain calibration under classroom ambient lighting (manual V4L2 tuning to fix underexposure)
+- [x] Annotation quality spot-check on training images (confirmed root cause of weak P/R:
+      overly-tight boxes on clear heads, unlabeled small distant heads, inconsistent tightness,
+      at least one clearly visible head with no box at all)
+- [x] NMS threshold sweep (9 combos, ~100 val images) — best: obj=0.4 / iou=0.4 (avg err 5.07, -10.7% bias)
+- [x] Formal mAP@50 eval (30 val images, IoU-matched): P=18.7%, R=16.7%, F1=17.6% — baseline benchmark
+- [x] CrowdHuman augmentation trial (50 epochs): P=14.5%/R=16.8%/F1=15.5% — worse, domain mismatch. Ruled out.
+- [x] Naive ensemble (custom + COCO SSD): P=13.7%/R=16.8%/F1=15.1% — worse. Ruled out.
+- [x] COCO SSD standalone count-based eval: -65.2% bias, avg error 27.97/image. Ruled out.
+- [x] MobileNetV3-Large @ 416×416 Pi 3B speed benchmark: 0.557s avg (XNNPACK) — decision pending on whether acceptable
+- [x] **Final model decision:** shipping epoch-55 custom model as PoC backbone
 
 ## Full-System Integration (Post-PoC)
 
