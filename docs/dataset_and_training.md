@@ -221,3 +221,84 @@ converted cleanly (it requires `SELECT_TF_OPS` if graph conversion fails).
 > this dataset. This is a cosmetic naming artifact — the class IS head-and-shoulders
 > detection. No relabeling is needed. The exported model has no class labels embedded
 > (single-class implicit); `detector.py` treats all detections as `"head"`.
+
+---
+
+## 8. Post-Training Evaluation
+
+### 8a. Annotation Quality Audit
+
+Manual spot-check on real training images confirmed labeling problems that are the **confirmed root cause** of weak precision/recall — not thresholds, NMS, or epoch count.
+
+Found issues:
+- Overly tight/cropped boxes on clear close-up heads (crown of head cut off)
+- Unlabeled small distant heads (visible in frame, no box)
+- Wildly inconsistent box tightness image-to-image
+- At least one clearly visible head (red shirt, unambiguous) with no annotation at all
+
+**Highest-confidence improvement path:** Fix annotation quality on the worst training images before any other intervention.
+
+### 8b. NMS Threshold Sweep
+
+9-combination objectness × IoU sweep on ~100 validation images. See `docs/benchmark_results.md` Section 6 for full table.
+
+**Best:** `obj_threshold=0.4 / iou_threshold=0.4` — avg error 5.07, bias -10.7% (down from +35.8%).
+
+Key insight: `obj_threshold` matters far more than IoU threshold — over-counting was mostly low-confidence false positives, not duplicate detections.
+
+> Deployment `config.py` uses `CONF_THRESHOLD=0.35` (slightly more permissive) to recover marginal detections in quadrant shots (~10 people/shot). Revisit after exposure calibration and TFLite export.
+
+### 8c. Formal mAP@50 Evaluation (Baseline)
+
+IoU-matched eval on 30 validation images at `obj_threshold=0.4`. **This is the benchmark number for all comparisons.**
+
+| Metric | Value |
+|---|:---:|
+| Precision | **18.7%** |
+| Recall | **16.7%** |
+| F1 | **17.6%** |
+
+**Key lesson:** count-diff comparisons and single-image eyeball checks are both misleading. A model can match the count with loosely-positioned boxes and still fail mAP@50. Always use IoU-matched eval.
+
+---
+
+## 9. Ruled-Out Improvement Attempts
+
+All three attempts rigorously tested and failed to beat the 18.7%/16.7% baseline.
+
+### 9a. CrowdHuman Augmentation
+
+1,739 dense (20+ head) images from CrowdHuman val split. Official download links dead; used HuggingFace mirror (`sshao0516/CrowdHuman`). Parsed `.odgt` format, filtered to dense images. Trained 30 then extended to 50 epochs.
+
+Result: P=14.5% / R=16.8% / F1=**15.5%** — worse than baseline.
+Root cause: street-level/event-crowd domain mismatch vs. top-down classroom shots.
+
+### 9b. Naive Ensemble (Custom + COCO SSD + NMS)
+
+Union of custom model + COCO MobileNetV2-SSD detections, deduplicated with NMS.
+
+Result: P=13.7% / R=16.8% / F1=**15.1%** — worse than baseline.
+Root cause: both models fail on the same hard cases (dense occluded heads), so errors compound rather than complement.
+
+### 9c. COCO SSD Standalone
+
+Note: box-IoU-matching a person detector against head-only ground truth is methodologically invalid (person boxes are much taller). Used count-based comparison instead.
+
+Result: -65.2% bias (total pred 417 vs GT ~1,200 across 30 images), avg error 27.97/image.
+Root cause: COCO person detector is confident on what it detects, but misses most people in dense overhead shots where 70–85% of the body is occluded.
+
+---
+
+## 10. Final Model Decision
+
+**Shipping epoch-55 custom model** (`classcan_head_v1.tflite`) as the PoC detection backbone.
+
+All three rigorously-tested improvement attempts underperformed it. The genuine difficulty of this problem (dense-overhead-classroom) means neither a fine-tuned head detector nor a mature pretrained person detector is a slam dunk — but the **quadrant architecture** (4 servo-aimed shots per sweep ≈ 10 people/shot vs. 60–90 dense) changes the actual operating regime to one where both models perform acceptably in testing.
+
+**Ranked ideas for further improvement (if needed post-PoC):**
+1. Fix annotation quality on worst training images ← highest confidence, confirmed root cause
+2. Weighted/oversampling of dense/hard images during training
+3. Increase input resolution to 416×416 or 512×512 (small/distant heads need more pixels)
+4. Smarter ensemble (only add COCO detections that don't overlap existing custom detections)
+5. Soft-NMS instead of hard-cutoff NMS
+6. Heavier backbone (MobileNetV3-Large, EfficientDet-Lite0) — Pi 3B measured 0.557s at 416×416; evaluate latency budget first
