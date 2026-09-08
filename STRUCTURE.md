@@ -15,7 +15,7 @@ CLASSCAN/
 │   │   ├── config.py           ← All tuneable constants
 │   │   ├── requirements.txt
 │   │   ├── detection/
-│   │   │   ├── detector.py         ← TFLite YOLOLite CPU (Nano) / model wrapper
+│   │   │   ├── detector.py         ← TFLite MobileNetV3-Large+416 head detector / model wrapper
 │   │   │   ├── change_trigger.py   ← Frame-diff re-detect trigger
 │   │   │   └── zone_reconciler.py  ← Quadrant count self-consistency check
 │   │   └── comms/
@@ -37,7 +37,7 @@ CLASSCAN/
 │       ├── styles.css          ← Dark-mode design system & animations
 │       └── app.js              ← Polling logic, event handlers & UI state
 │
-├── models/                     ← TFLite model files (YOLOLite Nano .tflite)
+├── models/                     ← TFLite model files (classcan_head_v1.tflite)
 ├── docs/                       ← Scope, BOM, design docs
 ├── cad/                        ← Enclosure CAD files
 ├── hardware/                   ← Wiring diagrams, pinouts
