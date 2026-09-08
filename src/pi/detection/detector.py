@@ -9,8 +9,8 @@ Model Support
 Two model formats are handled automatically (detected by output tensor count):
 
 1. CLASSCAN Head Detector (classcan_head_v1.tflite) — PRIMARY
-   Exported from Keras multi-scale MobileNetV2 via scripts/export_to_tflite.py.
-   Architecture: 3-head FPN (P3 38×38 / P4 19×19 / P5 10×10), occupancy-based
+   Exported from Keras multi-scale MobileNetV3-Large+416 via scripts/export_to_tflite.py.
+   Architecture: 3-head FPN (P3 52×52 / P4 26×26 / P5 13×13), occupancy-based
    target encoding, focal loss + smooth-L1, trained on SCUT-HEAD + local classroom.
    The export wrapper bakes sigmoid + NMS into the TFLite graph, so output is:
      • boxes  [1, MAX_DETECTIONS, 4]  float32  [ymin,xmin,ymax,xmax] normalized, padded
@@ -26,12 +26,14 @@ Two model formats are handled automatically (detected by output tensor count):
    NOTE: This fallback will undercount in real classroom conditions (fails on
    desk-occluded distant rows). Only suitable for PoC pipeline smoke-testing.
 
-Training History (summary)
---------------------------
-  - 50-epoch run (brother's laptop): val plateau ~ep47-50. 13/13 count match on val.
-  - +10 epochs with box_loss_weight=2.0: val bottomed ep55, started rising ep60.
-  - Best checkpoint: epoch 55 (Drive-verified, 18922768 bytes).
-  - Export: scripts/export_to_tflite.py --weights ckpt_ep55.weights.h5 --quant float32
+Training & Model Evolution (summary)
+------------------------------------
+  - V2+300 baseline: 60 epochs (F1=19.5% at epoch 60).
+  - Soft-NMS (Gaussian decay σ=0.5 / thresh=0.3): improved V2 to F1=18.8%.
+  - CrowdHuman augment: evaluated on V2 and V3; produced domain mismatch / objectness collapse.
+  - Final confirmed best: MobileNetV3-Large @ 416×416 (epoch 60, Drive-verified).
+    P=35.2% / R=26.3% / F1=30.1% with soft-NMS (σ=0.5, thresh=0.3, obj=0.4).
+    Pi 3B CPU benchmark: 0.557 s/frame (XNNPACK).
 """
 
 import cv2
@@ -46,7 +48,7 @@ except ImportError:
         from tensorflow.lite.python.interpreter import Interpreter  # dev fallback
 
 
-# ─── NMS ─────────────────────────────────────────────────────────────────────
+# ─── NMS & Soft-NMS ──────────────────────────────────────────────────────────
 
 def non_max_suppression(boxes: np.ndarray, scores: np.ndarray,
                         iou_threshold: float = 0.45) -> list[int]:
@@ -98,6 +100,82 @@ def non_max_suppression(boxes: np.ndarray, scores: np.ndarray,
         order = order[iou <= iou_threshold]
 
     return kept
+
+
+def soft_non_max_suppression(
+    boxes: np.ndarray,
+    scores: np.ndarray,
+    sigma: float = 0.5,
+    score_threshold: float = 0.3,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Gaussian Soft-NMS (decay scores continuously rather than hard suppression).
+    Prevents aggressive suppression of closely seated, partially overlapping heads.
+
+    Tuned best parameters for CLASSCAN:
+        sigma=0.5, score_threshold=0.3
+
+    Args:
+        boxes:           (N, 4) float32 [ymin, xmin, ymax, xmax] normalized 0..1
+        scores:          (N,) float32 objectness scores
+        sigma:           Gaussian decay parameter
+        score_threshold: minimum decayed score to retain a detection
+
+    Returns:
+        kept_boxes:  (K, 4) float32 array
+        kept_scores: (K,) float32 array
+    """
+    if len(boxes) == 0:
+        return np.zeros((0, 4), dtype=np.float32), np.zeros(0, dtype=np.float32)
+
+    boxes = boxes.copy()
+    scores = scores.copy()
+    n = len(boxes)
+
+    kept_boxes = []
+    kept_scores = []
+
+    for i in range(n):
+        # Pick box with max score in the remaining set
+        max_idx = i + np.argmax(scores[i:])
+        # Swap current box i with max_idx
+        boxes[[i, max_idx]] = boxes[[max_idx, i]]
+        scores[[i, max_idx]] = scores[[max_idx, i]]
+
+        box_i = boxes[i]
+        score_i = scores[i]
+
+        if score_i < score_threshold:
+            break
+
+        kept_boxes.append(box_i)
+        kept_scores.append(score_i)
+
+        if i + 1 >= n:
+            break
+
+        # Compute IoU between box i and remaining boxes [i+1:]
+        iy1 = np.maximum(box_i[0], boxes[i + 1:, 0])
+        ix1 = np.maximum(box_i[1], boxes[i + 1:, 1])
+        iy2 = np.minimum(box_i[2], boxes[i + 1:, 2])
+        ix2 = np.minimum(box_i[3], boxes[i + 1:, 3])
+
+        inter_h = np.maximum(0.0, iy2 - iy1)
+        inter_w = np.maximum(0.0, ix2 - ix1)
+        inter   = inter_h * inter_w
+
+        area_i = (box_i[2] - box_i[0]) * (box_i[3] - box_i[1])
+        area_rem = (boxes[i + 1:, 2] - boxes[i + 1:, 0]) * (boxes[i + 1:, 3] - boxes[i + 1:, 1])
+        iou = inter / np.maximum(area_i + area_rem - inter, 1e-6)
+
+        # Gaussian weight decay
+        decay = np.exp(-(iou ** 2) / sigma)
+        scores[i + 1:] *= decay
+
+    if len(kept_boxes) == 0:
+        return np.zeros((0, 4), dtype=np.float32), np.zeros(0, dtype=np.float32)
+
+    return np.array(kept_boxes, dtype=np.float32), np.array(kept_scores, dtype=np.float32)
 
 
 # ─── Mock camera / detector for pipeline testing without hardware ─────────────
