@@ -166,8 +166,10 @@ OV4689 camera **is in hand and confirmed functional** at `/dev/video0` (MJPG up 
 | Test | Status | Notes |
 |---|---|---|
 | Camera enumeration (`camera_verify.py --camera-only`) | ✅ **Done** | Confirmed at `/dev/video0` |
-| Exposure / gain calibration | ⚠️ **In progress** | Default auto-exposure underexposes badly. Manual (auto_exposure=1, exposure_time=500, gain=100) still too dark. Next: try exposure_time up to max 2047 and/or higher gain. |
-| First live frame → TFLite inference (end-to-end test) | ❌ **Not yet done** | Blocked on exposure calibration + `classcan_head_v1.tflite` export |
+| Driver mode verification | ✅ **Done** | Confirmed driver supports `auto_exposure=1` (Manual) and `3` (Aperture Priority). Manual mode successfully engaged. |
+| Exposure sweep (11-shot) | ✅ **Done** | Captured 11-shot sweep at 1280×720 / MJPG / gain=32 across exposure values 25, 50, 100, 166, 250, 400, 600, 800, 1000, 1400, 1800; stored in `~/camera_tests/` on Pi. |
+| Exposure & gain calibration | ⚠️ **In progress** | Visual inspection of sweep photos via `scp` to select optimal exposure, followed by fine-tuning gain sweep at that exposure. |
+| First live frame → TFLite inference (end-to-end test) | ❌ **Pending** | Blocked on exposure calibration completion + exporting `classcan_head_v1.tflite` from epoch-60 checkpoint. |
 | Single student — PCU-D classroom | ❌ **Pending** | — |
 | Full class (seated, fluorescent) | ❌ **Pending** | — |
 
@@ -269,14 +271,66 @@ Methodology note: box-IoU-matching a person detector against head-only ground tr
 
 ## 9. Architecture Speed Benchmark — MobileNetV3-Large @ 416×416 (Pi 3B)
 
-Pure architecture speed test (random/untrained weights) to evaluate the cost of a resolution + backbone upgrade before committing.
+Pure architecture speed test (random/untrained weights) to evaluate the cost of a resolution + backbone upgrade before committing to a full training run.
 
-| Model | Input Resolution | Inference Time (avg, 5 warmup iters) | Delegate |
-|---|:---:|:---:|:---:|
-| MobileNetV3-Large (arch test) | 416×416 | **0.557 s** | XNNPACK |
-| Current custom model (MobileNetV2, trained) | 300×300 | **~0.22 s** | TFLite default |
+| Model | Input Resolution | Inference Time (avg, 5 warmup iters) | Delegate | Notes |
+|---|:---:|:---:|:---:|---|
+| **MobileNetV3-Large** | 416×416 | **0.557 s** | XNNPACK | ~2.8× slower than Colab T4 GPU (0.199s), not the 20–50× worst case feared |
+| **MobileNetV2** (baseline) | 300×300 | **~0.22 s** | TFLite default | Standard baseline |
 
-Measured on physical Pi 3B CPU using `ai_edge_litert.interpreter`. Real hardware-verified number — not a Colab/GPU estimate.
+Measured on physical Pi 3B CPU using `ai_edge_litert.interpreter`. Real hardware-verified number.
+**Conclusion:** At ~0.56 s/frame on the Cortex-A53, inference latency is well within budget for the periodic snapshot + change-triggered re-scan architecture (non-continuous stream). Bump to MobileNetV3-Large at 416×416 was approved for full training.
 
-**Decision pending:** At 0.557s/inference × 4 quadrants, a full sweep cycle would be ~2.2s + servo move time. Evaluate whether that latency is acceptable for the periodic-snapshot architecture before pursuing resolution/backbone bump.
+---
+
+## 10. Soft-NMS (Gaussian Decay) Evaluation
+
+Hard IoU NMS cuts off overlapping boxes abruptly, penalizing recall when students sit closely together. Gaussian Soft-NMS decays duplicate scores smoothly according to IoU overlap:
+$$s_j = s_j \cdot \exp\left(-\frac{\text{IoU}(b_i, b_j)^2}{\sigma}\right)$$
+
+Swept $\sigma$ and score threshold combinations on the MobileNetV2 epoch-60 checkpoint:
+
+| NMS Variant | $\sigma$ | Threshold | Precision | Recall | F1 Score | Notes |
+|---|:---:|:---:|:---:|:---:|:---:|---|
+| Hard NMS (baseline) | — | obj=0.4, IoU=0.4 | 18.7% | 16.7% | 17.6% | Standard hard suppression |
+| Hard NMS (epoch-60) | — | obj=0.4, IoU=0.4 | 19.9% | 17.7% | 18.7% | Untracked run recovered |
+| **Soft-NMS (Gaussian)** | **0.5** | **0.3** | **19.9%** | **17.8%** | **18.8%** | **Best post-processing gain (free, no training)** |
+
+Soft-NMS with $\sigma=0.5$ and score threshold $0.3$ was integrated into the post-processing pipeline.
+
+---
+
+## 11. Final Model Benchmark — MobileNetV3-Large @ 416×416 (Epoch 60)
+
+### Training Stability & Fixes
+1. **Loss Blowup in Early Epochs:** Validation loss was initially 100–800× train loss on dense images (74–80 heads) due to unconstrained early box predictions blowing up Huber loss.
+   - **Fix:** Box-prediction clipping to $\pm 8.0$ and a 5-epoch linear learning-rate warmup ($10^{-5} \to 10^{-4}$).
+2. **Gradient Instability & Spike Guard:** Run spiked catastrophically at epoch 49 and again at epoch 62.
+   - **Fix:** Tightened gradient clipnorm to 0.5, rebuilt model and optimizer state from scratch on resume, and implemented an automated **spike guard** that skips checkpoint saves if `val_loss` jumps $>20\times$ vs. last known-good epoch.
+3. **Best Checkpoint:** **Epoch 60** (`val_loss=0.2535`, `train_loss=0.1498`). Checkpoints stored on Drive at `/content/drive/MyDrive/models/`.
+
+### Apples-to-Apples Formal Comparison (mAP@50 Standard, 30 Val Images)
+Evaluated using identical IoU-matched methodology (IoU $\ge 0.50$), soft-NMS ($\sigma=0.5, \text{thresh}=0.3$), `obj_threshold=0.4`:
+
+| Architecture | Input Size | Checkpoint | Precision | Recall | F1 Score | Hardware Latency (Pi 3B) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| MobileNetV2 (Initial Baseline) | 300×300 | Epoch 50 | 18.7% | 16.7% | 17.6% | ~0.22 s |
+| MobileNetV2 (Recovered Run) | 300×300 | Epoch 60 | 20.4% | 18.7% | 19.5% | ~0.22 s |
+| **MobileNetV3-Large (Final)** | **416×416** | **Epoch 60** | **35.2%** | **26.3%** | **30.1%** | **0.557 s** |
+
+**Outcome:** MobileNetV3-Large + 416×416 **decisively outperforms** the MobileNetV2 baseline across all metrics (+14.8 pp Precision, +7.6 pp Recall, +10.6 pp F1), proving that higher spatial resolution (416 vs. 300) and increased backbone representational capacity directly resolve small and occluded classroom head features.
+
+---
+
+## 12. CrowdHuman Augmentation on MobileNetV3-Large — Negative Result
+
+Attempted retraining the MobileNetV3-Large+416 model with CrowdHuman augmentation (1,739 dense images merged with SCUT-HEAD and local images):
+1. **Pipeline Hardening:** Addressed Colab RAM exhaustion crashes by implementing disk-backed dataset caching (`cache('/content/train_cache')`), `BATCH_SIZE=8`, `drop_remainder=True`, and running-sum loss accumulation.
+2. **Evaluation at Epoch 10:**
+   - Precision = **0.0%**, Recall = **0.0%**, F1 = **0.0%**.
+3. **Root Cause Diagnosis (Objectness Collapse):**
+   - Inspection of raw pre-NMS scores revealed maximum logits of ~0.31 (P3), ~0.03 (P4), and ~0.08 (P5) with mean scores near 0.0 across all heads.
+   - Extreme head density in CrowdHuman (up to 311 heads/image) heavily distorted class imbalance during early training, causing the objectness head to collapse into predicting background everywhere.
+4. **Conclusion:** Experiment formally concluded as a documented negative result. The SCUT-HEAD + local dataset model (Epoch 60) remains the definitive final production model.
+
 

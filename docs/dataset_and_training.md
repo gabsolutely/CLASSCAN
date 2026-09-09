@@ -76,103 +76,88 @@ Augmented Training Dataset (~5,500 total images)
 
 ## 5. Model Architecture & Training Hyperparameters
 
-### Architecture: Custom Keras Multi-Scale Head Detector
+### Final Architecture: Custom Keras Multi-Scale MobileNetV3-Large + 416×416 Head Detector
 
 | Component | Details |
 |---|---|
-| **Backbone** | MobileNetV2 (300×300 input, ImageNet pre-weights, fine-tuned) |
-| **Feature Pyramid** | 3-scale FPN: P3 (38×38, stride 8), P4 (19×19, stride 16), P5 (10×10, stride 32) |
-| **Feature Layers** | `block_6_expand_relu` → P3, `block_13_expand_relu` → P4, `out_relu` → P5 |
+| **Backbone** | MobileNetV3-Large (416×416 input, ImageNet pre-weights, fine-tuned) |
+| **Feature Pyramid** | 3-scale FPN: P3 (52×52, stride 8), P4 (26×26, stride 16), P5 (13×13, stride 32) |
+| **Feature Layers** | `expanded_conv_5_add` → P3, `expanded_conv_11_add` → P4, `expanded_conv_14_add` → P5 |
 | **Detection Heads** | Shared structure: Conv2D(128, 3×3, ReLU) → objectness (1 ch, logits) + boxes (4 ch, sigmoid) |
-| **Total Parameters** | ~4.6M |
-| **Input** | 300×300×3 float32 normalized [0, 1] |
+| **Input** | 416×416×3 float32 normalized [0, 1] |
 | **Output (per scale)** | objectness logits + box [ymin, xmin, ymax, xmax] normalized |
 
 ### Target Encoding: Occupancy-Based Overflow Routing
 
 Box-to-grid assignment does **not** use size-based routing. Box-size analysis across
-20 real training images found ALL 641 boxes had `max(h,w) ≤ 0.07` (fully overhead-angle
-dataset with no scale variety) — size-gated routing gave zero signal to P4/P5.
+training images found ALL boxes had `max(h,w) ≤ 0.07` (overhead classroom perspective
+with no scale variety) — size-gated routing gave zero signal to P4/P5.
 
-Instead, an occupancy-based overflow scheme routes densely-packed heads across scales:
+An occupancy-based overflow scheme routes densely-packed heads across scales:
 
 ```
 For each box:
-  1. Compute center cell in P3 (38×38)
+  1. Compute center cell in P3 (52×52)
   2. If P3 cell unoccupied → assign to P3
-  3. Else if P4 cell unoccupied → overflow to P4
-  4. Else if P5 cell unoccupied → overflow to P5
-  5. Else → silently drop (extremely rare)
+  3. Else if P4 cell unoccupied → overflow to P4 (26×26)
+  4. Else if P5 cell unoccupied → overflow to P5 (13×13)
+  5. Else → drop box (extremely rare)
 ```
 
 This repurposes multi-scale to solve **dense-crowd cell collisions** rather than scale variance.
-Verified on a 83-box training image: P3=69, P4=11, P5=3, 0 drops (vs. 14 silently overwritten
-under the old size-gated version).
 
-### Loss Function
+### Loss Function & Numerical Hardening
 
 | Component | Method | Notes |
 |---|---|---|
-| **Objectness** | Focal loss (α=0.25, γ=2.0, `from_logits=True`) | `from_logits=True` is critical — manual sigmoid + log is numerically unstable |
-| **Box Regression** | Smooth-L1 (δ=1.0) | Applied only to positive cells (mask) |
-| **Normalization** | Divide by positive cell count | Prevents loss scale from varying with crowd density |
+| **Objectness** | Focal loss (α=0.25, γ=2.0, `from_logits=True`) | `from_logits=True` avoids saturating-sigmoid log(0) NaN failure |
+| **Box Regression** | Smooth-L1 (Huber, δ=1.0) | Masked to positive cells only |
+| **Box Clipping** | Clip predictions to $\pm 8.0$ | **Critical stability fix:** prevents unconstrained early predictions (up to $\pm 36$) from blowing up loss on dense images |
+| **Normalization** | Divide by positive cell count | Prevents loss scaling with crowd density |
 | **Multi-scale** | Sum across P3 + P4 + P5 | |
-| **`box_loss_weight`** | 1.0 (epochs 1–50) → 2.0 (epochs 51–65) | Bumped to address box tightness/offset |
 
-### Training Configuration
+### Training Configuration & Stability Protocol
 
 | Hyperparameter | Value |
 |---|---|
-| **Optimizer** | Adam (lr=1e-5, clipnorm=1.0) |
-| **Batch Size** | 8 |
-| **Batches/Epoch** | ~356 (on 2,850 training images) |
-| **Time/Epoch** | ~10.8 min (Colab T4 GPU) |
-| **Training pipeline** | Batched `tf.data` + `@tf.function` compiled steps |
+| **Optimizer** | Adam (lr=1e-4 with 5-epoch linear warmup from 1e-5; `clipnorm=0.5`) |
+| **Batch Size** | 8 (`drop_remainder=True` to prevent ragged batch retracing) |
+| **Dataset Cache** | Disk-backed cache (`/content/train_cache`) to prevent Colab system RAM exhaustion |
+| **Spike Guard** | Automated safeguard: skips checkpoint save if `val_loss` jumps $>20\times$ vs. last known-good epoch |
+| **Checkpoint Dir** | `/content/drive/MyDrive/models/` (secondary Google account) |
 
-### Training Results
+### Training Evolution & Checkpoints
 
-| Run | Epochs | Final train_loss | Final val_loss | Notes |
-|---|:---:|:---:|:---:|---|
-| Initial smoke test | 3 | 0.4817 | 0.4841 | Pipeline confirmed working |
-| Extended run 1 (original account) | 23→63 | — | — | **Lost** — Drive checkpoint saves silently failed (account/session mismatch). Disaster fixed by `save_checkpoint_verified()`. |
-| Run 2 (brother's laptop, hardened script) | 50 | 0.2239 | 0.2564 | All 10 checkpoints Drive-verified (18922768 bytes each) |
-| Run 3 (box_loss_weight=2.0, ep51–65) | +15 | 0.2115 | 0.2572 | val bottomed epoch 55 (0.2519), started rising epoch 60 |
+| Phase | Backbone | Input | Epochs | Best Val Loss | Best Eval (F1) | Notes |
+|---|---|:---:|:---:|:---:|:---:|---|
+| Run 1–3 (Baseline) | MobileNetV2 | 300×300 | 60 | 0.2519 (ep55) | 19.5% (ep60) | Plateaued; dense images overpredicted |
+| CrowdHuman (V2) | MobileNetV2 | 300×300 | 50 | ~0.175 | 15.5% | Domain mismatch; underperformed baseline |
+| **V3 Full Run (Final)** | **MobileNetV3-Large** | **416×416** | **60** | **0.2535 (ep60)** | **30.1%** | **Confirmed best model across all tests** |
+| CrowdHuman (V3) | MobileNetV3-Large | 416×416 | 10 | 2.93 (ep7) | 0.0% | Objectness collapse; experiment concluded |
 
-**Best checkpoint: epoch 55** (box_loss_weight=2.0 phase).
+**Final Checkpoint: Epoch 60 MobileNetV3-Large @ 416×416** (`val_loss=0.2535`, `train_loss=0.1498`).
 
 ### Key Banked Lessons
 
-> **NaN Recovery Protocol:** Any time a NaN loss appears:
-> 1. Diagnose and fix the actual code bug
-> 2. **ALWAYS** rebuild BOTH model AND optimizer from scratch before retrying
->
-> A single bad gradient step permanently corrupts model weights AND Adam's internal
-> momentum/variance accumulators. No downstream code fix will recover a corrupted model.
+> **NaN & Spike Recovery Protocol:** Any time a gradient corruption or loss spike appears:
+> 1. Diagnose root cause (e.g., unconstrained box regression or pathological batch).
+> 2. **ALWAYS** rebuild BOTH model AND optimizer from scratch before retrying.
+> 3. Never save weights from a post-spike epoch — verify loss before persisting.
 
-> **tf.data pipeline reuse:** Redefining a function in a new Colab cell does NOT
-> retroactively update an already-built `tf.data` pipeline or a `@tf.function` trace.
-> Always rebuild the full pipeline (all cells in dependency order) after any function change.
+> **Consolidated Recovery Cell:** Colab runtime disconnects happen frequently. Keep a single, self-contained recovery script that mounts Drive, initializes data pipelines, reconstructs model/optimizer, and resumes directly from the latest verified checkpoint without re-running earlier notebook cells.
 
 ---
 
 ## 6. TFLite Export
 
-The trained Keras checkpoint (epoch-55) is exported via a `tf.Module` wrapper that
-bakes sigmoid + NMS post-processing into the TFLite graph:
+The trained Keras checkpoint (epoch-60 MobileNetV3-Large) is exported via `scripts/export_to_tflite.py`:
 
 ```bash
-# From repo root (requires TF 2.x locally, or run in Colab)
+# Export MobileNetV3-Large @ 416×416 to float32 TFLite:
 python scripts/export_to_tflite.py \
-    --weights path/to/ckpt_ep55.weights.h5 \
+    --weights path/to/ckpt_ep60_v3.weights.h5 \
     --output  models/classcan_head_v1.tflite \
     --quant   float32
-
-# With INT8 quantization (requires representative images dir):
-python scripts/export_to_tflite.py \
-    --weights path/to/ckpt_ep55.weights.h5 \
-    --output  models/classcan_head_v1.tflite \
-    --quant   int8 \
-    --rep-images path/to/val_images/
 ```
 
 The export wrapper outputs a **clean 3-tensor interface** to `detector.py`:
@@ -182,9 +167,6 @@ The export wrapper outputs a **clean 3-tensor interface** to `detector.py`:
 | `boxes`  | `[1, 100, 4]` | float32 | `[ymin,xmin,ymax,xmax]` normalized, zero-padded |
 | `scores` | `[1, 100]`    | float32 | Objectness scores, zero-padded |
 | `count`  | `[1]`         | int32   | Valid detections — slice with `[:count]` |
-
-NMS (IoU threshold=0.45) is applied inside the TFLite graph — `detector.py` receives
-already-deduplicated detections.
 
 ---
 
@@ -207,26 +189,24 @@ for d in interpreter.get_output_details():
 
 ### Expected Output:
 ```
-  INPUT  shape=[1, 300, 300, 3]  dtype=float32
-  OUTPUT shape=[1, 100, 4]  dtype=float32  name=...boxes
-  OUTPUT shape=[1, 100]     dtype=float32  name=...scores
-  OUTPUT shape=[1]          dtype=int32    name=...count
+  INPUT  shape=[1, 416, 416, 3]  dtype=float32
+  OUTPUT shape=[1, 100, 4]        dtype=float32  name=boxes
+  OUTPUT shape=[1, 100]           dtype=float32  name=scores
+  OUTPUT shape=[1]                dtype=int32    name=count
 ```
-
-If the output names or tensor counts differ, check the `CLASSCANExportWrapper`
-class in `scripts/export_to_tflite.py` and verify `tf.image.non_max_suppression`
-converted cleanly (it requires `SELECT_TF_OPS` if graph conversion fails).
-
-> **Note on label map:** Roboflow exports label name `"person"` with id 1 even for
-> this dataset. This is a cosmetic naming artifact — the class IS head-and-shoulders
-> detection. No relabeling is needed. The exported model has no class labels embedded
-> (single-class implicit); `detector.py` treats all detections as `"head"`.
 
 ---
 
-## 8. Post-Training Evaluation
+## 8. Security Notice
 
-### 8a. Annotation Quality Audit
+> [!CAUTION]
+> **Roboflow API Key Rotation:** If a Roboflow API key was previously pasted in plaintext into shared Colab notebooks or documents, rotate it immediately in the Roboflow workspace dashboard under Account Settings > API Keys. Never store raw API keys in version control or publicly shared notebooks.
+
+---
+
+## 9. Post-Training Evaluation
+
+### 9a. Annotation Quality Audit
 
 Manual spot-check on real training images confirmed labeling problems that are the **confirmed root cause** of weak precision/recall — not thresholds, NMS, or epoch count.
 
