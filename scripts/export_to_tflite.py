@@ -49,26 +49,42 @@ import numpy as np
 import tensorflow as tf
 
 # ─── Architecture constants (must match training) ─────────────────────────────
-IMG_SIZE       = 300
-GRID_SIZES     = {"P3": 38, "P4": 19, "P5": 10}
-MAX_DETECTIONS = 100   # Pad/clip output to this many detections
+DEFAULT_IMG_SIZE       = 416
+DEFAULT_BACKBONE       = "mobilenet_v3_large"
+MAX_DETECTIONS         = 100   # Pad/clip output to this many detections
 
 
 # ─── 1. Rebuild Model Architecture ───────────────────────────────────────────
-# (Must be identical to classcan_training_pipeline.py build_model())
+# (Must match classcan_training_pipeline.py build_model())
 
-def build_model() -> tf.keras.Model:
-    """Reconstruct the CLASSCAN multi-scale head detector (load weights separately)."""
-    inputs = tf.keras.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="image_input")
+def build_model(backbone_type: str = DEFAULT_BACKBONE, img_size: int = DEFAULT_IMG_SIZE) -> tf.keras.Model:
+    """
+    Reconstruct the CLASSCAN multi-scale head detector (load weights separately).
+    Supports 'mobilenet_v3_large' (final production model @ 416×416)
+    and 'mobilenet_v2' (legacy baseline @ 300×300).
+    """
+    inputs = tf.keras.Input(shape=(img_size, img_size, 3), name="image_input")
 
-    backbone = tf.keras.applications.MobileNetV2(
-        input_shape=(IMG_SIZE, IMG_SIZE, 3),
-        include_top=False,
-        weights="imagenet",  # Placeholder — will be overwritten by load_weights
-    )
-    feat_p3 = backbone.get_layer("block_6_expand_relu").output
-    feat_p4 = backbone.get_layer("block_13_expand_relu").output
-    feat_p5 = backbone.get_layer("out_relu").output
+    if backbone_type == "mobilenet_v3_large":
+        backbone = tf.keras.applications.MobileNetV3Large(
+            input_shape=(img_size, img_size, 3),
+            include_top=False,
+            weights="imagenet",
+        )
+        feat_p3 = backbone.get_layer("expanded_conv_5_add").output   # 52×52 (/8 stride)
+        feat_p4 = backbone.get_layer("expanded_conv_11_add").output  # 26×26 (/16 stride)
+        feat_p5 = backbone.get_layer("expanded_conv_14_add").output  # 13×13 (/32 stride)
+    elif backbone_type == "mobilenet_v2":
+        backbone = tf.keras.applications.MobileNetV2(
+            input_shape=(img_size, img_size, 3),
+            include_top=False,
+            weights="imagenet",
+        )
+        feat_p3 = backbone.get_layer("block_6_expand_relu").output
+        feat_p4 = backbone.get_layer("block_13_expand_relu").output
+        feat_p5 = backbone.get_layer("out_relu").output
+    else:
+        raise ValueError(f"Unsupported backbone: {backbone_type}. Choose 'mobilenet_v3_large' or 'mobilenet_v2'.")
 
     feat_model = tf.keras.Model(
         inputs=backbone.input,
@@ -96,7 +112,7 @@ def build_model() -> tf.keras.Model:
     return tf.keras.Model(
         inputs=inputs,
         outputs=[obj3, box3, obj4, box4, obj5, box5],
-        name="classcan_head_detector",
+        name=f"classcan_{backbone_type}_head_detector",
     )
 
 
@@ -155,7 +171,7 @@ class CLASSCANExportWrapper(tf.Module):
         self.max_det = max_detections
 
     @tf.function(input_signature=[
-        tf.TensorSpec(shape=[1, IMG_SIZE, IMG_SIZE, 3], dtype=tf.float32, name="image")
+        tf.TensorSpec(shape=[1, None, None, 3], dtype=tf.float32, name="image")
     ])
     def detect(self, image: tf.Tensor):
         """Full inference: backbone → heads → sigmoid → NMS → fixed-size output."""
@@ -220,17 +236,21 @@ class CLASSCANExportWrapper(tf.Module):
 def export_classcan_model(
     weights_path: str,
     output_path: str = "models/classcan_head_v1.tflite",
+    backbone: str = DEFAULT_BACKBONE,
+    img_size: int = DEFAULT_IMG_SIZE,
     quantization: str = "float32",
     representative_images_dir: str | None = None,
-    obj_threshold: float = 0.35,
+    obj_threshold: float = 0.40,
     nms_iou_threshold: float = 0.45,
 ) -> str:
     """
     Load Keras checkpoint, wrap with NMS module, convert to TFLite.
 
     Args:
-        weights_path:              Path to .weights.h5 checkpoint (epoch-55 best)
+        weights_path:              Path to .weights.h5 checkpoint
         output_path:               Destination .tflite file path
+        backbone:                  "mobilenet_v3_large" (default) or "mobilenet_v2"
+        img_size:                  Input resolution (default: 416 for V3, 300 for V2)
         quantization:              "float32" or "int8"
         representative_images_dir: Directory of .jpg/.png images for INT8 calibration
         obj_threshold:             Score threshold baked into export wrapper
@@ -241,11 +261,12 @@ def export_classcan_model(
     """
     print("=" * 60)
     print("  CLASSCAN TFLite Export")
+    print(f"  Backbone: {backbone} @ {img_size}×{img_size}")
     print("=" * 60)
 
     # 4a. Build model and load weights
-    print(f"\n[1/4] Building model architecture...")
-    model = build_model()
+    print(f"\n[1/4] Building model architecture ({backbone})...")
+    model = build_model(backbone_type=backbone, img_size=img_size)
     print(f"      Parameters: {model.count_params():,}")
 
     print(f"\n[2/4] Loading weights from: {weights_path}")
@@ -356,11 +377,20 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--weights", required=True,
-        help="Path to .weights.h5 checkpoint (e.g. ckpt_ep55.weights.h5)"
+        help="Path to .weights.h5 checkpoint (e.g. ckpt_ep60_v3.weights.h5)"
     )
     parser.add_argument(
         "--output", default="models/classcan_head_v1.tflite",
         help="Output .tflite file path (default: models/classcan_head_v1.tflite)"
+    )
+    parser.add_argument(
+        "--backbone", choices=["mobilenet_v3_large", "mobilenet_v2"],
+        default="mobilenet_v3_large",
+        help="Backbone architecture (default: mobilenet_v3_large)"
+    )
+    parser.add_argument(
+        "--img-size", type=int, default=416,
+        help="Input image resolution (default: 416 for V3, 300 for V2)"
     )
     parser.add_argument(
         "--quant", choices=["float32", "int8"], default="float32",
@@ -371,8 +401,8 @@ if __name__ == "__main__":
         help="Directory of representative images for INT8 calibration (required for --quant int8)"
     )
     parser.add_argument(
-        "--obj-threshold", type=float, default=0.35,
-        help="Objectness score threshold baked into the export wrapper (default: 0.35)"
+        "--obj-threshold", type=float, default=0.40,
+        help="Objectness score threshold baked into the export wrapper (default: 0.40)"
     )
     parser.add_argument(
         "--nms-iou", type=float, default=0.45,
@@ -383,6 +413,8 @@ if __name__ == "__main__":
     export_classcan_model(
         weights_path=args.weights,
         output_path=args.output,
+        backbone=args.backbone,
+        img_size=args.img_size,
         quantization=args.quant,
         representative_images_dir=args.rep_images,
         obj_threshold=args.obj_threshold,
