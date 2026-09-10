@@ -100,23 +100,29 @@ Built a from-scratch Keras 3-scale FPN detector (300×300, P3/P4/P5). While it s
 - *Annotation quality audit:* Revealed ground-truth inconsistencies as the primary precision/recall bottleneck.
 
 **Stage 4 — Architectural Swing: MobileNetV3-Large @ 416×416:**
-Hypothesized that small/distant heads lacked resolution at 300px and MobileNetV2 was too shallow. Upgraded to MobileNetV3-Large with 416×416 input resolution (grids: 52×52, 26×26, 13×13). Benchmarked inference latency on physical Pi 3B CPU: **0.557 s/frame** (XNNPACK) — confirmed fully viable for snapshot-based detection.
+Hypothesized that small/distant heads lacked resolution at 300px and MobileNetV2 was too shallow. Upgraded to MobileNetV3-Large with 416×416 input resolution (grids: 52×52, 26×26, 13×13). Benchmarked inference latency on physical Pi 3B CPU: **0.557 s/frame** (XNNPACK) — confirmed fully viable for snapshot-based detection. Checkpoint at epoch 60 achieved **Precision = 35.2%, Recall = 26.3%, F1 = 30.1%** (+10.6 pp F1 over MobileNetV2 baseline).
+
+**Stage 5 — Count-Based Calibration & Tiled Inference:**
+Discovered that threshold tuning for box F1 (obj=0.30) caused an overcounting bias (+12%) in crowd counting. Swept thresholds explicitly for headcount MAE: `obj_thresh = 0.35` dropped MAE to **3.57 people** ($r = 0.987$) with near-zero count bias (-3.4%). Evaluated tiled inference (2×2 grid, 0.2 overlap, dual threshold: full pass at 0.35, tile passes at 0.65, soft-NMS) to recover small heads: achieved **F1 = 31.8%, MAE = 3.84, $r = 0.986$**. WBF and flip-TTA were tested and ruled out.
+
+**Stage 6 — Density-Map Regression Paradigm Shift (`classcan_density_v4`):**
+Following external QA peer review (PeaNat) challenging box-level assumptions in chaotic classroom environments, a continuous **density-map regression** model was designed:
+- Bounding boxes artificially penalize partially occluded heads and introduce NMS suppression errors in dense seating rows.
+- Converted head annotations into continuous 2D Gaussian density maps.
+- Replaced the detection heads with a progressive upsampling decoder yielding a 104×104 density map with **Softplus** activation (eliminating dying-ReLU failures).
+- Applied scheduled LR decay (0.94/epoch to $2 \times 10^{-6}$) and best-checkpoint tracking, reaching stable convergence across epochs 26–41.
+- **Empirical Validation (407 images):** Overall **MAE = 2.13**, **$r = 0.9951$**, **MAPE = 16.1%**.
+- In the actual operational regime (0–20 students per quadrant scan), **MAE is 0.93 people**.
 
 ### Final Decision
-Deploy the **custom Keras MobileNetV3-Large + 416×416 FPN head detector** at **epoch 60** with Gaussian Soft-NMS ($\sigma=0.5, \text{thresh}=0.3, \text{obj}=0.4$).
-
-### Architecture Summary
-- **Backbone:** MobileNetV3-Large (416×416, ImageNet weights, fine-tuned)
-- **Feature Pyramid:** P3 (52×52, stride 8 via `expanded_conv_5_add`), P4 (26×26, stride 16 via `expanded_conv_11_add`), P5 (13×13, stride 32 via `expanded_conv_14_add`)
-- **Target Encoding:** Occupancy-based overflow routing (dense crowd collision mitigation)
-- **Loss & Stability:** Focal loss (from_logits) + Smooth-L1, box-prediction clipping ($\pm 8.0$), 5-epoch linear LR warmup ($10^{-5} \to 10^{-4}$), automated spike guard, and gradient clipnorm 0.5
-- **Performance:** **Precision = 35.2%, Recall = 26.3%, F1 = 30.1%** (+10.6 pp F1 over MobileNetV2 baseline)
+1. **Primary Headcount Architecture:** Deploy the **`classcan_density_v4` density-map regression model** (MAE = 2.13 overall, MAE = 0.93 in quadrant FOV) as the definitive occupancy counting engine.
+2. **Secondary Visualization Architecture:** Maintain the **MobileNetV3-Large @ 416×416 box detector** with 2×2 dual-threshold tiling and Gaussian Soft-NMS ($\sigma=0.5, \text{thresh}=0.3$) for optional dashboard HUD bounding box rendering.
 
 ### Rationale
-1. **Resolution & Capacity Upgrade Proven:** Higher resolution (416px) gave small distant heads sufficient pixel density to be resolved, boosting recall by 7.6 pp and precision by 14.8 pp.
-2. **Deterministic Edge Performance:** Pi 3B executes inference in 0.557s, fitting neatly within the periodic snapshot cycle without thermal saturation.
-3. **Soft-NMS Integration:** Gaussian score decay recovers partially occluded neighboring heads without compounding duplicate counts.
-4. **Clean TFLite Interface:** 3-tensor output (`boxes`, `scores`, `count`) simplifies deployment in `detector.py`.
+1. **Direct Alignment with Functional Goal:** Occupancy monitoring requires counting accuracy ($r=0.9951$, MAE < 1 person per quadrant), not arbitrary IoU box overlaps. Density maps directly integrate crowd counts while gracefully handling desk occlusions.
+2. **Deterministic Edge Performance:** Both models share the lightweight MobileNetV3-Large backbone, executing within ~0.56s on Pi 3B CPU without thermal throttling under the periodic snapshot architecture.
+3. **Domain Gap Realism:** Acknowledges that public dataset tuning has saturated; further optimization shifts entirely to camera exposure tuning, gain calibration, and on-site physical classroom validation.
+
 
 ---
 

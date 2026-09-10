@@ -3,7 +3,7 @@
 
 A ceiling-mounted smart camera turret that automatically detects and counts people in a classroom in real time, displaying the live headcount on an LED display and a wireless laptop dashboard — no manual attendance checking, no facial recognition, just occupancy (and optionally, seat-zone presence).
 
-**Status:** Core software pipeline operational and bench-tested. Raspberry Pi 3B is in hand and running on **Raspberry Pi OS Lite (64-bit)**. Final detection model: **custom Keras MobileNetV3-Large + 416×416 head detector** (SCUT-HEAD + 35 local images, epoch-60 checkpoint) — P=35.2% / R=26.3% / F1=30.1% with soft-NMS (σ=0.5 / t=0.3, obj_thresh=0.4). TFLite export and camera exposure calibration are the two remaining PoC steps before end-to-end integration.
+**Status:** Core software pipeline operational and bench-tested on Raspberry Pi 3B running **Raspberry Pi OS Lite (64-bit, Trixie)**. AI/model engineering is **functionally complete**: confirmed best model is **`classcan_density_v4` density-map regression** (MAE=2.13, $r=0.9951$ overall; **MAE=0.93** in the 0–20 quadrant operational regime) alongside the locked-in **MobileNetV3-Large @ 416×416 box detector** (F1=31.8%, MAE=3.84, $r=0.986$ with 2×2 dual-threshold tiling and Soft-NMS). Active focus is 100% on the camera pipeline: exposure calibration, gain sweep, and live end-to-end integration.
 
 ---
 
@@ -52,7 +52,7 @@ Commands from the dashboard (e.g. "switch to zone-check mode", "check quadrant 2
 
 ### Division of Labor
 
-**Raspberry Pi 3B — the brain.** Runs headless **Raspberry Pi OS Lite (64-bit)**. The quad-core Cortex-A53 CPU is dedicated to running TFLite inference (`ai-edge-litert`), change detection, and communication bridging. Live continuous-stream inference is treated as a known risk; CLASSCAN instead defaults to periodic snapshot detection with immediate re-trigger on significant frame change, cutting sustained compute load. Detection model: **custom Keras MobileNetV3-Large + 416×416 head detector** (3-scale FPN, focal loss + smooth-L1, occupancy-based target encoding) trained on SCUT-HEAD Part A (2,000 images) + 35 local Philippine classroom images. Epoch-60 checkpoint benchmarked at **0.557 s/frame on Pi 3B CPU** (XNNPACK backend) — acceptable for the periodic-snapshot use case. Soft-NMS (σ=0.5 / t=0.3) applied post-inference. Handles all networking directly (count/snapshots to laptop, commands from laptop) via onboard Wi-Fi. Talks to the ESP32 over USB serial — translates dashboard commands into serial messages and relays headcount/status back.
+**Raspberry Pi 3B — the brain.** Runs headless **Raspberry Pi OS Lite (64-bit, Trixie)**. The quad-core Cortex-A53 CPU runs TFLite inference (`ai-edge-litert`), change detection, and communication bridging. Live continuous-stream inference is avoided due to CPU limits; CLASSCAN instead uses periodic snapshot detection with immediate re-trigger on significant frame change. Primary model: **`classcan_density_v4` density-map regression** (MobileNetV3-Large backbone, 104×104 density map output, softplus activation) achieving **MAE = 2.13 ($r=0.9951$) overall and MAE = 0.93 in the 0–20 quadrant operational regime**, with the **MobileNetV3-Large @ 416×416 box detector** (F1=31.8%, MAE=3.84, $r=0.986$ with 2×2 tiling and Soft-NMS) available for visual bounding boxes. Benchmark latency on Pi 3B CPU: **0.557 s/frame** (XNNPACK). Handles all networking via onboard Wi-Fi and bridges to ESP32 over USB serial.
 
 **ESP32 — the hands.** Fully isolated from networking (its Wi-Fi radio is unused by design — networking stays on the Pi 3B); handles physical I/O only: servo positioning (sweep or quadrant-targeted), LDR-triggered custom illumination module, and driving the LED matrix. Receives commands only via USB serial from the Pi 3B — never connects to the network directly. Runs autonomously in default sweep mode — sweep and lighting logic continue even if the network or laptop dashboard drops. Reports its own state (idle/moving) back over serial so the Pi 3B's change-detection trigger can distinguish the turret's own motion from an actual change in the room. Supports a calibrated quadrant/seat pan-tilt lookup table for targeted mode, switchable with general sweep mode via dashboard command.
 
@@ -60,8 +60,8 @@ Commands from the dashboard (e.g. "switch to zone-check mode", "check quadrant 2
 
 ### Design Rationale & OS Decision
 
-- **Operating System Selection (Debloated Android vs. Raspberry Pi OS Lite 64-bit):** An ultra-lean Android build was initially evaluated based on prior SBC edge AI precedent. However, after technical assessment against project timelines and solo-development maintenance constraints, **Raspberry Pi OS Lite (64-bit)** was deliberately adopted. Raspberry Pi OS Lite provides a headless, low-overhead Linux environment with zero display-server burden, first-class V4L2/UVC camera stability, native PySerial support, and official LiteRT/TFLite wheels — avoiding Android HAL and driver maintenance risks without sacrificing inference efficiency.
-- **Model Selection & Pivot Rationale:** Baseline tests with a stock MobileNetV2-SSD full-body model confirmed the pipeline works but produced 0 detections on far-row classroom seating (armchair occlusion, steep ceiling angle). Three improvement paths were tried and ruled out before the final model: (a) CrowdHuman-augmented V2 — worse across both V2 and V3 architectures (objectness collapse under extreme head density); (b) naive ensemble (custom + COCO SSD) — compounded false positives rather than catching complementary true positives; (c) extended training alone — diminishing returns past plateau. Final model: **custom Keras MobileNetV3-Large + 416×416 FPN head detector** (3 detection scales: 52×52 / 26×26 / 13×13, focal loss + smooth-L1, soft-NMS σ=0.5 / threshold=0.3). Epoch-60 (F1=30.1%) decisively outperforms the previous MobileNetV2+300 best (F1=19.5%) on the same IoU-matched eval. See `docs/design_rationale.md` ADR-03.
+- **Operating System Selection (Debloated Android vs. Raspberry Pi OS Lite 64-bit):** An ultra-lean Android build was initially evaluated based on prior SBC edge AI precedent. However, after technical assessment against project timelines and solo-development maintenance constraints, **Raspberry Pi OS Lite (64-bit, Trixie)** was deliberately adopted. Raspberry Pi OS Lite provides a headless, low-overhead Linux environment with zero display-server burden, first-class V4L2/UVC camera stability, native PySerial support, and official LiteRT/TFLite wheels — avoiding Android HAL and driver maintenance risks without sacrificing inference efficiency.
+- **Model Selection & Pivot Rationale:** Baseline tests with a stock MobileNetV2-SSD full-body model confirmed the pipeline works but produced 0 detections on far-row classroom seating (armchair occlusion, steep ceiling angle). Progression moved through MobileNetV2 FPN (F1=19.5%) to MobileNetV3-Large @ 416×416 (F1=30.1%). Following external QA review (PeaNat), the system expanded to continuous **density-map regression (`classcan_density_v4`)**, achieving **MAE = 2.13 ($r=0.9951$) overall and MAE = 0.93 in quadrant scanning (0–20 students)**, eliminating bounding-box aspect ratio artifacts and NMS failures. See `docs/design_rationale.md` ADR-03 and `docs/benchmark_results.md`.
 - **Compute-aware detection strategy:** periodic snapshot + change-triggered re-detection (rather than continuous live inference) keeps sustained CPU load low on hardware known to struggle with live detection, while still responding immediately when something actually changes.
 - **Quadrant-based zoning with self-consistency checking:** dividing the room into quadrants (rather than per-seat zones) shortens the full-scan cycle and blind-spot window, absorbs in-quadrant seat shuffling as a non-event, and cuts inference calls per cycle. A reconciliation check flags and re-scans when per-quadrant counts don't add up to the expected total, rather than silently trusting a possibly-stale scan.
 - **Reduced hardware risk:** onboard Wi-Fi and Bluetooth on the Pi 3B eliminate the USB Wi-Fi dongle chipset-compatibility risk present in earlier alternative SBC paths.
@@ -92,20 +92,20 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 
 ## Dataset, Model Architecture & Training
 
-### Final Model — MobileNetV3-Large + 416×416 FPN Head Detector
+### Validated Production Models
 
-1. **Architecture:**
-   - **Backbone:** MobileNetV3-Large (ImageNet-pretrained), feature extraction tapped at strides /8, /16, /32.
-   - **Detection Heads:** 3-scale feature pyramid (52×52, 26×26, 13×13 grids for 416-px input), each predicting objectness + 4 box offsets per cell.
-   - **Loss:** Focal loss (objectness) + Smooth-L1 (box regression). Occupancy-based target-cell overflow routing (not size-gated).
-   - **Inference hardening:** Box-prediction clipping (±8.0) to prevent Huber-loss blowup on dense images; 5-epoch linear LR warmup (1e-5 → 1e-4); spike guard halts checkpoint save if val_loss jumps >20× vs. last good epoch.
-2. **Training Datasets:**
-   - **SCUT-HEAD Part A (2,000 Images):** Dense classroom/indoor surveillance head-detection benchmark (academic-research-use license, sourced from HCIILAB GitHub).
-   - **Local Classroom Dataset (35 Images):** Philippine public school classrooms at realistic ceiling pitch angles (**30°–50°**), covering local wooden armchairs, fluorescent/sunlight variations, and high student density. Annotated by hand.
-3. **Labeling Convention:** Single **"head"** class with head-and-shoulders bounding boxes — ensures detection even when 80%+ of body is occluded by furniture.
-4. **Final Checkpoint:** Epoch-60 (val_loss 0.2535, train_loss 0.1498). Trained in Colab (T4 GPU). Soft-NMS applied at inference (σ=0.5, threshold=0.3, obj_thresh=0.4).
-5. **Eval Result (IoU-matched mAP@50, 30 val images):** **P=35.2% / R=26.3% / F1=30.1%**.
-6. **Deployment Target:** Float32 TFLite (`.tflite`) via `scripts/export_to_tflite.py`. Pi 3B CPU benchmark: **0.557 s/frame** (XNNPACK backend) — viable for periodic-snapshot use case.
+#### 1. Primary Headcount Engine: `classcan_density_v4` (Density-Map Regression)
+- **Architecture:** MobileNetV3-Large backbone with lightweight progressive upsampling decoder, outputting a 104×104 single-channel continuous density map (3.6M total parameters). Uses **Softplus** output activation.
+- **Accuracy Metrics (407 validation images):**
+  - **Overall:** MAE = **2.13 people**, Correlation $r = \mathbf{0.9951}$, MAPE = 16.1%, Within $\pm 2$ heads = 66.1%.
+  - **Operational Quadrant Regime (0–20 students):** **MAE = 0.93 people** (< 1 student error).
+- **Justification:** Avoids rigid bounding-box aspect ratio assumptions and eliminates NMS suppression failures in dense seating rows. Directly optimizes for the capstone's core objective: headcount accuracy.
+
+#### 2. Secondary HUD Engine: MobileNetV3-Large @ 416×416 FPN Head Detector
+- **Architecture:** 3-scale feature pyramid (52×52, 26×26, 13×13 grids for 416-px input), predicting objectness + 4 normalized box coordinates per cell with occupancy-based overflow routing.
+- **Inference Pipeline:** 2×2 grid tiled inference (0.2 overlap) with dual thresholding (`full_obj=0.35`, `tile_obj=0.65`) and Soft-NMS merging ($\sigma=0.5, \text{thresh}=0.3$).
+- **Accuracy Metrics:** Precision = 31.3%, Recall = 32.4%, **F1 = 31.8%**, **MAE = 3.84 people**, Correlation $r = 0.986$.
+- **Edge Speed:** **0.557 s/frame** on physical Pi 3B CPU (XNNPACK). Provides visual bounding boxes for dashboard HUD streaming.
 
 ### Ruled-Out Approaches (documented negative results)
 
@@ -115,16 +115,16 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 | Naive ensemble (custom + COCO SSD) | P=13.7% / R=16.8% / F1=15.1% — worse than either alone | Union compounds false positives; both models fail on same hard cases |
 | COCO SSD MobileNetV2 standalone | −65.2% bias, avg error 27.97/image | Full-body model cannot resolve occluded seated students |
 | YOLOLite Nano fine-tune (Roboflow/Colab) | Plateaued at mAP@50=16.6% | TF OD API tensorflow_io build unavailable for Colab Python version; credits exhausted |
+| Flip-TTA & WBF merging | Flip-TTA MAE exploded to 12.59; WBF MAE worsened to 4.55 | Flip introduced noise due to un-augmented training; Soft-NMS remained superior |
 
 ---
 
 ## Known Limitations & Open Items
 
-- **Model Precision/Recall:** F1=30.1% at epoch-60 is a genuine improvement but not production-grade. Primary root cause is annotation-quality variance in the training set (overly-tight/inconsistent boxes, unlabeled distant heads). Further improvement would require a systematic re-annotation pass — explicitly deferred post-PoC.
-- **Camera Exposure Calibration:** OV4689 camera is live at `/dev/video0` but exposure tuning is in progress. 11-shot sweep (exposure 25–1800, gain=32, 1280×720/MJPG) was captured on Pi; visual selection of best exposure value + gain sweep are pending before live end-to-end test.
-- **TFLite Export:** Epoch-60 checkpoint not yet exported. Blocked until training account's Drive is accessible (`/content/drive/MyDrive/models/` on the new Colab account).
-- **Single-Camera Blind Spots:** By design, a sweeping turret observes one field of view at a time. Zone-occupancy reflects the latest quadrant scan rather than continuous instantaneous truth — handled via change-triggered re-scans and reconciler consistency checks. An intentional, honestly-scoped limitation.
-- **Roboflow API Key:** Was accidentally exposed in a shared notebook; must be rotated in the Roboflow dashboard before any further Roboflow API use.
+- **AI/Model Side Status:** Functionally complete. Model development is frozen; further gains from public datasets have reached diminishing returns.
+- **Camera Exposure Calibration:** OV4689 camera is live at `/dev/video0`. 11-shot sweep (exposure 25–1800, gain=32, 1280×720/MJPG) was captured on Pi; visual inspection and optimal gain sweep are currently in progress.
+- **Single-Camera Blind Spots:** By design, a sweeping turret observes one sector at a time. Zone-occupancy reflects the latest quadrant scan rather than continuous instantaneous truth — handled via change-triggered re-scans and reconciler consistency checks. An intentional, honestly-scoped limitation.
+- **Roboflow API Key:** Was exposed in a shared notebook; must be rotated in the Roboflow workspace settings before any further cloud data operations.
 
 ---
 
@@ -148,11 +148,11 @@ Full itemized BOM and cost breakdown: see [`docs/bom.md`](docs/bom.md).
 - [x] **Compute & OS:** Raspberry Pi 3B running headless Raspberry Pi OS Lite (64-bit, Trixie) with all dependencies (`ai-edge-litert`, OpenCV, NumPy, PySerial) in acrylic case with active cooling fan (GPIO Pins 4/6); Wi-Fi hardened (power-save disabled via `wifi-powersave-off.service`, cron watchdog `wifi-watchdog.sh` for auto-recovery).
 - [x] **Inference Pipeline:** Core `Detector` implementation verified on hardware; inference execution confirmed working on real test images (23/23 unit tests pass).
 - [x] **Logic & Communications:** `ChangeTrigger`, `ZoneReconciler`, `DashboardServer`, and serial bridge modules implemented and unit tested.
-- [x] **Custom Model Training:** Final model — **Keras MobileNetV3-Large + 416×416 FPN head detector** trained to epoch 60 (P=35.2% / R=26.3% / F1=30.1%, soft-NMS σ=0.5/t=0.3). Epoch-60 checkpoint on Colab Drive (`/content/drive/MyDrive/models/`).
-- [x] **Eval & Model Selection:** 9 threshold combos swept; formal IoU-matched mAP@50 eval on 30 val images; 3 improvement attempts benchmarked and ruled out (CrowdHuman augment, ensemble, COCO standalone). V3+416 epoch-60 confirmed best.
+- [x] **Custom Model Training (Box):** Keras MobileNetV3-Large + 416×416 FPN head detector trained to epoch 60; locked in with 2×2 tiled inference + Soft-NMS (F1=31.8%, MAE=3.84, $r=0.986$).
+- [x] **Custom Model Training (Density):** Density-map regression v2 (`classcan_density_v4`) trained to epoch 41; confirmed best model overall (MAE=2.13, $r=0.9951$, quadrant MAE=0.93).
 - [x] **Physical Camera Integration:** OV4689 detected at `/dev/video0` (MJPG up to 2688×1520@30fps); 11-shot exposure sweep captured on Pi (exposure 25–1800, gain=32, 1280×720).
 - [ ] **Camera Exposure Calibration:** Visual review of exposure sweep → pick optimal value → gain sweep at that setting → commit V4L2 config.
-- [ ] **TFLite Model Export:** Export epoch-60 V3+416 weights to `models/classcan_head_v1.tflite` via `scripts/export_to_tflite.py`.
+- [ ] **TFLite Model Export:** Export final model weights to TFLite format via `scripts/export_to_tflite.py`.
 - [ ] **Live End-to-End Camera Test:** OV4689 frame → TFLite inference → headcount on Pi (first real live run).
 - [ ] **Illumination Module:** Finalize circuit design (LED array, driver transistor, LDR threshold) and wire to ESP32 ADC/GPIO.
 - [ ] **Turret & Quadrant Calibration:** Calibrate pan/tilt servo angles for Quadrants 1–4 once mounted in dome enclosure.
