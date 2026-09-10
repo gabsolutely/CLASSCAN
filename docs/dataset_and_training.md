@@ -22,7 +22,7 @@ Standard object detection models (such as COCO-pretrained MobileNet-SSD or YOLO 
                      └───────────────────────┘
 ```
 
-**Target Objective:** Train an edge-optimized detector (**custom Keras multi-scale MobileNetV2 head detector**) on a dedicated single **"head"** class (head-and-shoulders bounding boxes) to reliably detect seated students under severe furniture occlusion from an elevated perspective.
+**Target Objective:** Train an edge-optimized vision model (**custom Keras multi-scale MobileNetV3-Large head detector** and **density-map regression model `classcan_density_v4`**) on a dedicated single **"head"** class (head-and-shoulders bounding boxes and center-point density maps) to reliably detect seated students under severe furniture occlusion from an elevated perspective.
 
 ---
 
@@ -128,14 +128,24 @@ This repurposes multi-scale to solve **dense-crowd cell collisions** rather than
 
 ### Training Evolution & Checkpoints
 
-| Phase | Backbone | Input | Epochs | Best Val Loss | Best Eval (F1) | Notes |
-|---|---|:---:|:---:|:---:|:---:|---|
-| Run 1–3 (Baseline) | MobileNetV2 | 300×300 | 60 | 0.2519 (ep55) | 19.5% (ep60) | Plateaued; dense images overpredicted |
-| CrowdHuman (V2) | MobileNetV2 | 300×300 | 50 | ~0.175 | 15.5% | Domain mismatch; underperformed baseline |
-| **V3 Full Run (Final)** | **MobileNetV3-Large** | **416×416** | **60** | **0.2535 (ep60)** | **30.1%** | **Confirmed best model across all tests** |
-| CrowdHuman (V3) | MobileNetV3-Large | 416×416 | 10 | 2.93 (ep7) | 0.0% | Objectness collapse; experiment concluded |
+| Phase | Model Type | Backbone | Input | Epochs | Best Val Loss / MAE | Best Eval | Notes |
+|---|---|---|:---:|:---:|:---:|:---:|---|
+| Run 1–3 (Baseline) | Box Detector | MobileNetV2 | 300×300 | 60 | 0.2519 (ep55) | F1=19.5% (ep60) | Plateaued; dense images overpredicted |
+| CrowdHuman (V2) | Box Detector | MobileNetV2 | 300×300 | 50 | ~0.175 | F1=15.5% | Domain mismatch; underperformed baseline |
+| V3 Full Run | Box Detector | MobileNetV3-Large | 416×416 | 60 | 0.2535 (ep60) | F1=30.1% | +10.6 pp F1 over V2; count-sweep best MAE=3.57 |
+| CrowdHuman (V3) | Box Detector | MobileNetV3-Large | 416×416 | 10 | 2.93 (ep7) | F1=0.0% | Objectness collapse; experiment concluded |
+| Tiled Box Model | Box Detector (2×2) | MobileNetV3-Large | 416×416 | 60 | — | F1=31.8%, MAE=3.84 | Locked-in box config (dual threshold + soft-NMS) |
+| **Density v4 (Final)** | **Density Map** | **MobileNetV3-Large** | **416×416** | **41** | **MAE=2.13 (ep41)** | **$r=0.9951$** | **Confirmed best model overall; quadrant MAE=0.93** |
 
-**Final Checkpoint: Epoch 60 MobileNetV3-Large @ 416×416** (`val_loss=0.2535`, `train_loss=0.1498`).
+**Final Checkpoints:**
+- Box Detection: Epoch 60 MobileNetV3-Large @ 416×416 (`val_loss=0.2535`, `train_loss=0.1498`).
+- Density Map: Epoch 41 `classcan_density_v4` (`MAE=2.13`, `r=0.9951`). Checkpoints on Drive at `/content/drive/MyDrive/models/`.
+
+### Density-Map Regression Pipeline (`classcan_density_v4`)
+Following external QA review (PeaNat), a density-map regression model was constructed to target MAE $\le 2.0$ and eliminate NMS bounding-box quantization errors:
+- **Target Density Maps:** Sourced head annotations converted to continuous Gaussian density surfaces ($\sigma = 3.0$) normalized so the 2D surface integral equals exact ground-truth head count.
+- **Decoder Architecture:** Progressive convolutional upsampling decoder attached to MobileNetV3-Large feature stages, outputting a 104×104 single-channel spatial density tensor (3.6M parameters).
+- **Activation & Schedule:** Softplus output activation (prevents dying-ReLU collapse); warmup ($10^{-6} \to 5 \times 10^{-5}$) followed by scheduled decay (0.94/epoch to $2 \times 10^{-6}$) and instantaneous best-checkpoint persistence.
 
 ### Key Banked Lessons
 
@@ -269,16 +279,28 @@ Root cause: COCO person detector is confident on what it detects, but misses mos
 
 ---
 
-## 10. Final Model Decision
+## 10. Final Model Decisions & Deployment Architecture
 
-**Shipping epoch-55 custom model** (`classcan_head_v1.tflite`) as the PoC detection backbone.
+### 10a. Confirmed Model Architecture Status
+The AI/model engineering phase is **functionally complete** with two validated deployment-ready architectures:
 
-All three rigorously-tested improvement attempts underperformed it. The genuine difficulty of this problem (dense-overhead-classroom) means neither a fine-tuned head detector nor a mature pretrained person detector is a slam dunk — but the **quadrant architecture** (4 servo-aimed shots per sweep ≈ 10 people/shot vs. 60–90 dense) changes the actual operating regime to one where both models perform acceptably in testing.
+1. **Primary / Best Overall: Density-Map Regression Model (`classcan_density_v4`)**
+   - **Backbone & Output:** MobileNetV3-Large + upsampling decoder producing a 104×104 density map (3.6M parameters, Softplus activation).
+   - **Validation Metrics (407 images):** Overall **MAE = 2.13**, **$r = 0.9951$**, **MAPE = 16.1%**, Within $\pm 2 = 66.1\%$.
+   - **Operational Range Performance:** In the 0–20 crowd size bucket (matching the ~10 students seen per quadrant scan), **MAE is 0.93 people** (< 1 student error).
+   - **Advantage:** Eliminates bounding box aspect ratio mismatch, overlapping box suppression failures, and NMS threshold tuning.
 
-**Ranked ideas for further improvement (if needed post-PoC):**
-1. Fix annotation quality on worst training images ← highest confidence, confirmed root cause
-2. Weighted/oversampling of dense/hard images during training
-3. Increase input resolution to 416×416 or 512×512 (small/distant heads need more pixels)
-4. Smarter ensemble (only add COCO detections that don't overlap existing custom detections)
-5. Soft-NMS instead of hard-cutoff NMS
-6. Heavier backbone (MobileNetV3-Large, EfficientDet-Lite0) — Pi 3B measured 0.557s at 416×416; evaluate latency budget first
+2. **Secondary / Localized Box Detector (MobileNetV3-Large @ 416×416)**
+   - **Architecture:** 3-scale FPN (52×52 / 26×26 / 13×13) with occupancy-based target routing.
+   - **Locked-in Inference Pipeline:** 2×2 grid tiled inference (0.2 overlap) with dual thresholding (`full_obj=0.35`, `tile_obj=0.65`) and Soft-NMS merging ($\sigma=0.5, \text{thresh}=0.3$).
+   - **Validation Metrics:** Precision = 31.3%, Recall = 32.4%, **F1 = 31.8%**, **MAE = 3.84**, **$r = 0.986$**.
+   - **Advantage:** Produces visual bounding boxes for HUD overlay and dashboard streaming.
+
+### 10b. Operational Deployment Strategy
+- **Turret Scanning Context:** A 40-student classroom divided across 4 pan/tilt servo quadrants means each camera snapshot evaluates only ~10 students. The model's true deployment regime is the low-density bucket where accuracy is highest.
+- **Immediate Focus Shift:** Model training is frozen. Team resources are directed 100% to **OV4689 camera exposure tuning, gain calibration, and live physical hardware integration** on the Raspberry Pi 3B.
+
+### 10c. Long-Term / Post-PoC Research Avenues
+1. **Active Learning & Point Annotation:** Sample real classroom video frames, identify high-uncertainty or failure frames, annotate center-points only (faster than boxes), and incrementally retrain.
+2. **RPEE-Heads Dataset Integration:** Evaluate RPEE-Heads (CC BY-SA 4.0) to test generalized small-head feature representation ($<6\text{ px}^2$).
+3. **Domain Transfer Mitigation:** Sourced models top out at ~57% when applied out-of-domain without adaptation. Long-term accuracy gains require local fine-tuning on PCU-D classroom recordings rather than generic public datasets.
