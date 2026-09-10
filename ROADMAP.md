@@ -3,12 +3,12 @@
 **Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
-**Status (as of Sept 8, 2026):** Core software pipeline operational and bench-tested.
-Final detection model: **custom Keras MobileNetV3-Large + 416×416 FPN head detector** (SCUT-HEAD + 35 local images),
-epoch-60 checkpoint (P=35.2% / R=26.3% / F1=30.1%, soft-NMS σ=0.5/t=0.3, obj_thresh=0.4).
-Full model evaluation history complete: threshold sweep, formal mAP@50 eval, and 4 ruled-out improvement attempts
-(CrowdHuman augment ×2 architectures, naive ensemble, COCO standalone, YOLOLite fine-tune) all benchmarked.
-V3+416 epoch-60 is the confirmed best model. TFLite export + camera exposure calibration are the two remaining PoC steps.
+**Status (as of Sept 10, 2026):** Core software pipeline operational and bench-tested.
+AI/model engineering is **functionally complete**:
+1. Primary Headcount Model: **`classcan_density_v4` density-map regression** (MobileNetV3-Large + 104×104 density map output, softplus activation). Validated on 407 images: **MAE = 2.13**, **$r = 0.9951$**, MAPE = 16.1%. In the actual operational quadrant scanning range (0–20 students), **MAE is 0.93 people** (< 1 student error).
+2. Secondary HUD Model: **MobileNetV3-Large + 416×416 FPN head detector** locked in with 2×2 dual-threshold tiling + Soft-NMS (F1 = 31.8%, MAE = 3.84, $r = 0.986$) for bounding box visualization.
+Evaluation history complete: count threshold sweep (`obj_thresh=0.35` optimal), tiling grid sweeps, Soft-NMS vs WBF vs Flip-TTA, and density-map regression evolution (v1–v4).
+Active priority: **camera exposure calibration** and **live end-to-end testing on the Raspberry Pi 3B**.
 Hard deadline: **September 28, 2026**.
 
 ---
@@ -18,7 +18,7 @@ Hard deadline: **September 28, 2026**.
 Prove the core detection pipeline works end-to-end on target hardware:
 
 ```
-[OV4689 camera] → [Pi 3B: capture frame → TFLite (MobileNetV3-Large+416 custom head detector) → count displayed]
+[OV4689 camera] → [Pi 3B: capture frame → TFLite inference (density map / head detector) → count displayed]
 ```
 
 "Displayed" for initial PoC = verified counts rendered on the wireless laptop dashboard or console output.
@@ -34,31 +34,34 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [x] **Custom model — MobileNetV2+300 baseline:** Keras 3-head FPN trained (60 epochs, epoch-60 best: P=20.4%/R=18.7%/F1=19.5%)
       — Architecture: MobileNetV2 backbone, P3/P4/P5 FPN, occupancy-based target encoding
       — Loss: focal + smooth-L1, Adam lr=1e-5, batch=8
-- [x] **Final model — MobileNetV3-Large+416:** Keras 3-head FPN (52×52/26×26/13×13) at 416×416 input, same loss/encoding
+- [x] **Custom model — MobileNetV3-Large+416 Box Detector:** Keras 3-head FPN (52×52/26×26/13×13) at 416×416 input
       — Epoch-60 checkpoint: P=35.2% / R=26.3% / F1=30.1% (soft-NMS σ=0.5/t=0.3, obj_thresh=0.4)
       — Pi 3B CPU benchmark: **0.557 s/frame** (XNNPACK) — viable for periodic-snapshot use case
       — Checkpoint on Colab Drive: `/content/drive/MyDrive/models/`
-- [x] `detector.py` updated with NMS and CLASSCAN 3-tensor output format support
+- [x] **Count-accuracy threshold sweep:** Found `obj_thresh=0.35` optimal for headcount (MAE=3.57, $r=0.987$), resolving overcounting bias
+- [x] **Tiled inference investigation:** 2×2 grid, 0.2 overlap, dual threshold (`full_obj=0.35`, `tile_obj=0.65`) + Soft-NMS: P=31.3%, R=32.4%, F1=31.8%, MAE=3.84, $r=0.986$ (locked-in box config)
+- [x] **Density-Map Regression v2 (`classcan_density_v4`):** Developed following QA review (PeaNat)
+      — Architecture: MobileNetV3-Large + progressive upsampling decoder, 104×104 density map output, Softplus activation
+      — Training stabilization: warmup + scheduled LR decay (0.94/epoch to $2 \times 10^{-6}$), verified best checkpoints
+      — Final 407-image benchmark: **MAE = 2.13**, **$r = 0.9951$**, MAPE = 16.1%
+      — Operational quadrant regime (0–20 students): **MAE = 0.93 people**
+      — **Confirmed best model overall**
+- [x] `detector.py` updated with NMS, Soft-NMS, and CLASSCAN output format support
 - [x] `classcan_training_pipeline.py` committed to `/scripts`
-- [ ] **Export epoch-60 V3+416 weights to `models/classcan_head_v1.tflite`**
-      (`python scripts/export_to_tflite.py --weights ckpt_ep60_v3.weights.h5`)
 - [x] Connect physical OV4689 UVC camera module (4-pin harness to USB Port 2)
 - [x] OV4689 camera is functional at `/dev/video0` (MJPG up to 2688×1520@30fps); feed verified with `scripts/camera_verify.py`
 - [x] 11-shot exposure sweep captured on Pi (exposure 25–1800, gain=32, 1280×720/MJPG, saved to `~/camera_tests/`)
 - [ ] **Camera exposure calibration:** visual review of sweep → pick optimal exposure → gain sweep → commit V4L2 config
-- [ ] **Live end-to-end camera test:** OV4689 frame → TFLite (V3+416) → headcount on Pi
-- [x] Annotation quality spot-check on training images (confirmed root cause of weak P/R:
-      overly-tight boxes on clear heads, unlabeled small distant heads, inconsistent tightness,
-      at least one clearly visible head with no box at all) — re-annotation deferred post-PoC
-- [x] NMS threshold sweep (9 combos, ~100 val images) — best: obj=0.4 / iou=0.4 (avg err 5.07, -10.7% bias)
-- [x] Soft-NMS sweep (Gaussian decay) — best: σ=0.5 / threshold=0.3 (small but real improvement, free/no retraining)
-- [x] Formal mAP@50 eval (30 val images, IoU-matched): MobileNetV2+300 epoch-60: P=20.4%, R=18.7%, F1=19.5%
-- [x] CrowdHuman augmentation trial — V2+300: P=14.5%/R=16.8%/F1=15.5%. V3+416: objectness collapse (0% P/R). Both worse. Ruled out.
-- [x] Naive ensemble (custom + COCO SSD): P=13.7%/R=16.8%/F1=15.1% — worse. Ruled out.
+- [ ] **Export final model weights to TFLite (`scripts/export_to_tflite.py`)**
+- [ ] **Live end-to-end camera test:** OV4689 frame → TFLite → headcount on Pi
+- [x] Annotation quality spot-check on training images (confirmed root cause of weak P/R)
+- [x] CrowdHuman augmentation trial (V2 + V3 architectures) — ruled out (objectness collapse on V3)
+- [x] Naive ensemble (custom + COCO SSD) — ruled out (compounded false positives)
 - [x] COCO SSD standalone count-based eval: -65.2% bias, avg error 27.97/image. Ruled out.
-- [x] YOLOLite Nano fine-tune (Roboflow/Colab): plateaued at mAP@50=16.6% (TF OD API dead end). Ruled out.
-- [x] MobileNetV3-Large+416 Pi 3B speed benchmark: 0.557 s/frame (XNNPACK) — viable
-- [x] **Final model decision:** MobileNetV3-Large+416 epoch-60 (F1=30.1%) — confirmed best across all tested approaches
+- [x] YOLOLite Nano fine-tune (Roboflow/Colab): plateaued at mAP@50=16.6%. Ruled out.
+- [x] Flip-TTA and WBF merging — ruled out (Soft-NMS superior)
+- [x] Public dataset investigation: RPEE-Heads (CC BY-SA 4.0) and academic domain gap review
+- [x] **AI/model development functionally complete**
 
 ## Full-System Integration (Post-PoC)
 
