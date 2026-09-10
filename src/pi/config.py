@@ -27,7 +27,7 @@ class Config:
     _FALLBACK_MODEL = str(MODELS_DIR / "mobilenet_v2_ssd_classcan.tflite")
 
     MODEL_PATH      = _PRIMARY_MODEL if os.path.isfile(_PRIMARY_MODEL) else _FALLBACK_MODEL
-    CONF_THRESHOLD  = 0.40            # Objectness threshold — tuned for CLASSCAN model (sweep best)
+    CONF_THRESHOLD  = 0.35            # Objectness threshold — calibrated for count accuracy (MAE 3.57, r=0.987)
                                       # (use 0.50 if falling back to COCO SSD model)
 
     # ── Detection Timing ───────────────────────────────────────────────────

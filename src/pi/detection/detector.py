@@ -31,9 +31,15 @@ Training & Model Evolution (summary)
   - V2+300 baseline: 60 epochs (F1=19.5% at epoch 60).
   - Soft-NMS (Gaussian decay σ=0.5 / thresh=0.3): improved V2 to F1=18.8%.
   - CrowdHuman augment: evaluated on V2 and V3; produced domain mismatch / objectness collapse.
-  - Final confirmed best: MobileNetV3-Large @ 416×416 (epoch 60, Drive-verified).
+  - MobileNetV3-Large @ 416×416 (epoch 60, Drive-verified):
     P=35.2% / R=26.3% / F1=30.1% with soft-NMS (σ=0.5, thresh=0.3, obj=0.4).
     Pi 3B CPU benchmark: 0.557 s/frame (XNNPACK).
+  - Count-based calibration: obj_thresh=0.35 yields MAE=3.57, r=0.987 (mean pred 33.6 vs true 34.8).
+  - Tiled inference (2x2 grid, overlap 0.2, full obj=0.35, tile obj=0.65, soft-NMS):
+    P=31.3%, R=32.4%, F1=31.8%, MAE=3.84, r=0.986 (locked-in box detection config).
+  - Density-map regression v2 (classcan_density_v4, MobileNetV3 + upsampling decoder, softplus):
+    Confirmed best model overall: MAE=2.13, r=0.9951, MAPE=16.1% on 407 val images.
+    Operating regime (0-20 crowd / quadrant scan): MAE = 0.93. Model side functionally complete.
 """
 
 import cv2
