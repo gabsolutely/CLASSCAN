@@ -17,7 +17,7 @@ CLASSCAN is an automated, ceiling-mounted edge computer vision turret engineered
 The system is designed and verified to perform the following core operations:
 
 1. **Edge-Based Head and Occupancy Detection:**
-   - Detects people in classroom seating using a lightweight single-class **"head"** (head-and-shoulders) TFLite object detection model (`yololite_nano_head_classcan.tflite`).
+   - Detects people in classroom seating using a lightweight single-class **"head"** (head-and-shoulders) TFLite object detection model (`classcan_head_v1.tflite` — custom Keras multi-scale MobileNetV3-Large + 416×416 head detector with 3-head FPN, occupancy-based target encoding, soft-NMS).
    - Executes all image preprocessing, tensor inference, and non-maximum suppression locally on the Raspberry Pi 3B quad-core ARM Cortex-A53 CPU without external cloud offloading.
 
 2. **Compute-Aware Triggering:**

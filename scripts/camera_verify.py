@@ -222,6 +222,10 @@ def main():
                         help="Confidence threshold (default: 0.35)")
     parser.add_argument("--frames",  type=int, default=5,
                         help="Number of frames to test (default: 5)")
+    parser.add_argument("--exposure", type=int, default=None,
+                        help="Manual exposure value (switches V4L2 to manual exposure)")
+    parser.add_argument("--gain",     type=int, default=None,
+                        help="Manual analog gain value")
     parser.add_argument("--save",    action="store_true",
                         help="Save annotated last frame to camera_verify_output.jpg")
     parser.add_argument("--save-raw", action="store_true",
@@ -291,6 +295,16 @@ def main():
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
     if args.height:
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
+
+    # Optional manual exposure and gain tuning
+    if args.exposure is not None:
+        # V4L2 manual exposure mode (1 = manual, 3 = auto)
+        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
+        cap.set(cv2.CAP_PROP_EXPOSURE, args.exposure)
+        print(f"[Camera] Setting manual exposure: {args.exposure}")
+    if args.gain is not None:
+        cap.set(cv2.CAP_PROP_GAIN, args.gain)
+        print(f"[Camera] Setting manual gain: {args.gain}")
 
     cam_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     cam_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

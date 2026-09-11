@@ -13,7 +13,7 @@ All definitions in this document strictly align with `src/esp32/include/config.h
 | **GPIO 34** | `GPIO 34` | `ADC1_CH6` | **GL5528 Light Dependent Resistor (LDR)** | Input (Analog) | Reads analog voltage (0–3.3V $\to$ 0–4095 ADC counts). Connected to LDR + 10kΩ pull-down divider. Input-only pin (no internal pull-up/down). |
 | **GPIO 25** | `GPIO 25` | Digital I/O | **Auxiliary Illumination Module** | Output (Digital) | Drives gate of 2N7000 N-MOSFET (or base of 2N2222 transistor via 1kΩ resistor) to switch 4× White LEDs. |
 | **GPIO 18** | `GPIO 18` | Hardware PWM (Timer 0) | **MG90S Pan Servo (Horizontal)** | Output (PWM) | 50 Hz PWM control pulse (500 μs – 2500 μs pulse width corresponding to $0^\circ$ – $180^\circ$ rotation). |
-| **GPIO 19** | `GPIO 19` | Hardware PWM (Timer 1) | **MG90S Tilt Servo (Vertical Pitch)** | Output (PWM) | 50 Hz PWM control pulse (500 μs – 2500 μs pulse width corresponding to $0^\circ$ – $60^\circ$ downward pitch). |
+| **GPIO 21** | `GPIO 21` | Hardware PWM | **MG90S Tilt Servo (Vertical Pitch)** | Output (PWM) | 50 Hz PWM speed command; 1500 μs is stop. |
 | **GPIO 23** | `GPIO 23` | VSPI MOSI | **MAX7219 LED Matrix (DIN)** | Output (SPI Data) | Serial data line for updating 8×32 headcount dot matrix display. |
 | **GPIO 5** | `GPIO 5` | VSPI CS / SS | **MAX7219 LED Matrix (CS / LOAD)** | Output (SPI CS) | Chip Select / Load pulse latch for MAX7219 display. |
 | **GPIO 18 / 14**| `GPIO 14` | VSPI SCK | **MAX7219 LED Matrix (CLK)** | Output (SPI Clock)| Serial clock signal for shifting display data bits. |
@@ -37,7 +37,7 @@ All definitions in this document strictly align with `src/esp32/include/config.h
                        │ GPIO35              GPIO1├─ UART0 TX (Serial to Pi)
                        │ GPIO32              GPIO3├─ UART0 RX (Serial from Pi)
                        │ GPIO33             GPIO21├─
-   Illumination Driver ─┤ GPIO25             GPIO19├─ Tilt Servo Signal (PWM)
+   Illumination Driver ─┤ GPIO25             GPIO21├─ Tilt Servo Signal (PWM)
                        │ GPIO26             GPIO18├─ Pan Servo Signal (PWM)
                        │ GPIO27              GPIO5├─ MAX7219 CS (Latch)
                        │ GPIO14 (CLK)       GPIO17├─

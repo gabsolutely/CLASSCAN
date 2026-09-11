@@ -22,7 +22,7 @@ Standard object detection models (such as COCO-pretrained MobileNet-SSD or YOLO 
                      └───────────────────────┘
 ```
 
-**Target Objective:** Train an edge-optimized detector (**custom Keras multi-scale MobileNetV2 head detector**) on a dedicated single **"head"** class (head-and-shoulders bounding boxes) to reliably detect seated students under severe furniture occlusion from an elevated perspective.
+**Target Objective:** Train an edge-optimized vision model (**custom Keras multi-scale MobileNetV3-Large head detector** and **density-map regression model `classcan_density_v4`**) on a dedicated single **"head"** class (head-and-shoulders bounding boxes and center-point density maps) to reliably detect seated students under severe furniture occlusion from an elevated perspective.
 
 ---
 
@@ -76,103 +76,98 @@ Augmented Training Dataset (~5,500 total images)
 
 ## 5. Model Architecture & Training Hyperparameters
 
-### Architecture: Custom Keras Multi-Scale Head Detector
+### Final Architecture: Custom Keras Multi-Scale MobileNetV3-Large + 416×416 Head Detector
 
 | Component | Details |
 |---|---|
-| **Backbone** | MobileNetV2 (300×300 input, ImageNet pre-weights, fine-tuned) |
-| **Feature Pyramid** | 3-scale FPN: P3 (38×38, stride 8), P4 (19×19, stride 16), P5 (10×10, stride 32) |
-| **Feature Layers** | `block_6_expand_relu` → P3, `block_13_expand_relu` → P4, `out_relu` → P5 |
+| **Backbone** | MobileNetV3-Large (416×416 input, ImageNet pre-weights, fine-tuned) |
+| **Feature Pyramid** | 3-scale FPN: P3 (52×52, stride 8), P4 (26×26, stride 16), P5 (13×13, stride 32) |
+| **Feature Layers** | `expanded_conv_5_add` → P3, `expanded_conv_11_add` → P4, `expanded_conv_14_add` → P5 |
 | **Detection Heads** | Shared structure: Conv2D(128, 3×3, ReLU) → objectness (1 ch, logits) + boxes (4 ch, sigmoid) |
-| **Total Parameters** | ~4.6M |
-| **Input** | 300×300×3 float32 normalized [0, 1] |
+| **Input** | 416×416×3 float32 normalized [0, 1] |
 | **Output (per scale)** | objectness logits + box [ymin, xmin, ymax, xmax] normalized |
 
 ### Target Encoding: Occupancy-Based Overflow Routing
 
 Box-to-grid assignment does **not** use size-based routing. Box-size analysis across
-20 real training images found ALL 641 boxes had `max(h,w) ≤ 0.07` (fully overhead-angle
-dataset with no scale variety) — size-gated routing gave zero signal to P4/P5.
+training images found ALL boxes had `max(h,w) ≤ 0.07` (overhead classroom perspective
+with no scale variety) — size-gated routing gave zero signal to P4/P5.
 
-Instead, an occupancy-based overflow scheme routes densely-packed heads across scales:
+An occupancy-based overflow scheme routes densely-packed heads across scales:
 
 ```
 For each box:
-  1. Compute center cell in P3 (38×38)
+  1. Compute center cell in P3 (52×52)
   2. If P3 cell unoccupied → assign to P3
-  3. Else if P4 cell unoccupied → overflow to P4
-  4. Else if P5 cell unoccupied → overflow to P5
-  5. Else → silently drop (extremely rare)
+  3. Else if P4 cell unoccupied → overflow to P4 (26×26)
+  4. Else if P5 cell unoccupied → overflow to P5 (13×13)
+  5. Else → drop box (extremely rare)
 ```
 
 This repurposes multi-scale to solve **dense-crowd cell collisions** rather than scale variance.
-Verified on a 83-box training image: P3=69, P4=11, P5=3, 0 drops (vs. 14 silently overwritten
-under the old size-gated version).
 
-### Loss Function
+### Loss Function & Numerical Hardening
 
 | Component | Method | Notes |
 |---|---|---|
-| **Objectness** | Focal loss (α=0.25, γ=2.0, `from_logits=True`) | `from_logits=True` is critical — manual sigmoid + log is numerically unstable |
-| **Box Regression** | Smooth-L1 (δ=1.0) | Applied only to positive cells (mask) |
-| **Normalization** | Divide by positive cell count | Prevents loss scale from varying with crowd density |
+| **Objectness** | Focal loss (α=0.25, γ=2.0, `from_logits=True`) | `from_logits=True` avoids saturating-sigmoid log(0) NaN failure |
+| **Box Regression** | Smooth-L1 (Huber, δ=1.0) | Masked to positive cells only |
+| **Box Clipping** | Clip predictions to $\pm 8.0$ | **Critical stability fix:** prevents unconstrained early predictions (up to $\pm 36$) from blowing up loss on dense images |
+| **Normalization** | Divide by positive cell count | Prevents loss scaling with crowd density |
 | **Multi-scale** | Sum across P3 + P4 + P5 | |
-| **`box_loss_weight`** | 1.0 (epochs 1–50) → 2.0 (epochs 51–65) | Bumped to address box tightness/offset |
 
-### Training Configuration
+### Training Configuration & Stability Protocol
 
 | Hyperparameter | Value |
 |---|---|
-| **Optimizer** | Adam (lr=1e-5, clipnorm=1.0) |
-| **Batch Size** | 8 |
-| **Batches/Epoch** | ~356 (on 2,850 training images) |
-| **Time/Epoch** | ~10.8 min (Colab T4 GPU) |
-| **Training pipeline** | Batched `tf.data` + `@tf.function` compiled steps |
+| **Optimizer** | Adam (lr=1e-4 with 5-epoch linear warmup from 1e-5; `clipnorm=0.5`) |
+| **Batch Size** | 8 (`drop_remainder=True` to prevent ragged batch retracing) |
+| **Dataset Cache** | Disk-backed cache (`/content/train_cache`) to prevent Colab system RAM exhaustion |
+| **Spike Guard** | Automated safeguard: skips checkpoint save if `val_loss` jumps $>20\times$ vs. last known-good epoch |
+| **Checkpoint Dir** | `/content/drive/MyDrive/models/` (secondary Google account) |
 
-### Training Results
+### Training Evolution & Checkpoints
 
-| Run | Epochs | Final train_loss | Final val_loss | Notes |
-|---|:---:|:---:|:---:|---|
-| Initial smoke test | 3 | 0.4817 | 0.4841 | Pipeline confirmed working |
-| Extended run 1 (original account) | 23→63 | — | — | **Lost** — Drive checkpoint saves silently failed (account/session mismatch). Disaster fixed by `save_checkpoint_verified()`. |
-| Run 2 (brother's laptop, hardened script) | 50 | 0.2239 | 0.2564 | All 10 checkpoints Drive-verified (18922768 bytes each) |
-| Run 3 (box_loss_weight=2.0, ep51–65) | +15 | 0.2115 | 0.2572 | val bottomed epoch 55 (0.2519), started rising epoch 60 |
+| Phase | Model Type | Backbone | Input | Epochs | Best Val Loss / MAE | Best Eval | Notes |
+|---|---|---|:---:|:---:|:---:|:---:|---|
+| Run 1–3 (Baseline) | Box Detector | MobileNetV2 | 300×300 | 60 | 0.2519 (ep55) | F1=19.5% (ep60) | Plateaued; dense images overpredicted |
+| CrowdHuman (V2) | Box Detector | MobileNetV2 | 300×300 | 50 | ~0.175 | F1=15.5% | Domain mismatch; underperformed baseline |
+| V3 Full Run | Box Detector | MobileNetV3-Large | 416×416 | 60 | 0.2535 (ep60) | F1=30.1% | +10.6 pp F1 over V2; count-sweep best MAE=3.57 |
+| CrowdHuman (V3) | Box Detector | MobileNetV3-Large | 416×416 | 10 | 2.93 (ep7) | F1=0.0% | Objectness collapse; experiment concluded |
+| Tiled Box Model | Box Detector (2×2) | MobileNetV3-Large | 416×416 | 60 | — | F1=31.8%, MAE=3.84 | Locked-in box config (dual threshold + soft-NMS) |
+| **Density v4 (Final)** | **Density Map** | **MobileNetV3-Large** | **416×416** | **41** | **MAE=2.13 (ep41)** | **$r=0.9951$** | **Confirmed best model overall; quadrant MAE=0.93** |
 
-**Best checkpoint: epoch 55** (box_loss_weight=2.0 phase).
+**Final Checkpoints:**
+- Box Detection: Epoch 60 MobileNetV3-Large @ 416×416 (`val_loss=0.2535`, `train_loss=0.1498`).
+- Density Map: Epoch 41 `classcan_density_v4` (`MAE=2.13`, `r=0.9951`). Checkpoints on Drive at `/content/drive/MyDrive/models/`.
+
+### Density-Map Regression Pipeline (`classcan_density_v4`)
+Following external QA review (PeaNat), a density-map regression model was constructed to target MAE $\le 2.0$ and eliminate NMS bounding-box quantization errors:
+- **Target Density Maps:** Sourced head annotations converted to continuous Gaussian density surfaces ($\sigma = 3.0$) normalized so the 2D surface integral equals exact ground-truth head count.
+- **Decoder Architecture:** Progressive convolutional upsampling decoder attached to MobileNetV3-Large feature stages, outputting a 104×104 single-channel spatial density tensor (3.6M parameters).
+- **Activation & Schedule:** Softplus output activation (prevents dying-ReLU collapse); warmup ($10^{-6} \to 5 \times 10^{-5}$) followed by scheduled decay (0.94/epoch to $2 \times 10^{-6}$) and instantaneous best-checkpoint persistence.
 
 ### Key Banked Lessons
 
-> **NaN Recovery Protocol:** Any time a NaN loss appears:
-> 1. Diagnose and fix the actual code bug
-> 2. **ALWAYS** rebuild BOTH model AND optimizer from scratch before retrying
->
-> A single bad gradient step permanently corrupts model weights AND Adam's internal
-> momentum/variance accumulators. No downstream code fix will recover a corrupted model.
+> **NaN & Spike Recovery Protocol:** Any time a gradient corruption or loss spike appears:
+> 1. Diagnose root cause (e.g., unconstrained box regression or pathological batch).
+> 2. **ALWAYS** rebuild BOTH model AND optimizer from scratch before retrying.
+> 3. Never save weights from a post-spike epoch — verify loss before persisting.
 
-> **tf.data pipeline reuse:** Redefining a function in a new Colab cell does NOT
-> retroactively update an already-built `tf.data` pipeline or a `@tf.function` trace.
-> Always rebuild the full pipeline (all cells in dependency order) after any function change.
+> **Consolidated Recovery Cell:** Colab runtime disconnects happen frequently. Keep a single, self-contained recovery script that mounts Drive, initializes data pipelines, reconstructs model/optimizer, and resumes directly from the latest verified checkpoint without re-running earlier notebook cells.
 
 ---
 
 ## 6. TFLite Export
 
-The trained Keras checkpoint (epoch-55) is exported via a `tf.Module` wrapper that
-bakes sigmoid + NMS post-processing into the TFLite graph:
+The trained Keras checkpoint (epoch-60 MobileNetV3-Large) is exported via `scripts/export_to_tflite.py`:
 
 ```bash
-# From repo root (requires TF 2.x locally, or run in Colab)
+# Export MobileNetV3-Large @ 416×416 to float32 TFLite:
 python scripts/export_to_tflite.py \
-    --weights path/to/ckpt_ep55.weights.h5 \
+    --weights path/to/ckpt_ep60_v3.weights.h5 \
     --output  models/classcan_head_v1.tflite \
     --quant   float32
-
-# With INT8 quantization (requires representative images dir):
-python scripts/export_to_tflite.py \
-    --weights path/to/ckpt_ep55.weights.h5 \
-    --output  models/classcan_head_v1.tflite \
-    --quant   int8 \
-    --rep-images path/to/val_images/
 ```
 
 The export wrapper outputs a **clean 3-tensor interface** to `detector.py`:
@@ -182,9 +177,6 @@ The export wrapper outputs a **clean 3-tensor interface** to `detector.py`:
 | `boxes`  | `[1, 100, 4]` | float32 | `[ymin,xmin,ymax,xmax]` normalized, zero-padded |
 | `scores` | `[1, 100]`    | float32 | Objectness scores, zero-padded |
 | `count`  | `[1]`         | int32   | Valid detections — slice with `[:count]` |
-
-NMS (IoU threshold=0.45) is applied inside the TFLite graph — `detector.py` receives
-already-deduplicated detections.
 
 ---
 
@@ -207,17 +199,108 @@ for d in interpreter.get_output_details():
 
 ### Expected Output:
 ```
-  INPUT  shape=[1, 300, 300, 3]  dtype=float32
-  OUTPUT shape=[1, 100, 4]  dtype=float32  name=...boxes
-  OUTPUT shape=[1, 100]     dtype=float32  name=...scores
-  OUTPUT shape=[1]          dtype=int32    name=...count
+  INPUT  shape=[1, 416, 416, 3]  dtype=float32
+  OUTPUT shape=[1, 100, 4]        dtype=float32  name=boxes
+  OUTPUT shape=[1, 100]           dtype=float32  name=scores
+  OUTPUT shape=[1]                dtype=int32    name=count
 ```
 
-If the output names or tensor counts differ, check the `CLASSCANExportWrapper`
-class in `scripts/export_to_tflite.py` and verify `tf.image.non_max_suppression`
-converted cleanly (it requires `SELECT_TF_OPS` if graph conversion fails).
+---
 
-> **Note on label map:** Roboflow exports label name `"person"` with id 1 even for
-> this dataset. This is a cosmetic naming artifact — the class IS head-and-shoulders
-> detection. No relabeling is needed. The exported model has no class labels embedded
-> (single-class implicit); `detector.py` treats all detections as `"head"`.
+## 8. Security Notice
+
+> [!CAUTION]
+> **Roboflow API Key Rotation:** If a Roboflow API key was previously pasted in plaintext into shared Colab notebooks or documents, rotate it immediately in the Roboflow workspace dashboard under Account Settings > API Keys. Never store raw API keys in version control or publicly shared notebooks.
+
+---
+
+## 9. Post-Training Evaluation
+
+### 9a. Annotation Quality Audit
+
+Manual spot-check on real training images confirmed labeling problems that are the **confirmed root cause** of weak precision/recall — not thresholds, NMS, or epoch count.
+
+Found issues:
+- Overly tight/cropped boxes on clear close-up heads (crown of head cut off)
+- Unlabeled small distant heads (visible in frame, no box)
+- Wildly inconsistent box tightness image-to-image
+- At least one clearly visible head (red shirt, unambiguous) with no annotation at all
+
+**Highest-confidence improvement path:** Fix annotation quality on the worst training images before any other intervention.
+
+### 8b. NMS Threshold Sweep
+
+9-combination objectness × IoU sweep on ~100 validation images. See `docs/benchmark_results.md` Section 6 for full table.
+
+**Best:** `obj_threshold=0.4 / iou_threshold=0.4` — avg error 5.07, bias -10.7% (down from +35.8%).
+
+Key insight: `obj_threshold` matters far more than IoU threshold — over-counting was mostly low-confidence false positives, not duplicate detections.
+
+> Deployment `config.py` uses `CONF_THRESHOLD=0.35` (slightly more permissive) to recover marginal detections in quadrant shots (~10 people/shot). Revisit after exposure calibration and TFLite export.
+
+### 8c. Formal mAP@50 Evaluation (Baseline)
+
+IoU-matched eval on 30 validation images at `obj_threshold=0.4`. **This is the benchmark number for all comparisons.**
+
+| Metric | Value |
+|---|:---:|
+| Precision | **18.7%** |
+| Recall | **16.7%** |
+| F1 | **17.6%** |
+
+**Key lesson:** count-diff comparisons and single-image eyeball checks are both misleading. A model can match the count with loosely-positioned boxes and still fail mAP@50. Always use IoU-matched eval.
+
+---
+
+## 9. Ruled-Out Improvement Attempts
+
+All three attempts rigorously tested and failed to beat the 18.7%/16.7% baseline.
+
+### 9a. CrowdHuman Augmentation
+
+1,739 dense (20+ head) images from CrowdHuman val split. Official download links dead; used HuggingFace mirror (`sshao0516/CrowdHuman`). Parsed `.odgt` format, filtered to dense images. Trained 30 then extended to 50 epochs.
+
+Result: P=14.5% / R=16.8% / F1=**15.5%** — worse than baseline.
+Root cause: street-level/event-crowd domain mismatch vs. top-down classroom shots.
+
+### 9b. Naive Ensemble (Custom + COCO SSD + NMS)
+
+Union of custom model + COCO MobileNetV2-SSD detections, deduplicated with NMS.
+
+Result: P=13.7% / R=16.8% / F1=**15.1%** — worse than baseline.
+Root cause: both models fail on the same hard cases (dense occluded heads), so errors compound rather than complement.
+
+### 9c. COCO SSD Standalone
+
+Note: box-IoU-matching a person detector against head-only ground truth is methodologically invalid (person boxes are much taller). Used count-based comparison instead.
+
+Result: -65.2% bias (total pred 417 vs GT ~1,200 across 30 images), avg error 27.97/image.
+Root cause: COCO person detector is confident on what it detects, but misses most people in dense overhead shots where 70–85% of the body is occluded.
+
+---
+
+## 10. Final Model Decisions & Deployment Architecture
+
+### 10a. Confirmed Model Architecture Status
+The AI/model engineering phase is **functionally complete** with two validated deployment-ready architectures:
+
+1. **Primary / Best Overall: Density-Map Regression Model (`classcan_density_v4`)**
+   - **Backbone & Output:** MobileNetV3-Large + upsampling decoder producing a 104×104 density map (3.6M parameters, Softplus activation).
+   - **Validation Metrics (407 images):** Overall **MAE = 2.13**, **$r = 0.9951$**, **MAPE = 16.1%**, Within $\pm 2 = 66.1\%$.
+   - **Operational Range Performance:** In the 0–20 crowd size bucket (matching the ~10 students seen per quadrant scan), **MAE is 0.93 people** (< 1 student error).
+   - **Advantage:** Eliminates bounding box aspect ratio mismatch, overlapping box suppression failures, and NMS threshold tuning.
+
+2. **Secondary / Localized Box Detector (MobileNetV3-Large @ 416×416)**
+   - **Architecture:** 3-scale FPN (52×52 / 26×26 / 13×13) with occupancy-based target routing.
+   - **Locked-in Inference Pipeline:** 2×2 grid tiled inference (0.2 overlap) with dual thresholding (`full_obj=0.35`, `tile_obj=0.65`) and Soft-NMS merging ($\sigma=0.5, \text{thresh}=0.3$).
+   - **Validation Metrics:** Precision = 31.3%, Recall = 32.4%, **F1 = 31.8%**, **MAE = 3.84**, **$r = 0.986$**.
+   - **Advantage:** Produces visual bounding boxes for HUD overlay and dashboard streaming.
+
+### 10b. Operational Deployment Strategy
+- **Turret Scanning Context:** A 40-student classroom divided across 4 pan/tilt servo quadrants means each camera snapshot evaluates only ~10 students. The model's true deployment regime is the low-density bucket where accuracy is highest.
+- **Immediate Focus Shift:** Model training is frozen. Team resources are directed 100% to **OV4689 camera exposure tuning, gain calibration, and live physical hardware integration** on the Raspberry Pi 3B.
+
+### 10c. Long-Term / Post-PoC Research Avenues
+1. **Active Learning & Point Annotation:** Sample real classroom video frames, identify high-uncertainty or failure frames, annotate center-points only (faster than boxes), and incrementally retrain.
+2. **RPEE-Heads Dataset Integration:** Evaluate RPEE-Heads (CC BY-SA 4.0) to test generalized small-head feature representation ($<6\text{ px}^2$).
+3. **Domain Transfer Mitigation:** Sourced models top out at ~57% when applied out-of-domain without adaptation. Long-term accuracy gains require local fine-tuning on PCU-D classroom recordings rather than generic public datasets.

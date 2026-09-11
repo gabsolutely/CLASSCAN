@@ -25,14 +25,14 @@ This document provides full hardware interconnections, circuit schematics, and p
      │                 │                             │   GPIO 34 (ADC) ├──────┐
      │  USB Port 2 ────┼─────────────┐               │   GPIO 25 (OUT) ├──┐   │
      └─────────────────┘             │               │   GPIO 18 (PWM) ├┐ │   │
-                                     │               │   GPIO 19 (PWM) ├┼┐│   │
+                                     │               │   GPIO 21 (PWM) ├┼┐│   │
                                      ▼               └─────────────────┘│││   │
                            [ OV4689 Camera Module ]                     │││   │
                                                                         │││   │
   ┌─────────────────────────────────────────────────────────────────────┘││   │
   │ Pan Servo (MG90S): Signal ── GPIO18, Power ── +5V, Ground ── GND    ││   │
   ├──────────────────────────────────────────────────────────────────────┘│   │
-  │ Tilt Servo (MG90S): Signal ── GPIO19, Power ── +5V, Ground ── GND     │   │
+    │ Tilt Servo (MG90S): Signal ── GPIO21, Power ── +5V, Ground ── GND     │   │
   ├───────────────────────────────────────────────────────────────────────┘   │
   │ Custom Illumination Module: Gate ── GPIO25, Power ── +5V, Ground ── GND   │
   └───────────────────────────────────────────────────────────────────────────┘
@@ -91,7 +91,7 @@ ESP32 GPIO 18 (Pan PWM) ──────────────────�
                                             ┌──────────┴──────────┐              │
                                             │ Positive (Red Wire) │              │
                                             │                     │              │
-ESP32 GPIO 19 (Tilt PWM) ──────────────────►│ Signal (Orange Wire)│  [ MG90S Tilt Servo ]
+ESP32 GPIO 21 (Tilt PWM) ──────────────────►│ Signal (Orange Wire)│  [ MG90S Tilt Servo ]
                                             │                     │              │
                                             │ Ground (Brown Wire) │              │
                                             └─────────────────────┘              │

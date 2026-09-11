@@ -67,12 +67,12 @@ Adopt a decoupled, dual-tier architecture mirroring industrial robotics:
 
 ---
 
-## ADR-03: Vision Model Selection & Final Architecture — Custom Keras Multi-Scale MobileNetV2 Head Detector
+## ADR-03: Vision Model Selection & Final Architecture — Custom Keras Multi-Scale MobileNetV3-Large + 416×416 Head Detector
 
 ### Context
 Initial baseline testing of the computer vision pipeline utilized a standard MobileNetV2-SSD model pre-trained on the COCO dataset (80 full-body classes).
 
-### The Decision Path (Three-Stage Failure Trail)
+### The Decision Path (Four-Stage Evolutionary Trail)
 
 **Stage 1 — COCO MobileNetV2-SSD fails (empirical):**
 During benchmark trials on realistic classroom test photographs, the COCO model performed well on unobstructed close/medium subjects (confidence 0.72–0.98) but recorded **0 detections** on a wide-angle classroom shot with seated students behind desks.
@@ -87,30 +87,42 @@ Why Full-Body Models Fail in Classrooms:
 │       [Head/Torso]                                     │
 │      ══════════════ [Wooden Armchair Desk]             │
 │       [Lower Body]  (80% completely occluded)          │
-└────────────────────────────────────────────────────────┘
+│└────────────────────────────────────────────────────────┘
 ```
 
-**Stage 2 — YOLOLite CPU Nano (Roboflow) weak result:**
-Attempted a YOLOLite CPU (Nano) fine-tune on Roboflow: 92 epochs, loss plateaued at 0.1638, final mAP@50=16.6%, precision=29.1%, recall=29.0%. Non-zero but weak. Roboflow free credits exhausted after this run — could not retry.
+**Stage 2 — YOLOLite CPU Nano (Roboflow) & TF OD API dead ends:**
+Attempted a YOLOLite CPU (Nano) fine-tune on Roboflow: 92 epochs, loss plateaued at 0.1638, final mAP@50=16.6%, precision=29.1%, recall=29.0%. Roboflow free credits exhausted. Subsequent TF Object Detection API attempt in Colab failed due to `tensorflow_io` dependency incompatibilities with Colab's Python version.
 
-**Stage 3 — TF Object Detection API dead end:**
-Attempted fine-tuning via the TF Object Detection API in Colab. Hit a hard dependency wall: `tensorflow_io` had no available build for the Colab environment's Python version. This path was abandoned without forcing an older Python version or a full custom build.
+**Stage 3 — From-Scratch MobileNetV2 Baseline & Plateau:**
+Built a from-scratch Keras 3-scale FPN detector (300×300, P3/P4/P5). While it solved desk occlusion, evaluation plateaued at F1=19.5% (epoch 60). Three improvement hypotheses were rigorously tested and ruled out:
+- *CrowdHuman augmentation:* Led to domain mismatch (F1 dropped to 15.5% on V2; collapsed to 0.0% objectness collapse on V3).
+- *Naive ensemble:* Compounded false positives (F1=15.1%).
+- *Annotation quality audit:* Revealed ground-truth inconsistencies as the primary precision/recall bottleneck.
 
-### Decision
-**Custom Keras/TF training pipeline** with a MobileNetV2 backbone and 3-scale FPN detection heads. Built entirely from scratch to avoid all external dependency friction.
+**Stage 4 — Architectural Swing: MobileNetV3-Large @ 416×416:**
+Hypothesized that small/distant heads lacked resolution at 300px and MobileNetV2 was too shallow. Upgraded to MobileNetV3-Large with 416×416 input resolution (grids: 52×52, 26×26, 13×13). Benchmarked inference latency on physical Pi 3B CPU: **0.557 s/frame** (XNNPACK) — confirmed fully viable for snapshot-based detection. Checkpoint at epoch 60 achieved **Precision = 35.2%, Recall = 26.3%, F1 = 30.1%** (+10.6 pp F1 over MobileNetV2 baseline).
 
-### Architecture Summary
-- **Backbone:** MobileNetV2 (300×300, ImageNet weights, fine-tuned)
-- **Feature Pyramid:** P3 (38×38, stride 8), P4 (19×19, stride 16), P5 (10×10, stride 32)
-- **Target Encoding:** Occupancy-based overflow routing (NOT size-gated — all boxes in this dataset are small/overhead-angle with max(h,w) ≤ 0.07, no scale variety)
-- **Loss:** Focal loss (objectness, from_logits) + Smooth-L1 (boxes, masked to positive cells)
-- **Training:** Adam lr=1e-5, batch=8, ~60 epochs total, best checkpoint at epoch 55
+**Stage 5 — Count-Based Calibration & Tiled Inference:**
+Discovered that threshold tuning for box F1 (obj=0.30) caused an overcounting bias (+12%) in crowd counting. Swept thresholds explicitly for headcount MAE: `obj_thresh = 0.35` dropped MAE to **3.57 people** ($r = 0.987$) with near-zero count bias (-3.4%). Evaluated tiled inference (2×2 grid, 0.2 overlap, dual threshold: full pass at 0.35, tile passes at 0.65, soft-NMS) to recover small heads: achieved **F1 = 31.8%, MAE = 3.84, $r = 0.986$**. WBF and flip-TTA were tested and ruled out.
+
+**Stage 6 — Density-Map Regression Paradigm Shift (`classcan_density_v4`):**
+Following external QA peer review (PeaNat) challenging box-level assumptions in chaotic classroom environments, a continuous **density-map regression** model was designed:
+- Bounding boxes artificially penalize partially occluded heads and introduce NMS suppression errors in dense seating rows.
+- Converted head annotations into continuous 2D Gaussian density maps.
+- Replaced the detection heads with a progressive upsampling decoder yielding a 104×104 density map with **Softplus** activation (eliminating dying-ReLU failures).
+- Applied scheduled LR decay (0.94/epoch to $2 \times 10^{-6}$) and best-checkpoint tracking, reaching stable convergence across epochs 26–41.
+- **Empirical Validation (407 images):** Overall **MAE = 2.13**, **$r = 0.9951$**, **MAPE = 16.1%**.
+- In the actual operational regime (0–20 students per quadrant scan), **MAE is 0.93 people**.
+
+### Final Decision
+1. **Primary Headcount Architecture:** Deploy the **`classcan_density_v4` density-map regression model** (MAE = 2.13 overall, MAE = 0.93 in quadrant FOV) as the definitive occupancy counting engine.
+2. **Secondary Visualization Architecture:** Maintain the **MobileNetV3-Large @ 416×416 box detector** with 2×2 dual-threshold tiling and Gaussian Soft-NMS ($\sigma=0.5, \text{thresh}=0.3$) for optional dashboard HUD bounding box rendering.
 
 ### Rationale
-1. **Desk Occlusion Solved:** Head-and-shoulders annotation + elevated dataset ensures detection works regardless of desk depth.
-2. **No External Dependency Friction:** Pure Keras/TF — no PyTorch→ONNX→TFLite conversion pipeline, no `tensorflow_io` ABI constraints.
-3. **Full Control Over Multi-Scale Design:** Occupancy-based routing solves the dense-crowd cell-collision problem specific to this dataset's characteristics (all-small-box, high-density overhead shots).
-4. **Cortex-A53 Deployment:** Exported to TFLite via `scripts/export_to_tflite.py`, NMS baked into the graph, clean 3-tensor output interface for `detector.py`.
+1. **Direct Alignment with Functional Goal:** Occupancy monitoring requires counting accuracy ($r=0.9951$, MAE < 1 person per quadrant), not arbitrary IoU box overlaps. Density maps directly integrate crowd counts while gracefully handling desk occlusions.
+2. **Deterministic Edge Performance:** Both models share the lightweight MobileNetV3-Large backbone, executing within ~0.56s on Pi 3B CPU without thermal throttling under the periodic snapshot architecture.
+3. **Domain Gap Realism:** Acknowledges that public dataset tuning has saturated; further optimization shifts entirely to camera exposure tuning, gain calibration, and on-site physical classroom validation.
+
 
 ---
 

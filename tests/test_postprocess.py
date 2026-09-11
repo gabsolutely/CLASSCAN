@@ -10,7 +10,7 @@ from pathlib import Path
 # Add src/pi to path so detector.py can be imported without a full install
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "pi"))
 
-from detection.detector import non_max_suppression
+from detection.detector import non_max_suppression, soft_non_max_suppression
 
 
 # ─── NMS unit tests ───────────────────────────────────────────────────────────
@@ -153,3 +153,59 @@ class TestCountMatch:
         assert len(result) == 13, (
             f"All 13 non-overlapping boxes should survive NMS, got {len(result)}"
         )
+
+
+# ─── Soft-NMS unit tests ──────────────────────────────────────────────────────
+
+class TestSoftNonMaxSuppression:
+
+    def test_soft_nms_empty_input(self):
+        """Soft-NMS on empty arrays returns empty arrays."""
+        boxes = np.zeros((0, 4), dtype=np.float32)
+        scores = np.zeros(0, dtype=np.float32)
+        kept_b, kept_s = soft_non_max_suppression(boxes, scores)
+        assert len(kept_b) == 0
+        assert len(kept_s) == 0
+
+    def test_soft_nms_single_detection(self):
+        """Single box above threshold is retained with score intact."""
+        boxes = np.array([[0.1, 0.1, 0.5, 0.5]], dtype=np.float32)
+        scores = np.array([0.85], dtype=np.float32)
+        kept_b, kept_s = soft_non_max_suppression(boxes, scores, score_threshold=0.3)
+        assert len(kept_b) == 1
+        assert np.isclose(kept_s[0], 0.85)
+
+    def test_soft_nms_score_decay_vs_hard_suppression(self):
+        """
+        Soft-NMS smoothly decays overlapping box score rather than hard deleting it.
+        If decayed score stays above score_threshold, both boxes survive.
+        """
+        # Overlapping boxes with IoU ~ 0.286
+        boxes = np.array([
+            [0.10, 0.10, 0.40, 0.40],
+            [0.20, 0.20, 0.50, 0.50],
+        ], dtype=np.float32)
+        scores = np.array([0.90, 0.80], dtype=np.float32)
+
+        kept_b, kept_s = soft_non_max_suppression(
+            boxes, scores, sigma=0.5, score_threshold=0.3
+        )
+        assert len(kept_b) == 2, "Both boxes should survive when decay keeps score >= threshold"
+        assert kept_s[0] == 0.90
+        assert kept_s[1] < 0.80, "Second box score should be decayed by Gaussian penalty"
+        assert kept_s[1] >= 0.30
+
+    def test_soft_nms_severe_overlap_drops_below_threshold(self):
+        """Nearly identical boxes: duplicate score decays heavily and drops below threshold."""
+        box = [0.10, 0.10, 0.40, 0.40]
+        boxes = np.array([box, box], dtype=np.float32)
+        scores = np.array([0.90, 0.35], dtype=np.float32)  # Low initial score on duplicate
+
+        # High IoU = 1.0 -> decay factor exp(-1/0.5) = exp(-2) ≈ 0.135
+        # 0.35 * 0.135 ≈ 0.047 < 0.30 threshold
+        kept_b, kept_s = soft_non_max_suppression(
+            boxes, scores, sigma=0.5, score_threshold=0.3
+        )
+        assert len(kept_b) == 1
+        assert kept_s[0] == 0.90
+

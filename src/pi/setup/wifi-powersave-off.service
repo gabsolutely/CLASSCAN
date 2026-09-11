@@ -1,0 +1,11 @@
+[Unit]
+Description=Disable Raspberry Pi Wi-Fi Power Saving (brcmfmac fix)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/iw dev wlan0 set power_save off
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
