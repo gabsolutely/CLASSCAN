@@ -10,8 +10,13 @@ from ai_edge_litert import interpreter as tflite
 IMG_SIZE = 416
  
 def benchmark_model(tflite_path, n_runs=20, quantized=False):
-    interpreter = tflite.Interpreter(model_path=tflite_path)
-    interpreter.allocate_tensors()
+    try:
+        interpreter = tflite.Interpreter(model_path=tflite_path)
+        interpreter.allocate_tensors()
+    except RuntimeError as e:
+        print(f"  XNNPack failed to prepare ({e}); retrying with num_threads=1 (disables XNNPack)")
+        interpreter = tflite.Interpreter(model_path=tflite_path, num_threads=1)
+        interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
  
