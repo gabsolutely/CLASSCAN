@@ -44,12 +44,9 @@ try:
     from ai_edge_litert.interpreter import Interpreter
 except ImportError:
     try:
-        from tflite_runtime.interpreter import Interpreter
+        from tensorflow.lite.python.interpreter import Interpreter
     except ImportError:
-        try:
-            from tensorflow.lite.python.interpreter import Interpreter
-        except ImportError:
-            Interpreter = None
+        Interpreter = None
 
 
 

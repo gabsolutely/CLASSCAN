@@ -1,7 +1,7 @@
 """
 Detector unit tests — no hardware, no real model required.
 
-cv2 and tflite_runtime are stubbed in sys.modules before any import,
+cv2 and ai_edge_litert are stubbed in sys.modules before any import,
 so these run cleanly on any machine without opencv or a model file.
 
 Usage:
@@ -25,10 +25,12 @@ _cv2_stub.resize.return_value = np.zeros((300, 300, 3), dtype=np.uint8)
 _cv2_stub.cvtColor.return_value = np.zeros((300, 300, 3), dtype=np.uint8)
 sys.modules["cv2"] = _cv2_stub
 
-# tflite_runtime stub so the try/except in detector.py resolves cleanly
-_tflite_stub = MagicMock()
-sys.modules.setdefault("tflite_runtime", _tflite_stub)
-sys.modules.setdefault("tflite_runtime.interpreter", _tflite_stub)
+# ai_edge_litert stub so the try/except in detector.py resolves cleanly
+_aiel_stub = type(sys)('ai_edge_litert')
+_aiel_stub.interpreter = type(sys)('ai_edge_litert.interpreter')
+_aiel_stub.interpreter.Interpreter = MagicMock
+sys.modules.setdefault("ai_edge_litert", _aiel_stub)
+sys.modules.setdefault("ai_edge_litert.interpreter", _aiel_stub.interpreter)
 
 # Now safe to import Detector
 from detection.detector import Detector  # noqa: E402

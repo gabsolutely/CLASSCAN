@@ -349,10 +349,7 @@ def _print_tflite_signature(tflite_path: str):
     try:
         from ai_edge_litert.interpreter import Interpreter
     except ImportError:
-        try:
-            from tflite_runtime.interpreter import Interpreter
-        except ImportError:
-            from tensorflow.lite.python.interpreter import Interpreter
+        from tensorflow.lite.python.interpreter import Interpreter  # dev fallback
 
     interpreter = Interpreter(model_path=tflite_path)
     interpreter.allocate_tensors()
