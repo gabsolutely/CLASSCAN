@@ -32,8 +32,9 @@ from config import Config
 from comms.dashboard_server import DashboardServer
 from comms.serial_bridge import SerialBridge
 from detection.change_trigger import ChangeTrigger
-from detection.detector import Detector, draw_hud_overlay
+from detection.detector import Detector, DensityDetector, draw_hud_overlay
 from detection.zone_reconciler import ZoneReconciler
+from setup.startup import run_boot_sequence
 
 
 def parse_args():
@@ -44,7 +45,9 @@ def parse_args():
     parser.add_argument("--camera", type=int, default=0,
                         help="OpenCV camera device index (default: 0)")
     parser.add_argument("--model", default=cfg.MODEL_PATH,
-                        help=f"Path to TFLite model file (default: {cfg.MODEL_PATH})")
+                        help=f"Path to box detector .tflite (default: {cfg.MODEL_PATH})")
+    parser.add_argument("--density-model", default=cfg.DENSITY_MODEL_PATH,
+                        help="Path to density-map .tflite (default: auto-detect float32/int8)")
     parser.add_argument("--port", type=int, default=cfg.DASHBOARD_PORT,
                         help=f"HTTP port for the dashboard (default: {cfg.DASHBOARD_PORT})")
     parser.add_argument("--host", default=cfg.DASHBOARD_HOST,
@@ -65,18 +68,36 @@ def main():
     cfg = Config()
 
     # Override config with CLI options if provided
-    cfg.MODEL_PATH = args.model
-    cfg.CONF_THRESHOLD = args.conf
-    cfg.DASHBOARD_HOST = args.host
-    cfg.DASHBOARD_PORT = args.port
-    cfg.SERIAL_PORT = args.serial_port
-    cfg.SERIAL_BAUD = args.serial_baud
+    cfg.MODEL_PATH         = args.model
+    cfg.DENSITY_MODEL_PATH = args.density_model
+    cfg.CONF_THRESHOLD     = args.conf
+    cfg.DASHBOARD_HOST     = args.host
+    cfg.DASHBOARD_PORT     = args.port
+    cfg.SERIAL_PORT        = args.serial_port
+    cfg.SERIAL_BAUD        = args.serial_baud
+
+    run_boot_sequence(fan_gpio=None, skip_delays=False)  # No GPIO control in this script
 
     print("=" * 60)
     print("  CLASSCAN — Pi 3B System Active")
     print("=" * 60)
 
     # 1. Initialize Subsystems
+
+    # Primary headcount engine: density-map regression (classcan_density_v4)
+    density_detector = None
+    if cfg.DENSITY_MODEL_PATH:
+        density_detector = DensityDetector(
+            model_path=cfg.DENSITY_MODEL_PATH,
+            camera_index=args.camera,
+            force_mock=args.mock,
+            mock_count=args.mock_count,
+        )
+    else:
+        print("[CLASSCAN] WARNING: No density model found. Headcount will use box detector count.")
+        print("           Expected: models/classcan_density_float32.tflite or classcan_density_int8.tflite")
+
+    # Secondary box detector: bounding boxes for HUD overlay
     detector = Detector(
         model_path=cfg.MODEL_PATH,
         conf_threshold=cfg.CONF_THRESHOLD,
@@ -84,7 +105,7 @@ def main():
         force_mock=args.mock,
         mock_count=args.mock_count,
     )
-    trigger = ChangeTrigger(threshold=cfg.CHANGE_THRESHOLD)
+    trigger    = ChangeTrigger(threshold=cfg.CHANGE_THRESHOLD)
     reconciler = ZoneReconciler(zone_names=list(cfg.ZONE_POSITIONS.keys()))
 
     serial_bridge = SerialBridge(port=cfg.SERIAL_PORT, baud=cfg.SERIAL_BAUD)
@@ -129,15 +150,23 @@ def main():
 
                 if cfg.MODE == "SWEEP":
                     detections = detector.detect(frame)
-                    count = len(detections)
+                    if density_detector:
+                        result = density_detector.predict(frame)
+                        count  = result["count"]
+                    else:
+                        count  = len(detections)
                     zone_counts = None
                 elif cfg.MODE == "ZONE_CHECK":
                     zone_counts = detector.detect_zones(frame, cfg.ZONE_POSITIONS)
-                    count, needs_rescan = reconciler.reconcile(zone_counts, last_count)
-                    if needs_rescan:
-                        print("[CLASSCAN] Reconciliation mismatch — re-scanning...")
-                        zone_counts = detector.detect_zones(frame, cfg.ZONE_POSITIONS)
-                        count, _ = reconciler.reconcile(zone_counts, last_count)
+                    if density_detector:
+                        result = density_detector.predict(frame)
+                        count  = result["count"]
+                    else:
+                        count, needs_rescan = reconciler.reconcile(zone_counts, last_count)
+                        if needs_rescan:
+                            print("[CLASSCAN] Reconciliation mismatch — re-scanning...")
+                            zone_counts = detector.detect_zones(frame, cfg.ZONE_POSITIONS)
+                            count, _ = reconciler.reconcile(zone_counts, last_count)
                     detections = detector.detect(frame)
 
                 if count != last_count:
@@ -177,6 +206,8 @@ def main():
         serial_bridge.close()
         dashboard.close()
         detector.release()
+        if density_detector:
+            density_detector.release()
         print("[CLASSCAN] Stopped.")
 
 

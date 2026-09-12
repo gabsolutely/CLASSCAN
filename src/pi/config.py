@@ -19,14 +19,32 @@ class Config:
     DASHBOARD_HOST = "0.0.0.0"
     DASHBOARD_PORT = 8080
 
-    # ── TFLite Model ───────────────────────────────────────────────────────
-    # Primary: Custom Keras multi-scale MobileNetV3-Large+416 head detector (epoch-60 best ckpt)
+    # ── TFLite Models ──────────────────────────────────────────────────────
+    # Primary headcount engine: classcan_density_v4 density-map regression.
+    #   float32 preferred for full-precision inference; int8 for faster Pi throughput.
+    #   Export: python scripts/export_to_tflite.py --mode density --weights ...
+    _DENSITY_FLOAT32 = str(MODELS_DIR / "classcan_density_float32.tflite")
+    _DENSITY_INT8    = str(MODELS_DIR / "classcan_density_int8.tflite")
+
+    # Secondary box detector: MobileNetV3-Large @ 416x416 (HUD bounding boxes).
     #   Export: python scripts/export_to_tflite.py --weights ckpt_ep60.weights.h5
     # Fallback: COCO MobileNetV2-SSD (smoke-test only — undercounts occluded students)
-    _PRIMARY_MODEL  = str(MODELS_DIR / "classcan_head_v1.tflite")
-    _FALLBACK_MODEL = str(MODELS_DIR / "mobilenet_v2_ssd_classcan.tflite")
+    _HEAD_MODEL      = str(MODELS_DIR / "classcan_head_v1.tflite")
+    _FALLBACK_MODEL  = str(MODELS_DIR / "mobilenet_v2_ssd_classcan.tflite")
 
-    MODEL_PATH      = _PRIMARY_MODEL if os.path.isfile(_PRIMARY_MODEL) else _FALLBACK_MODEL
+    # Resolved at startup — float32 first, int8 second, None if neither present
+    DENSITY_MODEL_PATH: str | None = (
+        _DENSITY_FLOAT32 if os.path.isfile(_DENSITY_FLOAT32) else
+        _DENSITY_INT8    if os.path.isfile(_DENSITY_INT8)    else
+        None
+    )
+
+    # Box detector path (classcan_head_v1 if exported, else COCO SSD fallback)
+    HEAD_MODEL_PATH = _HEAD_MODEL if os.path.isfile(_HEAD_MODEL) else _FALLBACK_MODEL
+
+    # Legacy alias used by Detector() and --model CLI flag
+    MODEL_PATH = HEAD_MODEL_PATH
+
     CONF_THRESHOLD  = 0.35            # Objectness threshold — calibrated for count accuracy (MAE 3.57, r=0.987)
                                       # (use 0.50 if falling back to COCO SSD model)
 
