@@ -1,57 +1,53 @@
 """
-CLASSCAN — TFLite Head Detector Wrapper
-========================================
+CLASSCAN — TFLite Detector Wrapper
+====================================
 Handles model loading, camera capture, inference, and post-processing for
-both the custom CLASSCAN head detector and the stock COCO SSD fallback.
+both the primary density-map regression model and the box detector / COCO fallback.
 
 Model Support
 -------------
-Two model formats are handled automatically (detected by output tensor count):
+Three model formats are handled by separate classes:
 
-1. CLASSCAN Head Detector (classcan_head_v1.tflite) — PRIMARY
-   Exported from Keras multi-scale MobileNetV3-Large+416 via scripts/export_to_tflite.py.
-   Architecture: 3-head FPN (P3 52×52 / P4 26×26 / P5 13×13), occupancy-based
-   target encoding, focal loss + smooth-L1, trained on SCUT-HEAD + local classroom.
-   The export wrapper bakes sigmoid + NMS into the TFLite graph, so output is:
-     • boxes  [1, MAX_DETECTIONS, 4]  float32  [ymin,xmin,ymax,xmax] normalized, padded
-     • scores [1, MAX_DETECTIONS]     float32  objectness scores, padded
-     • count  [1]                     int32    valid detection count
-   NMS is already applied — detector.py uses :count to slice valid detections only.
-   Class filter: ALL detections are 'head' (single-class model).
+1. DensityDetector — PRIMARY HEADCOUNT ENGINE
+   Model: classcan_density_v4.tflite (float32 or int8 quantized)
+   Architecture: MobileNetV3-Large backbone + progressive upsampling decoder
+   → 104×104 single-channel spatial density map (Softplus activation, 3.6M params).
+   Input:  [1, 416, 416, 3]  float32  normalized [0, 1] RGB
+   Output: [1, 104, 104]     float32  density surface (or [1, 104, 104, 1])
+   Count:  output.sum()  (integral of density map ≈ head count)
+   Validated on 407 images: MAE=2.13 overall, MAE=0.93 in 0-20 quadrant regime.
 
-2. COCO MobileNetV2-SSD fallback (mobilenet_v2_ssd_classcan.tflite)
-   Stock COCO model, used when classcan_head_v1.tflite is not present.
-   4-tensor output: boxes [1,N,4], classes [1,N], scores [1,N], num_detections [1].
-   Filters class 0 ('person') above conf_threshold.
-   NOTE: This fallback will undercount in real classroom conditions (fails on
-   desk-occluded distant rows). Only suitable for PoC pipeline smoke-testing.
+2. Detector — BOX DETECTOR (HUD overlay / visual bounding boxes)
+   Supports two sub-formats auto-detected by output tensor count:
+
+   2a. CLASSCAN Head Detector (classcan_head_v1.tflite)
+       MobileNetV3-Large @ 416×416, 3-head FPN, NMS baked into export wrapper.
+       Output: boxes [1,MAX,4] / scores [1,MAX] / count [1]
+       Best config: 2×2 tiled inference, full_obj=0.35, tile_obj=0.65, Soft-NMS.
+       F1=31.8%, MAE=3.84, r=0.986 (Pi 3B: 0.557 s/frame).
+
+   2b. COCO MobileNetV2-SSD fallback (mobilenet_v2_ssd_classcan.tflite)
+       Stock COCO model. 4-tensor output: boxes/classes/scores/num_detections.
+       NOTE: undercounts desk-occluded students — smoke-test only.
+
+Import chain (ai-edge-litert is the production Pi 3B package):
+  1. ai_edge_litert.interpreter  (official Google Pi wheel — preferred on device)
+  2. tensorflow.lite.python.interpreter  (dev-machine fallback via full TF install)
 
 Training & Model Evolution (summary)
-------------------------------------
-  - V2+300 baseline: 60 epochs (F1=19.5% at epoch 60).
-  - Soft-NMS (Gaussian decay σ=0.5 / thresh=0.3): improved V2 to F1=18.8%.
-  - CrowdHuman augment: evaluated on V2 and V3; produced domain mismatch / objectness collapse.
-  - MobileNetV3-Large @ 416×416 (epoch 60, Drive-verified):
-    P=35.2% / R=26.3% / F1=30.1% with soft-NMS (σ=0.5, thresh=0.3, obj=0.4).
-    Pi 3B CPU benchmark: 0.557 s/frame (XNNPACK).
-  - Count-based calibration: obj_thresh=0.35 yields MAE=3.57, r=0.987 (mean pred 33.6 vs true 34.8).
-  - Tiled inference (2x2 grid, overlap 0.2, full obj=0.35, tile obj=0.65, soft-NMS):
-    P=31.3%, R=32.4%, F1=31.8%, MAE=3.84, r=0.986 (locked-in box detection config).
-  - Density-map regression v2 (classcan_density_v4, MobileNetV3 + upsampling decoder, softplus):
-    Confirmed best model overall: MAE=2.13, r=0.9951, MAPE=16.1% on 407 val images.
-    Operating regime (0-20 crowd / quadrant scan): MAE = 0.93. Model side functionally complete.
+-------------------------------------
+  V2+300 baseline → MobileNetV3-Large 416×416 (F1=30.1%) → count calibration
+  (obj=0.35, MAE=3.57) → tiled inference (F1=31.8%, MAE=3.84) → QA review →
+  density-map regression v4 (MAE=2.13, r=0.9951, quadrant MAE=0.93).
 """
 
 import cv2
 import numpy as np
 
 try:
-    from ai_edge_litert.interpreter import Interpreter  # current, maintained package
+    from ai_edge_litert.interpreter import Interpreter  # production package (Pi 3B aarch64 wheel)
 except ImportError:
-    try:
-        from tflite_runtime.interpreter import Interpreter  # legacy package
-    except ImportError:
-        from tensorflow.lite.python.interpreter import Interpreter  # dev fallback
+    from tensorflow.lite.python.interpreter import Interpreter  # dev fallback (full TF install)
 
 
 # ─── NMS & Soft-NMS ──────────────────────────────────────────────────────────
@@ -184,7 +180,7 @@ def soft_non_max_suppression(
     return np.array(kept_boxes, dtype=np.float32), np.array(kept_scores, dtype=np.float32)
 
 
-# ─── Mock camera / detector for pipeline testing without hardware ─────────────
+# ─── Mock camera for pipeline testing without hardware ───────────────────────
 
 class _MockCapture:
     """Simulates camera frames when no physical camera is available."""
@@ -205,7 +201,140 @@ class _MockCapture:
         return True
 
 
-# ─── Detector ─────────────────────────────────────────────────────────────────
+def _open_camera(camera_index: int) -> object:
+    """Open camera with V4L2 on Linux, fallback for dev machines."""
+    cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
+    if not cap.isOpened():
+        cap = cv2.VideoCapture(camera_index)
+    return cap
+
+
+# ─── DensityDetector — primary headcount engine ───────────────────────────────
+
+class DensityDetector:
+    """
+    CLASSCAN primary headcount engine — density-map regression model.
+
+    Wraps classcan_density_v4.tflite (float32 or int8 quantized):
+      - Input:  [1, 416, 416, 3]  float32  normalized [0, 1] RGB
+      - Output: [1, 104, 104]     float32  spatial density map (Softplus)
+                (also handles [1, 104, 104, 1] — trailing channel dim squeezed out)
+      - Count:  round(output.sum())   (integral of density surface)
+
+    Achieves MAE = 2.13 overall, MAE = 0.93 in 0–20 quadrant regime.
+    No bounding boxes — use Detector alongside for optional HUD box overlay.
+
+    Parameters
+    ----------
+    model_path    : str   — path to classcan_density_v4.tflite
+    camera_index  : int   — OpenCV camera device index
+    force_mock    : bool  — skip camera open, return synthetic result
+    mock_count    : int   — simulated head count in mock mode
+    """
+
+    def __init__(
+        self,
+        model_path: str,
+        camera_index: int = 0,
+        force_mock: bool = False,
+        mock_count: int = 4,
+    ):
+        self.is_mock = force_mock
+
+        # ── Load TFLite model ──────────────────────────────────────────────
+        self.interpreter = Interpreter(model_path=model_path)
+        self.interpreter.allocate_tensors()
+
+        input_details      = self.interpreter.get_input_details()
+        self.input_idx     = input_details[0]["index"]
+        self.input_h       = input_details[0]["shape"][1]
+        self.input_w       = input_details[0]["shape"][2]
+
+        output_details         = self.interpreter.get_output_details()
+        self._out_density_idx  = output_details[0]["index"]
+
+        # ── Camera ────────────────────────────────────────────────────────
+        if force_mock:
+            self.cap         = _MockCapture(mock_count=mock_count)
+            self._mock_count = mock_count
+            print(f"[DensityDetector] Mock mode — simulating count={mock_count}")
+        else:
+            self.cap = _open_camera(camera_index)
+            if not self.cap.isOpened():
+                raise RuntimeError(
+                    f"[DensityDetector] Cannot open camera device {camera_index}. "
+                    "Check: camera connected? correct device index? V4L2 driver loaded?"
+                )
+
+        print(f"[DensityDetector] Model loaded: {model_path}")
+        print(f"[DensityDetector] Input size:   {self.input_w}×{self.input_h}")
+
+    # ── Frame capture ──────────────────────────────────────────────────────
+
+    def capture_frame(self) -> np.ndarray:
+        """Grab latest frame from camera. Returns BGR ndarray."""
+        ret, frame = self.cap.read()
+        if not ret:
+            raise RuntimeError("[DensityDetector] Failed to capture frame from camera")
+        return frame
+
+    # ── Preprocessing ──────────────────────────────────────────────────────
+
+    def _preprocess(self, frame: np.ndarray) -> np.ndarray:
+        """Resize + normalize to [1, H, W, 3] float32 in [0, 1]."""
+        resized = cv2.resize(frame, (self.input_w, self.input_h))
+        rgb     = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+        return np.expand_dims(rgb.astype(np.float32) / 255.0, axis=0)
+
+    # ── Inference ──────────────────────────────────────────────────────────
+
+    def predict(self, frame: np.ndarray) -> dict:
+        """
+        Run density-map inference on a BGR frame.
+
+        Returns
+        -------
+        dict with keys:
+            "count"       : int    — rounded headcount estimate
+            "raw_sum"     : float  — unrounded integral of density map
+            "density_map" : ndarray(104, 104) float32 — raw density surface
+
+        In mock mode returns synthetic result without touching the model.
+        """
+        if self.is_mock:
+            fake_map = np.zeros((104, 104), dtype=np.float32)
+            return {
+                "count":       self._mock_count,
+                "raw_sum":     float(self._mock_count),
+                "density_map": fake_map,
+            }
+
+        tensor = self._preprocess(frame)
+        self.interpreter.set_tensor(self.input_idx, tensor)
+        self.interpreter.invoke()
+
+        raw = self.interpreter.get_tensor(self._out_density_idx)  # (1,104,104) or (1,104,104,1)
+        density_map = np.squeeze(raw).astype(np.float32)          # → (104, 104)
+        raw_sum     = float(density_map.sum())
+        count       = max(0, round(raw_sum))
+
+        return {
+            "count":       count,
+            "raw_sum":     raw_sum,
+            "density_map": density_map,
+        }
+
+    # ── Cleanup ────────────────────────────────────────────────────────────
+
+    def release(self):
+        if hasattr(self, "cap"):
+            self.cap.release()
+
+    def __del__(self):
+        self.release()
+
+
+# ─── Detector — box detector for HUD bounding boxes ──────────────────────────
 
 class Detector:
     """
@@ -281,17 +410,15 @@ class Detector:
 
         # ── Camera ────────────────────────────────────────────────────────
         if force_mock:
-            self.cap = _MockCapture(mock_count=mock_count)
+            self.cap         = _MockCapture(mock_count=mock_count)
             self._mock_count = mock_count
             print(f"[Detector] Mock mode — simulating {mock_count} detections")
         else:
-            self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
-            if not self.cap.isOpened():
-                self.cap = cv2.VideoCapture(camera_index)  # Fallback (non-Linux dev)
+            self.cap = _open_camera(camera_index)
             if not self.cap.isOpened():
                 raise RuntimeError(
                     f"[Detector] Cannot open camera device {camera_index}. "
-                    f"Check: camera connected? correct device index? V4L2 driver loaded?"
+                    "Check: camera connected? correct device index? V4L2 driver loaded?"
                 )
 
         print(f"[Detector] Model loaded: {model_path}")

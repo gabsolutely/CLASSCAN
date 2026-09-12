@@ -3,14 +3,13 @@
 # Computer vision & camera
 opencv-python-headless>=4.9
 
-# TFLite inference (install tflite-runtime on-device; use tensorflow as fallback on dev machines)
-# On Pi (ARM): pip install tflite-runtime
-# On dev machine: pip install tensorflow
-# tflite-runtime>=2.14  # uncomment on device
+# TFLite inference — ai-edge-litert is the production package for Pi 3B (aarch64 wheel).
+# On Pi:          pip install ai-edge-litert
+# On dev machine: pip install tensorflow  (provides tensorflow.lite fallback in detector.py)
+ai-edge-litert>=1.0
 
 # Serial (USB serial to ESP32) — optional for bench testing, used when ESP32 connected
 pyserial>=3.5
 
 # Web server uses stdlib http.server — no extra web framework needed
 # JSON is stdlib — no package needed
-# pip install ai-edge-litert
