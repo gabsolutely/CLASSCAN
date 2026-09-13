@@ -10,7 +10,7 @@
 
 | Item | Category | Component & Specification | Qty | Unit Cost (PHP) | Total Cost (PHP) | Est. Cost (USD) | Sourcing / Vendor | Hardware Status |
 |---|---|---|:---:|:---:|:---:|:---:|---|:---:|
-| **1** | Compute Engine | **Raspberry Pi 3 Model B (1GB RAM)**<br>• Quad-core 64-bit ARM Cortex-A53 @ 1.2 GHz<br>• Onboard Wi-Fi (802.11n) & Bluetooth 4.1<br>• 4× USB 2.0, HDMI, CSI, DSI, Micro-SD | 1 | ₱2,100.00 | ₱2,100.00 | $37.50 | Local Electronics / Authorized Reseller | **In Hand & Active** |
+| **1** | Compute Engine | **Raspberry Pi 3 Model B (1GB RAM)**<br>• Quad-core 64-bit ARM Cortex-A53 @ 1.2 GHz<br>• Onboard Wi-Fi (802.11n) & Bluetooth 4.1<br>• 4× USB 2.0, HDMI, CSI, DSI, Micro-SD | 1 | ₱1,400.00 | ₱1,400.00 | $25.00 | Used bundle (incl. 16GB SD card) / Local secondhand | **In Hand & Active** |
 | **2** | Microcontroller | **ESP32-WROOM-32 DevKit V1 (30-pin)**<br>• Dual-core Xtensa 32-bit LX6 @ 240 MHz<br>• 520 KB SRAM, 4 MB Flash<br>• Native ADC, PWM timers, Micro-USB UART | 1 | ₱190.00 | ₱190.00 | $3.40 | Shopee / Lazada | **In Hand & Active** |
 | **3** | Vision Sensor | **OmniVision OV4689 4MP USB Camera Module**<br>• 1/3" Back-Side Illuminated (BSI) sensor<br>• Driverless UVC compliance via USB Type-C/A (4-pin harness)<br>• Wide-angle M12 lens, high low-light sensitivity | 1 | ₱1,150.00 | ₱1,150.00 | $20.50 | Sourced / Online Electronics Importer | **In Hand & Active** |
 | **4** | Pan/Tilt Actuators | **TowerPro MG90S Metal-Gear Micro Servos**<br>• Operating voltage: 4.8V – 6.0V<br>• Stall torque: 2.2 kg·cm @ 6V<br>• Metal gearing for continuous pan/tilt durability | 2 | ₱110.00 | ₱220.00 | $3.90 | Shopee / Lazada | **In Hand** |
@@ -28,10 +28,10 @@
 
 | Summary Category | Amount (PHP) | Amount (USD) |
 |---|:---:|:---:|
-| **Compute & Electronics (Pi 3B, ESP32, Camera, Servos, Display)** | ₱3,820.00 | $68.20 |
+| **Compute & Electronics (Pi 3B, ESP32, Camera, Servos, Display)** | ₱3,120.00 | $55.70 |
 | **Power, Sensing & Illumination System** | ₱415.00 | $7.40 |
 | **Enclosure, Cabling & Hardware Fasteners** | ₱430.00 | $7.70 |
-| **Total Estimated Hardware Investment** | **₱4,665.00** | **$83.30** |
+| **Total Estimated Hardware Investment** | **₱3,965.00** | **$70.80** |
 
 ---
 

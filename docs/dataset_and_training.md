@@ -160,6 +160,8 @@ Following external QA review (PeaNat), a density-map regression model was constr
 
 ## 6. TFLite Export
 
+### 6a. Box Detector (`classcan_head_v1.tflite`)
+
 The trained Keras checkpoint (epoch-60 MobileNetV3-Large) is exported via `scripts/export_to_tflite.py`:
 
 ```bash
@@ -178,11 +180,41 @@ The export wrapper outputs a **clean 3-tensor interface** to `detector.py`:
 | `scores` | `[1, 100]`    | float32 | Objectness scores, zero-padded |
 | `count`  | `[1]`         | int32   | Valid detections — slice with `[:count]` |
 
+### 6b. Density-Map Regression Model (`classcan_density_float32.tflite`)
+
+The `classcan_density_v4` Keras checkpoint is exported via `scripts/export_to_tflite.py` with `--mode density`:
+
+```bash
+# Export classcan_density_v4 to float32 TFLite (PRIMARY deployment model):
+python scripts/export_to_tflite.py \
+    --mode    density \
+    --weights path/to/classcan_density_v4.weights.h5 \
+    --output  models/classcan_density_float32.tflite \
+    --quant   float32
+```
+
+**Export Status:** ✅ Confirmed working. File size: **13.77 MB** (float32). Verified running on physical Pi 3B at **702.3 ms/frame** via `ai_edge_litert`.
+
+**Int8 export status:** ❌ Deferred. XNNPack raises "failed to prepare" at runtime due to `UpSampling2D(bilinear)` layers lacking int8 kernel support. Fix requires retraining the decoder using `Conv2DTranspose` instead — not pursued to protect the hard-won v4 checkpoint.
+
+The density model outputs a **single-tensor interface**:
+
+| Output | Shape | dtype | Description |
+|---|---|---|---|
+| `density_map` | `[1, 104, 104]` or `[1, 104, 104, 1]` | float32 | Spatial density surface; `.sum()` gives the headcount |
+
+**Count extraction:**
+```python
+raw = interpreter.get_tensor(output_details[0]["index"])  # (1, 104, 104) or (1, 104, 104, 1)
+density_map = np.squeeze(raw).astype(np.float32)          # → (104, 104)
+headcount = max(0, round(float(density_map.sum())))
+```
+
 ---
 
 ## 7. Model Signature Verification
 
-After export, verify tensor signatures:
+### Box Detector (`classcan_head_v1.tflite`)
 
 ```python
 from ai_edge_litert.interpreter import Interpreter
@@ -190,14 +222,14 @@ from ai_edge_litert.interpreter import Interpreter
 interpreter = Interpreter(model_path="models/classcan_head_v1.tflite")
 interpreter.allocate_tensors()
 
-print("--- CLASSCAN TFLite Model Inspection ---")
+print("--- CLASSCAN Box Detector TFLite Inspection ---")
 for d in interpreter.get_input_details():
     print(f"  INPUT  shape={d['shape']}  dtype={d['dtype'].__name__}")
 for d in interpreter.get_output_details():
     print(f"  OUTPUT shape={d['shape']}  dtype={d['dtype'].__name__}  name={d['name']}")
 ```
 
-### Expected Output:
+#### Expected Output:
 ```
   INPUT  shape=[1, 416, 416, 3]  dtype=float32
   OUTPUT shape=[1, 100, 4]        dtype=float32  name=boxes
@@ -205,7 +237,27 @@ for d in interpreter.get_output_details():
   OUTPUT shape=[1]                dtype=int32    name=count
 ```
 
+### Density Model (`classcan_density_float32.tflite`)
+
+```python
+interpreter = Interpreter(model_path="models/classcan_density_float32.tflite")
+interpreter.allocate_tensors()
+
+print("--- CLASSCAN Density Model TFLite Inspection ---")
+for d in interpreter.get_input_details():
+    print(f"  INPUT  shape={d['shape']}  dtype={d['dtype'].__name__}")
+for d in interpreter.get_output_details():
+    print(f"  OUTPUT shape={d['shape']}  dtype={d['dtype'].__name__}")
+```
+
+#### Expected Output:
+```
+  INPUT  shape=[1, 416, 416, 3]  dtype=float32
+  OUTPUT shape=[1, 104, 104, 1]  dtype=float32
+```
+
 ---
+
 
 ## 8. Security Notice
 

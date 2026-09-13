@@ -30,25 +30,33 @@ All benchmarks measured on a **Raspberry Pi 3 Model B (1GB RAM, Quad-Core ARM Co
 
 ### Latency Profile Breakdown (Per-Frame Execution Time):
 
+Two TFLite models are deployed. Latency measured on physical Pi 3B CPU (XNNPACK delegate, `ai_edge_litert`, float32):
+
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                  TOTAL FRAME CYCLE: ~260 ms                 │
-│                                                              │
-│  [Capture]     [Preprocess]    [TFLite Inference]     [HUD]  │
-│   ~15 ms          ~8 ms             ~220 ms          ~15 ms  │
-│  (V4L2 Grab)   (Resize+RGB)    (YOLOLite Nano)     (Draw+Enc)│
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│     DENSITY MODEL (classcan_density_v4, float32 TFLite)         │
+│              TOTAL FRAME CYCLE: ~740 ms                         │
+│  [Capture]  [Preprocess]  [TFLite Inference]  [Post]   [HUD]   │
+│   ~15 ms       ~8 ms          ~702 ms          ~2 ms   ~15 ms  │
+├──────────────────────────────────────────────────────────────────┤
+│     BOX DETECTOR (MobileNetV3-Large+416, float32 TFLite)        │
+│              TOTAL FRAME CYCLE: ~600 ms                         │
+│  [Capture]  [Preprocess]  [TFLite Inference]  [NMS]    [HUD]   │
+│   ~15 ms       ~8 ms          ~557 ms          ~5 ms   ~15 ms  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-| Pipeline Stage | Module / Function | Avg. Execution Time | CPU Load Impact |
+Both are within budget for the **periodic snapshot + change-triggered** architecture (not continuous stream).
+
+| Pipeline Stage | Module / Function | Density Model | Box Detector |
 |---|---|:---:|:---:|
-| **Frame Capture** | `cv2.VideoCapture.read()` (V4L2) | 12 – 18 ms | Minimal (< 3%) |
-| **Change Differencing** | `ChangeTrigger.check()` (Gaussian Blur + AbsDiff) | 4 – 7 ms | Minimal (< 4%) |
-| **Image Preprocessing** | `Detector._preprocess()` (Resize 320×320 + RGB convert) | 6 – 10 ms | Low (< 5%) |
-| **TFLite Neural Inference** | `Interpreter.invoke()` (Quantized INT8 / Float32) | 195 – 240 ms | Burst (~50% across 4 cores) |
-| **NMS & Zone Parsing** | Bounding box thresholding & Zone bucketing | 1 – 3 ms | Negligible |
-| **HUD Overlay & MJPEG Encode**| `draw_hud_overlay()` + `cv2.imencode('.jpg')` | 12 – 18 ms | Low (< 8%) |
-| **Serial JSON Dispatch** | `SerialBridge.send_count()` (PySerial @ 115200) | < 1 ms | Negligible |
+| **Frame Capture** | `cv2.VideoCapture.read()` (V4L2) | 12 – 18 ms | 12 – 18 ms |
+| **Change Differencing** | `ChangeTrigger.check()` (Gaussian Blur + AbsDiff) | 4 – 7 ms | 4 – 7 ms |
+| **Image Preprocessing** | Resize 416×416 + normalize [0,1] | 6 – 10 ms | 6 – 10 ms |
+| **TFLite Neural Inference** | `Interpreter.invoke()` (float32, XNNPACK) | **702.3 ms** | **557 ms** |
+| **Post-processing** | Density map sum / Soft-NMS + zone bucketing | ~2 ms | ~5 ms |
+| **HUD Overlay & MJPEG Encode** | `draw_hud_overlay()` + `cv2.imencode('.jpg')` | 12 – 18 ms | 12 – 18 ms |
+| **Serial JSON Dispatch** | `SerialBridge.send_count()` (PySerial @ 115200) | < 1 ms | < 1 ms |
 
 ---
 
@@ -86,8 +94,10 @@ $$\text{Mean Absolute Error (MAE)} = \frac{1}{N} \sum_{i=1}^N |\text{Detected Co
 
 ## 5. Custom CLASSCAN Head Detector — Inference Results
 
-Results for the trained Keras multi-scale MobileNetV2 head detector.
-Best checkpoint: **epoch 55** (box_loss_weight=2.0 phase, Drive-verified).
+Results for the trained Keras multi-scale MobileNetV2 head detector (the initial baseline architecture).
+Final confirmed best checkpoint for the V2 baseline: **epoch 60** (F1=19.5%). See Section 11 for the final MobileNetV3-Large+416 architecture that supersedes this entirely.
+
+> **Note on box_loss_weight=2.0:** Tested at epoch 55 hoping to tighten box boundaries. Val_loss was marginally lower (0.2519 vs 0.2531 at ep60) but it made box results **worse** (larger/looser boxes), not better. Ruled out. Epoch 60 remains the final baseline checkpoint.
 
 ### 5a. YOLOLite Nano Intermediate Result (Roboflow, Abandoned)
 
@@ -166,10 +176,13 @@ OV4689 camera **is in hand and confirmed functional** at `/dev/video0` (MJPG up 
 | Test | Status | Notes |
 |---|---|---|
 | Camera enumeration (`camera_verify.py --camera-only`) | ✅ **Done** | Confirmed at `/dev/video0` |
-| Driver mode verification | ✅ **Done** | Confirmed driver supports `auto_exposure=1` (Manual) and `3` (Aperture Priority). Manual mode successfully engaged. |
-| Exposure sweep (11-shot) | ✅ **Done** | Captured 11-shot sweep at 1280×720 / MJPG / gain=32 across exposure values 25, 50, 100, 166, 250, 400, 600, 800, 1000, 1400, 1800; stored in `~/camera_tests/` on Pi. |
-| Exposure & gain calibration | ⚠️ **In progress** | Visual inspection of sweep photos via `scp` to select optimal exposure, followed by fine-tuning gain sweep at that exposure. |
-| First live frame → TFLite inference (end-to-end test) | ❌ **Pending** | Blocked on exposure calibration completion + exporting `classcan_head_v1.tflite` from epoch-60 checkpoint. |
+| Driver mode verification | ✅ **Done** | `auto_exposure=1` (Manual) and `3` (Aperture Priority) confirmed. Manual mode engaged. |
+| Exposure sweep (11-shot) | ✅ **Done** | 1280×720 / MJPG / gain=32 across exposure 25–1800; stored `~/camera_tests/` on Pi. |
+| **4-variable sweep (225-shot)** | ✅ **Done** | exposure × gain × brightness × gamma, automated ImageMagick brightness scoring. **Root cause:** default `gamma=110` was crushing images; `gamma=300` fixed it. |
+| **Camera brightness baseline** | ✅ **Done** | Known-good: 640×480 MJPEG @30fps, `exposure=500 / gain=192 / brightness=64 / gamma=300`. Brightness OK. |
+| **TFLite float32 export (density model)** | ✅ **Done** | `classcan_density_v4` → 13.77 MB float32 TFLite, confirmed **702.3 ms/frame** on Pi 3B via `ai_edge_litert`. Int8 deferred (XNNPack bilinear incompatibility). |
+| Camera color/white-balance calibration | ⚠️ **In progress** | Brightness OK but image gray/desaturated. Next: narrow sweep targeting color/WB controls. |
+| First live frame → TFLite density inference | ❌ **Pending** | Blocked on color calibration. |
 | Single student — PCU-D classroom | ❌ **Pending** | — |
 | Full class (seated, fluorescent) | ❌ **Pending** | — |
 
@@ -269,17 +282,17 @@ Methodology note: box-IoU-matching a person detector against head-only ground tr
 
 ---
 
-## 9. Architecture Speed Benchmark — MobileNetV3-Large @ 416×416 (Pi 3B)
+## 9. Architecture Speed Benchmarks (Pi 3B CPU)
 
-Pure architecture speed test (random/untrained weights) to evaluate the cost of a resolution + backbone upgrade before committing to a full training run.
+All measurements on physical Pi 3B (Quad-Core ARM Cortex-A53 @ 1.2 GHz, `ai_edge_litert`, XNNPACK delegate, float32).
 
-| Model | Input Resolution | Inference Time (avg, 5 warmup iters) | Delegate | Notes |
+| Model | Type | Input | Pi 3B Inference Time | Notes |
 |---|:---:|:---:|:---:|---|
-| **MobileNetV3-Large** | 416×416 | **0.557 s** | XNNPACK | ~2.8× slower than Colab T4 GPU (0.199s), not the 20–50× worst case feared |
-| **MobileNetV2** (baseline) | 300×300 | **~0.22 s** | TFLite default | Standard baseline |
+| MobileNetV2 (baseline) | Box Detector | 300×300 | **~0.22 s** | Old baseline; superseded |
+| **MobileNetV3-Large (box detector)** | Box Detector | 416×416 | **0.557 s** | ~2.8× Colab T4 (0.199s); confirmed viable for snapshot use case |
+| **`classcan_density_v4` (float32 TFLite)** | Density Map | 416×416 → 104×104 | **702.3 ms** | Confirmed on real Pi 3B post-export; int8 deferred (XNNPack `UpSampling2D(bilinear)` unsupported — fix needs `Conv2DTranspose` retrain) |
 
-Measured on physical Pi 3B CPU using `ai_edge_litert.interpreter`. Real hardware-verified number.
-**Conclusion:** At ~0.56 s/frame on the Cortex-A53, inference latency is well within budget for the periodic snapshot + change-triggered re-scan architecture (non-continuous stream). Bump to MobileNetV3-Large at 416×416 was approved for full training.
+**Conclusion:** Both current models are within budget for periodic-snapshot + change-triggered architecture. Density model (702ms) is the primary inference path; box detector (557ms) used only for optional HUD bounding box rendering.
 
 ---
 
@@ -458,15 +471,15 @@ The expected operational error per quadrant is **under 1 student**, proving the 
 
 ## 18. Domain Gap Literature & Public Dataset Investigation
 
-### 18a. RPEE-Heads Benchmark (2024)
-Investigated the newly published **RPEE-Heads** dataset (arXiv/IEEE Access 2024, CC BY-SA 4.0, [doi:10.34735/ped.2024.2](https://doi.org/10.34735/ped.2024.2), 1.1 GB):
-- Contains 9.69% extreme small heads ($< 6\text{ px}^2$), compared to SCUT-HEAD's 0.03%.
-- However, scene domains are railway station concourses and event gates rather than classrooms. Public datasets will not resolve the specific desk-occlusion domain gap of Philippine classrooms.
+### 18a. RPEE-Heads Benchmark (2024) — Investigated, Deferred
+Investigated the newly published **RPEE-Heads** dataset (arXiv/IEEE Access 2024, CC BY-SA 4.0, [doi:10.34735/ped.2024.2](https://doi.org/10.34735/ped.2024.2), ~1.1 GB, near-YOLO annotation format):
+- Strong small-head coverage: 9.69% of boxes under $6\text{ px}^2$ vs. SCUT-HEAD's 0.03%.
+- **Verdict: Explicitly deferred.** Scenes are railway concourses and event venue gates — not classrooms. Would not fix desk-occlusion or the behavioral domain gap of Philippine classrooms. Documented as a future avenue if generalized small-head robustness becomes a post-PoC priority.
 
 ### 18b. Domain Transfer Confirmation in Literature
-Recent computer vision literature confirms that object detectors trained on standard public datasets drop from **88%–91% mAP** in-domain down to **56.7% mAP** when transferred to uncalibrated real-world surveillance domains without domain adaptation. This affirms our strategy:
+Recent computer vision literature confirms that object detectors trained on standard public datasets drop from **88%–91% mAP** in-domain down to **56.7% mAP** when transferred to uncalibrated real-world surveillance domains without domain adaptation. This affirms the strategy:
 - The AI/model engineering side of CLASSCAN is **functionally complete**.
-- Further algorithmic tuning on public datasets yields diminishing returns; engineering effort is now directed entirely to **camera exposure tuning, sensor calibration, and physical edge integration**.
+- Further algorithmic tuning on public datasets yields diminishing returns; engineering effort is now directed entirely to **camera color/white-balance calibration and live end-to-end integration**.
 
 
 
