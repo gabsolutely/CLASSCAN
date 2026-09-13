@@ -126,7 +126,26 @@ The `ZoneReconciler` verifies that the sum of quadrant counts matches the full-r
 
 ## 6. Camera Exposure & Gain Calibration (OV4689 / V4L2)
 
-Under standard fluorescent or diffuse indoor classroom lighting, the OV4689 sensor's default hardware auto-exposure (AEC) tends to underexpose frames. Severe underexposure darkens head/hair contours and lowers bounding box confidence in the TFLite inference model.
+Under standard fluorescent or diffuse indoor classroom lighting, the OV4689 sensor's default hardware auto-exposure (AEC) tends to underexpose frames. After systematic sweeping, the root cause was identified as the **gamma control**, not exposure or gain.
+
+### Key Finding: Default Gamma Crushes Image
+- Default `gamma=110` produces completely black images regardless of exposure or gain values.
+- Setting `gamma=300` (the maximum tested) was the critical fix.
+- Once gamma is corrected, brightness becomes manageable with normal exposure/gain values.
+
+### Known-Good Baseline Configuration:
+```bash
+# Disable auto-exposure:
+v4l2-ctl -d /dev/video0 -c auto_exposure=1
+
+# Confirmed working baseline (640x480 MJPEG @ 30 FPS):
+v4l2-ctl -d /dev/video0 -c exposure_time_absolute=500
+v4l2-ctl -d /dev/video0 -c gain=192
+v4l2-ctl -d /dev/video0 -c brightness=64
+v4l2-ctl -d /dev/video0 -c gamma=300
+```
+
+> **Note:** Brightness is acceptable at this baseline. The remaining calibration task is color/white-balance — the image at these settings is correctly bright but gray/desaturated. Next step is a narrow sweep around this neighbourhood (exposure ~300–700, gain ~128–220, brightness ~32–64, gamma ~250–300) specifically targeting white-balance and color controls.
 
 ### V4L2 Parameter Tuning:
 1. List available camera controls on `/dev/video0`:
@@ -138,17 +157,18 @@ Under standard fluorescent or diffuse indoor classroom lighting, the OV4689 sens
    # 1 = Manual Mode, 3 = Aperture Priority / Auto
    v4l2-ctl -d /dev/video0 -c auto_exposure=1
    ```
-3. Tune exposure time and analog gain to match room ambient lux:
+3. Apply the known-good baseline and verify:
    ```bash
-   # Recommended baseline for typical classroom fluorescent lighting (300-500 lux):
    v4l2-ctl -d /dev/video0 -c exposure_time_absolute=500
-   v4l2-ctl -d /dev/video0 -c gain=64
+   v4l2-ctl -d /dev/video0 -c gain=192
+   v4l2-ctl -d /dev/video0 -c brightness=64
+   v4l2-ctl -d /dev/video0 -c gamma=300
    ```
-4. Verify image brightness and dynamic range using the test tool:
+4. Verify image brightness using the test tool:
    ```bash
    python scripts/camera_verify.py --camera-only --save-raw
    ```
-   Inspect `camera_raw_test.jpg` to ensure heads and background desk rows are cleanly separated without blown-out fluorescent ceiling glare.
+   Inspect `camera_raw_test.jpg` to confirm heads and desk rows are cleanly visible.
 
 ---
 

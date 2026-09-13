@@ -10,7 +10,7 @@ This document details the engineering principles, architectural trade-offs, and 
 Running neural network inference and computer vision pipelines on constrained single-board computers (SBCs) like the Raspberry Pi 3B requires maximizing available CPU cycles, memory bandwidth, and thermal headroom. Prior research in edge AI prototyping often explores custom debloated Android builds (e.g., LineageOS/Android Things) for lightweight execution.
 
 ### Decision
-CLASSCAN deliberately standardizes on **Raspberry Pi OS Lite (64-bit Debian Bookworm/Bullseye)**.
+CLASSCAN deliberately standardizes on **Raspberry Pi OS Lite (64-bit Debian 13 / Trixie)**.
 
 ### Rationale & Trade-offs
 1. **Zero Display-Server Overhead:**
