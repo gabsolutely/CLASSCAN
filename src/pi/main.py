@@ -60,6 +60,8 @@ def parse_args():
                         help=f"Serial baud rate (default: {cfg.SERIAL_BAUD})")
     parser.add_argument("--mock-count", type=int, default=4,
                         help="Initial student count in mock simulation (default: 4)")
+    parser.add_argument("--skip-boot-check", action="store_true",
+                        help="Skip the hardware self-test boot sequence entirely")
     return parser.parse_args()
 
 
@@ -76,7 +78,15 @@ def main():
     cfg.SERIAL_PORT        = args.serial_port
     cfg.SERIAL_BAUD        = args.serial_baud
 
-    run_boot_sequence(fan_gpio=None, skip_delays=False)  # No GPIO control in this script
+    # Hardware self-test
+    if not args.mock and not args.skip_boot_check:
+        run_boot_sequence(
+            camera_index=args.camera,
+            model_path=cfg.MODEL_PATH,
+            density_model_path=cfg.DENSITY_MODEL_PATH,
+            serial_port=cfg.SERIAL_PORT,
+            serial_baud=cfg.SERIAL_BAUD,
+        )
 
     print("=" * 60)
     print("  CLASSCAN — Pi 3B System Active")

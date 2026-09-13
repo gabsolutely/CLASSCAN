@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 """
 CLASSCAN — System Boot Sequence
-Runs a hardware self-test on startup before the main detection loop begins.
-Verifies camera, GPIO/fan, and model load before handing off to main.py.
+Runs a real hardware self-test on startup before the main detection loop
+begins. Each check actually probes the corresponding subsystem — camera,
+TFLite runtime, model file, serial port — rather than assuming success.
+
+Critical checks (camera, model files, serial) prompt interactively on
+failure: [R]etry the check, [C]ontinue anyway, or [A]bort the boot.
+Non-critical checks (TFLite runtime import) just print [FAIL] and move on,
+since retrying an import failure without changing the environment first
+(e.g. installing a package) can't succeed anyway.
 """
 
+import os
 import sys
 import time
+
 
 # ---- tiny helpers -----------------------------------------------------
 
@@ -18,68 +27,170 @@ def _type_out(text, delay=0.012):
         time.sleep(delay)
     print()
 
-def _step(label, ok=True, delay=0.35):
+
+def _step(label, ok=True, delay=0.0):
     time.sleep(delay)
     status = "[ OK ]" if ok else "[FAIL]"
     print(f"{status} {label}")
+    return ok
 
-def _bar(duration=0.6, width=24):
-    for i in range(width + 1):
-        pct = int((i / width) * 100)
-        sys.stdout.write(f"\r    [{'#' * i}{'.' * (width - i)}] {pct:3d}%")
-        sys.stdout.flush()
-        time.sleep(duration / width)
-    print()
+
+def _prompt_on_fail(check_fn, *args, **kwargs):
+    """
+    Runs check_fn(*args, **kwargs) repeatedly. check_fn must return True/False.
+    On failure, prompts the user: [R]etry / [C]ontinue / [A]bort.
+      - Retry: runs the check again from scratch.
+      - Continue: treats this check as skipped, boot proceeds.
+      - Abort: raises SystemExit, boot stops here.
+    Returns True if the check ultimately passed, False if continued past a failure.
+    """
+    while True:
+        result = check_fn(*args, **kwargs)
+        if result:
+            return True
+
+        while True:
+            choice = input("        [R]etry / [C]ontinue anyway / [A]bort boot? ").strip().lower()
+            if choice in ("r", "retry"):
+                break  # breaks inner loop, re-runs check_fn
+            elif choice in ("c", "continue"):
+                return False
+            elif choice in ("a", "abort"):
+                print("[BOOT] Aborted by user.")
+                raise SystemExit(1)
+            else:
+                print("        Please enter R, C, or A.")
+        # loop back and retry check_fn
+
+
+# ---- individual checks --------------------------------------------
+
+def _check_power():
+    """
+    The Pi doesn't expose a way to read rail voltage without extra sensor
+    hardware (e.g. INA219), so this isn't a true voltage check. What we can
+    say for certain is: if this code is executing, the board is powered.
+    The fan (2-pin, no PWM/control line) is wired straight to the same
+    rail, so if the Pi is up, the fan rail is live too.
+    """
+    return _step("Pi powered — fan rail live (2-pin fan, no separate control)")
+
+
+def _check_camera(camera_index=0):
+    """Actually try to open the camera device with OpenCV."""
+    try:
+        import cv2
+    except ImportError as e:
+        _step(f"OpenCV not available ({e})", ok=False)
+        return False
+
+    dev_path = f"/dev/video{camera_index}"
+    if not os.path.exists(dev_path):
+        _step(f"Camera device not found ({dev_path})", ok=False)
+        return False
+
+    cap = cv2.VideoCapture(camera_index)
+    is_open = cap.isOpened()
+    if is_open:
+        cap.release()
+        _step(f"Camera opened ({dev_path})")
+        return True
+    else:
+        _step(f"Camera device exists but could not be opened ({dev_path})", ok=False)
+        return False
+
+
+def _check_tflite_runtime():
+    """Actually import the TFLite runtime this project depends on."""
+    try:
+        import ai_edge_litert  # noqa: F401
+        _step("TFLite runtime available (ai_edge_litert)")
+        return True
+    except ImportError:
+        try:
+            import tflite_runtime  # noqa: F401
+            _step("TFLite runtime available (tflite_runtime)")
+            return True
+        except ImportError as e:
+            _step(f"No TFLite runtime importable ({e})", ok=False)
+            return False
+
+
+def _check_model_file(model_path):
+    """Actually check the configured model file exists on disk."""
+    if model_path and os.path.exists(model_path):
+        _step(f"Model file found ({model_path})")
+        return True
+    else:
+        _step(f"Model file missing ({model_path})", ok=False)
+        return False
+
+
+def _check_serial(serial_port, baud):
+    """open the configured serial port."""
+    try:
+        import serial
+    except ImportError as e:
+        _step(f"pyserial not available ({e})", ok=False)
+        return False
+
+    try:
+        ser = serial.Serial(serial_port, baud, timeout=0.5)
+        ser.close()
+        _step(f"Serial port opened ({serial_port} @ {baud})")
+        return True
+    except Exception as e:
+        _step(f"Serial port unavailable ({serial_port}): {e}", ok=False)
+        return False
 
 
 # ---- boot sequence ------------------------------------------------------
 
-def run_boot_sequence(fan_gpio=None, skip_delays=False):
+def run_boot_sequence(
+    camera_index=0,
+    model_path=None,
+    density_model_path=None,
+    serial_port=None,
+    serial_baud=115200,
+    skip_delays=False,
+):
     """
-    Runs the full CLASSCAN boot sequence: banner, subsystem checks,
-    fan spin-up, then hands off control.
+    Runs the CLASSCAN boot sequence with real subsystem checks.
 
-    fan_gpio: optional GPIO handle/pin object to trigger fan spin-up.
-              If None, fan step is simulated/logged only.
-    skip_delays: set True for fast CI/test runs (no artificial timing).
+    Critical checks (camera, model files, serial) prompt interactively on
+    failure via _prompt_on_fail: Retry / Continue / Abort. Non-critical
+    checks (TFLite runtime import) just print [FAIL] and move on.
     """
-    d = 0.0 if skip_delays else 0.35
-
     print("=" * 52)
-    _type_out("  CLASSCAN  //  Classroom Occupancy Sensing Turret", delay=0 if skip_delays else 0.012)
+    _type_out("  CLASSCAN  //  Classroom Occupancy Sensing Turret",
+              delay=0 if skip_delays else 0.012)
     print("=" * 52)
     print()
 
-    print("[BOOT] Initializing subsystems...\n")
+    _type_out("[BOOT] Initializing subsystems...\n")
 
-    # Power / rail check
-    _step("Power rail nominal (5V bus)", delay=d)
+    _check_power()
 
-    # Fan check
-    time.sleep(d)
-    print("[BOOT] Spinning up cooling fan...")
-    if fan_gpio is not None:
-        try:
-            fan_gpio.on()
-        except Exception as e:
-            _step(f"Fan GPIO trigger failed ({e})", ok=False, delay=0)
-    _bar(duration=0.7 if not skip_delays else 0, width=24)
-    _step("Cooling fan online", delay=d)
+    # Critical: camera
+    _prompt_on_fail(_check_camera, camera_index)
 
-    # Camera check
-    _step("Camera module detected (/dev/video0)", delay=d)
-    _step("Sensor exposure profile loaded", delay=d)
+    # Non-critical: runtime import (retrying without fixing the env won't help)
+    _check_tflite_runtime()
 
-    # Model / compute check
-    _step("TFLite runtime initialized", delay=d)
-    _step("Detection model loaded (density_v4)", delay=d)
+    # Critical: model files
+    if model_path:
+        _prompt_on_fail(_check_model_file, model_path)
+    if density_model_path:
+        _prompt_on_fail(_check_model_file, density_model_path)
 
-    # Comms
-    _step("Serial link to I/O board established", delay=d)
+    # Critical: serial link
+    if serial_port:
+        _prompt_on_fail(_check_serial, serial_port, serial_baud)
+    else:
+        _step("Serial port not configured — skipping", ok=False)
 
     print()
-    time.sleep(d)
-    _type_out("[BOOT] All systems nominal. CLASSCAN is online.", delay=0 if skip_delays else 0.015)
+    _type_out("[BOOT] Subsystem checks complete.", delay=0 if skip_delays else 0.015)
     print("=" * 52)
     print()
 
