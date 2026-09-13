@@ -2,7 +2,8 @@
 CLASSCAN — Camera Verification Script
 ======================================
 Quick standalone test: open OV4689 UVC camera, grab one frame, run
-inference with classcan_head_v1.tflite, print count, draw bounding boxes.
+inference with the available TFLite model (density model preferred;
+falls back to classcan_head_v1.tflite or COCO SSD), print count.
 
 Use this INSTEAD of running the full Flask server (main.py) when first
 connecting the camera or after swapping the model file.
@@ -12,19 +13,19 @@ Usage (on Pi):
     python ../../scripts/camera_verify.py
 
 Options:
-    --model   Path to .tflite model (default: auto-detects classcan_head_v1.tflite)
+    --model   Path to .tflite model (default: auto-detects density model first)
     --camera  Camera device index (default: 0)
-    --conf    Confidence threshold (default: 0.35)
+    --conf    Confidence threshold for box detector (default: 0.35; ignored for density model)
     --save    Save annotated frame to camera_verify_output.jpg
     --frames  Number of frames to capture and run inference on (default: 5)
 
-Expected output:
-    [Camera] Opened device 0 — 1280×960
-    [Model]  Loaded: models/classcan_head_v1.tflite
-    [Frame 1/5] Count=4  Inference=241ms
-    [Frame 2/5] Count=4  Inference=238ms
+Expected output (density model):
+    [Camera] Opened device 0 — 640×480
+    [Model]  Loaded: models/classcan_density_float32.tflite
+    [Frame 1/5] Density sum=8.73  Headcount=9  Inference=704ms
+    [Frame 2/5] Density sum=8.61  Headcount=9  Inference=698ms
     ...
-    [✓] Camera verify passed — model producing non-zero detections.
+    [✓] Camera verify passed — model producing non-zero count.
 """
 
 import argparse

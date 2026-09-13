@@ -15,7 +15,7 @@ CLASSCAN/
 │   │   ├── config.py           ← All tuneable constants
 │   │   ├── requirements.txt
 │   │   ├── detection/
-│   │   │   ├── detector.py         ← TFLite MobileNetV3-Large+416 head detector / model wrapper
+│   │   │   ├── detector.py         ← TFLite model wrapper (density + box; density is primary)
 │   │   │   ├── change_trigger.py   ← Frame-diff re-detect trigger
 │   │   │   └── zone_reconciler.py  ← Quadrant count self-consistency check
 │   │   └── comms/
@@ -37,14 +37,15 @@ CLASSCAN/
 │       ├── styles.css          ← Dark-mode design system & animations
 │       └── app.js              ← Polling logic, event handlers & UI state
 │
-├── models/                     ← TFLite model files (classcan_head_v1.tflite)
+├── models/                     ← TFLite model files (classcan_density_float32.tflite primary; classcan_head_v1.tflite secondary)
 ├── docs/                       ← Scope, BOM, design docs
 ├── cad/                        ← Enclosure CAD files
 ├── hardware/                   ← Wiring diagrams, pinouts
 ├── tests/                      ← Offline unit tests (no hardware needed)
 │   ├── test_change_trigger.py
 │   ├── test_reconciler.py
-│   └── test_detector.py
+│   ├── test_detector.py
+│   └── test_postprocess.py
 ├── README.md
 └── ROADMAP.md
 ```
