@@ -3,7 +3,7 @@
 **Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
-**Status (as of Sept 10, 2026):** Core software pipeline operational and bench-tested.
+**Status (as of Sept 13, 2026):** Core software pipeline operational and bench-tested.
 AI/model engineering is **functionally complete**:
 1. Primary Headcount Model: **`classcan_density_v4` density-map regression** (MobileNetV3-Large + 104×104 density map output, softplus activation). Validated on 407 images: **MAE = 2.13**, **$r = 0.9951$**, MAPE = 16.1%. In the actual operational quadrant scanning range (0–20 students), **MAE is 0.93 people** (< 1 student error).
 2. Secondary HUD Model: **MobileNetV3-Large + 416×416 FPN head detector** locked in with 2×2 dual-threshold tiling + Soft-NMS (F1 = 31.8%, MAE = 3.84, $r = 0.986$) for bounding box visualization.
@@ -51,17 +51,22 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [x] Connect physical OV4689 UVC camera module (4-pin harness to USB Port 2)
 - [x] OV4689 camera is functional at `/dev/video0` (MJPG up to 2688×1520@30fps); feed verified with `scripts/camera_verify.py`
 - [x] 11-shot exposure sweep captured on Pi (exposure 25–1800, gain=32, 1280×720/MJPG, saved to `~/camera_tests/`)
-- [ ] **Camera exposure calibration:** visual review of sweep → pick optimal exposure → gain sweep → commit V4L2 config
-- [ ] **Export final model weights to TFLite (`scripts/export_to_tflite.py`)**
-- [ ] **Live end-to-end camera test:** OV4689 frame → TFLite → headcount on Pi
+- [x] 225-image 4-variable sweep (exposure × gain × brightness × gamma) with automated brightness scoring via ImageMagick
+      — **Root cause found:** default `gamma=110` crushed images; `gamma=300` fixed it
+      — **Known-good baseline:** 640×480 MJPEG @ 30 FPS, `exposure=500`, `gain=192`, `brightness=64`, `gamma=300` (brightness OK; color/desaturation remaining)
+- [ ] **Camera color calibration:** narrow sweep (exposure ~300–700, gain ~128–220, brightness ~32–64, gamma ~250–300) targeting color/white-balance controls specifically
+- [x] **TFLite float32 export confirmed:** `classcan_density_v4` → 13.77 MB float32 TFLite runs on Pi 3B at **702.3 ms/frame** via `ai_edge_litert`
+      — int8 export **deferred**: XNNPack "failed to prepare" on `UpSampling2D(bilinear)` layers; fix requires retraining with `Conv2DTranspose` — not worth risking the v4 result
+- [ ] **Live end-to-end camera test:** OV4689 frame → TFLite density model → headcount on Pi
 - [x] Annotation quality spot-check on training images (confirmed root cause of weak P/R)
 - [x] CrowdHuman augmentation trial (V2 + V3 architectures) — ruled out (objectness collapse on V3)
 - [x] Naive ensemble (custom + COCO SSD) — ruled out (compounded false positives)
 - [x] COCO SSD standalone count-based eval: -65.2% bias, avg error 27.97/image. Ruled out.
 - [x] YOLOLite Nano fine-tune (Roboflow/Colab): plateaued at mAP@50=16.6%. Ruled out.
 - [x] Flip-TTA and WBF merging — ruled out (Soft-NMS superior)
-- [x] Public dataset investigation: RPEE-Heads (CC BY-SA 4.0) and academic domain gap review
+- [x] Public dataset investigation: RPEE-Heads (CC BY-SA 4.0, ~1.1 GB, 9.69% sub-6px² heads) — investigated; deferred. Not classroom data (railway/event venues); won't fix domain gap. Documented as future avenue only.
 - [x] **AI/model development functionally complete**
+- [!] **Security:** Roboflow API key accidentally pasted in plaintext into shared notebooks — rotate immediately in Roboflow dashboard → Account Settings → API Keys
 
 ## Full-System Integration (Post-PoC)
 

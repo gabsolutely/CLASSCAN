@@ -3,6 +3,8 @@
 
 A ceiling-mounted smart camera turret that automatically detects and counts people in a classroom in real time, displaying the live headcount on an LED display and a wireless laptop dashboard — no manual attendance checking, no facial recognition, just occupancy (and optionally, seat-zone presence).
 
+### __WORK IN PROGRESS, ACTIVELY CHANGING__
+
 **Status:** Core software pipeline operational and bench-tested on Raspberry Pi 3B running **Raspberry Pi OS Lite (64-bit, Trixie)**. AI/model engineering is **functionally complete**: confirmed best model is **`classcan_density_v4` density-map regression** (MAE=2.13, $r=0.9951$ overall; **MAE=0.93** in the 0–20 quadrant operational regime) alongside the locked-in **MobileNetV3-Large @ 416×416 box detector** (F1=31.8%, MAE=3.84, $r=0.986$ with 2×2 dual-threshold tiling and Soft-NMS). Active focus is 100% on the camera pipeline: exposure calibration, gain sweep, and live end-to-end integration.
 
 ---
@@ -52,7 +54,7 @@ Commands from the dashboard (e.g. "switch to zone-check mode", "check quadrant 2
 
 ### Division of Labor
 
-**Raspberry Pi 3B — the brain.** Runs headless **Raspberry Pi OS Lite (64-bit, Trixie)**. The quad-core Cortex-A53 CPU runs TFLite inference (`ai-edge-litert`), change detection, and communication bridging. Live continuous-stream inference is avoided due to CPU limits; CLASSCAN instead uses periodic snapshot detection with immediate re-trigger on significant frame change. Primary model: **`classcan_density_v4` density-map regression** (MobileNetV3-Large backbone, 104×104 density map output, softplus activation) achieving **MAE = 2.13 ($r=0.9951$) overall and MAE = 0.93 in the 0–20 quadrant operational regime**, with the **MobileNetV3-Large @ 416×416 box detector** (F1=31.8%, MAE=3.84, $r=0.986$ with 2×2 tiling and Soft-NMS) available for visual bounding boxes. Benchmark latency on Pi 3B CPU: **0.557 s/frame** (XNNPACK). Handles all networking via onboard Wi-Fi and bridges to ESP32 over USB serial.
+**Raspberry Pi 3B — the brain.** Runs headless **Raspberry Pi OS Lite (64-bit, Trixie)**. The quad-core Cortex-A53 CPU runs TFLite inference (`ai-edge-litert`), change detection, and communication bridging. Live continuous-stream inference is avoided due to CPU limits; CLASSCAN instead uses periodic snapshot detection with immediate re-trigger on significant frame change. Primary model: **`classcan_density_v4` density-map regression** (MobileNetV3-Large backbone, 104×104 density map output, softplus activation) achieving **MAE = 2.13 ($r=0.9951$) overall and MAE = 0.93 in the 0–20 quadrant operational regime**. Pi 3B CPU benchmark: density model **702.3 ms/frame**, box detector **0.557 s/frame** (both XNNPACK, float32). The **MobileNetV3-Large @ 416×416 box detector** (F1=31.8%, MAE=3.84, $r=0.986$ with 2×2 tiling and Soft-NMS) is available for visual HUD bounding boxes. Handles all networking via onboard Wi-Fi and bridges to ESP32 over USB serial.
 
 **ESP32 — the hands.** Fully isolated from networking (its Wi-Fi radio is unused by design — networking stays on the Pi 3B); handles physical I/O only: servo positioning (sweep or quadrant-targeted), LDR-triggered custom illumination module, and driving the LED matrix. Receives commands only via USB serial from the Pi 3B — never connects to the network directly. Runs autonomously in default sweep mode — sweep and lighting logic continue even if the network or laptop dashboard drops. Reports its own state (idle/moving) back over serial so the Pi 3B's change-detection trigger can distinguish the turret's own motion from an actual change in the room. Supports a calibrated quadrant/seat pan-tilt lookup table for targeted mode, switchable with general sweep mode via dashboard command.
 
@@ -86,7 +88,7 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 ### What These Results Proved & Why We Pivoted
 1. **Pipeline Validation:** The underlying software stack (LiteRT runtime, preprocessing, coordinate scaling, change triggering, and dashboard server) is fully functional on hardware.
 2. **Methodology Justification for Model Swap:** While the stock full-body model succeeded on close and unobstructed subjects (0.50–0.98 confidence), it broke down completely (0 detections) on the distant classroom shot where students were seated behind armchairs. Stock full-body models require torso/limb cues that are physically occluded in classroom seating.
-3. **The Solution:** Rather than relying on generic full-body COCO weights, we pivoted to **YOLOLite CPU (Nano)** fine-tuned specifically for a single **"head"** (head-and-shoulders) class on elevated classroom datasets.
+3. **The Solution:** Rather than relying on generic full-body COCO weights, the project built a dedicated **custom Keras multi-scale head detector** ("head" class, head-and-shoulders bounding boxes) that was later extended to **density-map regression (`classcan_density_v4`)** following external QA review. YOLOLite CPU (Nano) was an intermediate attempt that plateaued at mAP@50=16.6% and was abandoned before the custom approach succeeded.
 
 ---
 
@@ -122,7 +124,7 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 ## Known Limitations & Open Items
 
 - **AI/Model Side Status:** Functionally complete. Model development is frozen; further gains from public datasets have reached diminishing returns.
-- **Camera Exposure Calibration:** OV4689 camera is live at `/dev/video0`. 11-shot sweep (exposure 25–1800, gain=32, 1280×720/MJPG) was captured on Pi; visual inspection and optimal gain sweep are currently in progress.
+- **Camera Exposure Calibration:** OV4689 camera is live at `/dev/video0`. A 225-image 4-variable sweep (exposure × gain × brightness × gamma) identified `gamma=110` (default) as the root cause of all-black images. **Known-good baseline confirmed:** `exposure=500, gain=192, brightness=64, gamma=300` (brightness OK). Remaining issue is color/white-balance (image is bright but gray/desaturated). Next step: narrow sweep targeting color controls.
 - **Single-Camera Blind Spots:** By design, a sweeping turret observes one sector at a time. Zone-occupancy reflects the latest quadrant scan rather than continuous instantaneous truth — handled via change-triggered re-scans and reconciler consistency checks. An intentional, honestly-scoped limitation.
 - **Roboflow API Key:** Was exposed in a shared notebook; must be rotated in the Roboflow workspace settings before any further cloud data operations.
 
@@ -150,10 +152,11 @@ Full itemized BOM and cost breakdown: see [`docs/bom.md`](docs/bom.md).
 - [x] **Logic & Communications:** `ChangeTrigger`, `ZoneReconciler`, `DashboardServer`, and serial bridge modules implemented and unit tested.
 - [x] **Custom Model Training (Box):** Keras MobileNetV3-Large + 416×416 FPN head detector trained to epoch 60; locked in with 2×2 tiled inference + Soft-NMS (F1=31.8%, MAE=3.84, $r=0.986$).
 - [x] **Custom Model Training (Density):** Density-map regression v2 (`classcan_density_v4`) trained to epoch 41; confirmed best model overall (MAE=2.13, $r=0.9951$, quadrant MAE=0.93).
-- [x] **Physical Camera Integration:** OV4689 detected at `/dev/video0` (MJPG up to 2688×1520@30fps); 11-shot exposure sweep captured on Pi (exposure 25–1800, gain=32, 1280×720).
-- [ ] **Camera Exposure Calibration:** Visual review of exposure sweep → pick optimal value → gain sweep at that setting → commit V4L2 config.
-- [ ] **TFLite Model Export:** Export final model weights to TFLite format via `scripts/export_to_tflite.py`.
-- [ ] **Live End-to-End Camera Test:** OV4689 frame → TFLite inference → headcount on Pi (first real live run).
+- [x] **Physical Camera Integration:** OV4689 detected at `/dev/video0` (MJPG up to 2688×1520@30fps); 11-shot and 225-shot (4-variable) exposure sweeps completed on Pi.
+- [x] **Camera Brightness Calibration:** Gamma root cause identified (`gamma=110` → `gamma=300`). Known-good baseline: `exposure=500, gain=192, brightness=64, gamma=300`.
+- [x] **TFLite Model Export:** `classcan_density_v4` → 13.77 MB float32 TFLite confirmed at **702.3 ms/frame** on Pi 3B via `ai_edge_litert`. Int8 deferred (XNNPack bilinear incompatibility).
+- [ ] **Camera Color Calibration:** Narrow sweep around baseline targeting color/white-balance controls (image bright but gray/desaturated).
+- [ ] **Live End-to-End Camera Test:** OV4689 frame → TFLite density inference → headcount on Pi (first real live run).
 - [ ] **Illumination Module:** Finalize circuit design (LED array, driver transistor, LDR threshold) and wire to ESP32 ADC/GPIO.
 - [ ] **Turret & Quadrant Calibration:** Calibrate pan/tilt servo angles for Quadrants 1–4 once mounted in dome enclosure.
 - [ ] **Full-System Benchmarking:** Record end-to-end latency, temperature, and detection accuracy under live classroom lighting.
@@ -181,12 +184,12 @@ ESP32 loop (autonomous, runs independent of network):
 Pi 3B loop:
     capture camera frame
     if ESP32 reports "idle" and frame differs significantly from last checked frame:
-        run TFLite (MobileNetV3-Large+416 custom head detector) inference immediately
+        run TFLite (`classcan_density_v4` density-map regression, primary) inference immediately
     else:
         run detection on regular heartbeat interval instead
-    apply soft-NMS (σ=0.5, threshold=0.3, obj_thresh=0.4) to raw detections
+    sum density map output for headcount; assign to current zone
     count detections per zone; sum and compare against last full-cycle total
-    if counts don't reconcile: re-scan before reporting
+    if counts don’t reconcile: re-scan before reporting
     send headcount/status → ESP32 (USB serial)
     send count + snapshot → laptop dashboard (Wi-Fi)
     if command received from dashboard (Wi-Fi): forward to ESP32 (USB serial)
