@@ -119,6 +119,7 @@ def main():
     ap.add_argument("--model", required=True)
     ap.add_argument("--out-dir", default="hard_negative_candidates")
     ap.add_argument("--crop-size", type=int, default=120, help="Size of the cropped patch around each candidate peak (in original image pixels)")
+    ap.add_argument("--min-confidence", type=float, default=0.35, help="Skip candidate peaks below this raw density value (filters out noise-floor bumps, keeps only genuinely confident false positives)")
     args = ap.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -146,7 +147,9 @@ def main():
             # only the peaks BEYOND the true count are candidate false positives
             # (since peaks are sorted by confidence descending, the top `true_count`
             # are the most likely to be real heads; anything past that is suspect)
-            extra_peaks = peaks[true_count:]
+            # ALSO filter out low-confidence noise-floor bumps -- those aren't
+            # meaningful false positives, just background numerical noise
+            extra_peaks = [p for p in peaks[true_count:] if p[2] >= args.min_confidence]
 
             for j, (py, px, conf) in enumerate(extra_peaks):
                 # map peak coords from density-map space back to original image space
