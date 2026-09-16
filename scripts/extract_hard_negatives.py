@@ -95,21 +95,25 @@ def get_density_map(frame_bgr, interpreter, input_details, output_details):
 
 
 def find_peaks(dmap, min_distance=5, threshold_rel=0.15):
-    """Find local density peaks (candidate 'head' detections) in the map."""
+    """Find local density peaks (candidate 'head' detections) in the map.
+    Returns (y, x, raw_confidence, relative_confidence) -- relative_confidence
+    is raw_confidence / dmap.max(), so callers can filter on a 0-1 scale
+    that's comparable across frames regardless of each frame's absolute
+    density magnitude (which varies a lot, typically 0.02-0.09)."""
     max_val = dmap.max()
     if max_val <= 0:
         return []
     thresh = threshold_rel * max_val
 
-    # local maxima via maximum filter
     local_max = ndimage.maximum_filter(dmap, size=min_distance) == dmap
     above_thresh = dmap > thresh
     peak_mask = local_max & above_thresh
 
     ys, xs = np.where(peak_mask)
-    peaks = [(int(y), int(x), float(dmap[y, x])) for y, x in zip(ys, xs)]
-    # sort by confidence descending
-    peaks.sort(key=lambda p: -p[2])
+    peaks = [(int(y), int(x), float(dmap[y, x]), float(dmap[y, x]) / max_val) for y, x in zip(ys, xs)]
+    # sort by RELATIVE confidence descending, so "top true_count peaks" means
+    # the most confident relative to this frame, not skewed by absolute scale
+    peaks.sort(key=lambda p: -p[3])
     return peaks
 
 
@@ -119,7 +123,7 @@ def main():
     ap.add_argument("--model", required=True)
     ap.add_argument("--out-dir", default="hard_negative_candidates")
     ap.add_argument("--crop-size", type=int, default=120, help="Size of the cropped patch around each candidate peak (in original image pixels)")
-    ap.add_argument("--min-confidence", type=float, default=0.35, help="Skip candidate peaks below this raw density value (filters out noise-floor bumps, keeps only genuinely confident false positives)")
+    ap.add_argument("--min-confidence-rel", type=float, default=0.30, help="Skip candidate peaks below this FRACTION of that frame's own max density value (relative, not absolute -- matches the scale used in threshold_sweep_full.py). Raw density values are typically 0.02-0.09, so an absolute cutoff doesn't work across frames.")
     args = ap.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -145,13 +149,13 @@ def main():
             true_count = int(round(gt))
 
             # only the peaks BEYOND the true count are candidate false positives
-            # (since peaks are sorted by confidence descending, the top `true_count`
-            # are the most likely to be real heads; anything past that is suspect)
-            # ALSO filter out low-confidence noise-floor bumps -- those aren't
-            # meaningful false positives, just background numerical noise
-            extra_peaks = [p for p in peaks[true_count:] if p[2] >= args.min_confidence]
+            # (peaks sorted by relative confidence descending, so the top
+            # `true_count` are the most likely to be real heads; anything past
+            # that is suspect). Filter on RELATIVE confidence (0-1 scale,
+            # comparable across frames), matching --min-confidence-rel.
+            extra_peaks = [p for p in peaks[true_count:] if p[3] >= args.min_confidence_rel]
 
-            for j, (py, px, conf) in enumerate(extra_peaks):
+            for j, (py, px, raw_conf, rel_conf) in enumerate(extra_peaks):
                 # map peak coords from density-map space back to original image space
                 oy = int(py / mh * oh)
                 ox = int(px / mw * ow)
@@ -164,13 +168,13 @@ def main():
                 if crop.size == 0:
                     continue
 
-                crop_name = f"{clip}_{i:04d}_peak{j+1:02d}_conf{conf:.2f}.jpg"
+                crop_name = f"{clip}_{i:04d}_peak{j+1:02d}_conf{rel_conf:.2f}.jpg"
                 cv2.imwrite(os.path.join(args.out_dir, crop_name), crop)
 
                 manifest_rows.append({
                     "source_frame": fname,
                     "crop_file": crop_name,
-                    "peak_confidence": round(conf, 3),
+                    "peak_confidence": round(rel_conf, 3),
                     "frame_true_count": true_count,
                     "frame_model_peak_count": len(peaks),
                     "confirmed_not_a_head": "",  # fill in: yes/no after visual check
