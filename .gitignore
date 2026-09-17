@@ -21,5 +21,8 @@ Thumbs.db
 .vscode 
 .pytest_cache/
 scripts/manual_clutter_crops
+scripts/extracted_frames
+scripts/heatmaps
+scripts/hardpos_annotations.json
 
 NOTES.md

@@ -25,6 +25,8 @@
 #define SERVO_MIN_US          1000
 #define SERVO_MAX_US          2000
 #define SERVO_SWEEP_SPEED     155
+#define SERVO_ANGLE_SPEED     155    // Continuous-servo command used for angle moves
+#define SERVO_MS_PER_DEGREE    12    // Calibrate for the mounted servo speed
 #define SERVO_SWEEP_MOVE_MS  1500
 #define SERVO_SWEEP_DWELL_MS  800
 #define SERVO_ZONE_MOVE_MS    700

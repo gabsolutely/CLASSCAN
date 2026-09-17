@@ -38,6 +38,18 @@ namespace ServoController {
     static int _zoneIdx = 0;
     static unsigned long _zonePhaseStarted = 0;
     static bool _zoneMoving = false;
+    static unsigned long _manualStopAt = 0;
+    static bool _manualTimed = false;
+    static bool _manualMoving = false;
+    static int _panAngle = 90;
+    static int _tiltAngle = 90;
+    static int _panStartAngle = 90;
+    static int _tiltStartAngle = 90;
+    static int _panTargetAngle = 90;
+    static int _tiltTargetAngle = 90;
+    static unsigned long _angleMoveStarted = 0;
+    static unsigned long _panMoveMs = 0;
+    static unsigned long _tiltMoveMs = 0;
 
     inline void writeCommand(Servo& servo, int command) {
         command = constrain(command, SERVO_COMMAND_MIN, SERVO_COMMAND_MAX);
@@ -48,6 +60,71 @@ namespace ServoController {
     inline void stop() {
         writeCommand(_pan, SERVO_STOP);
         writeCommand(_tilt, SERVO_STOP);
+    }
+
+    inline void startManual(int panCommand, int tiltCommand, unsigned long durationMs = 0) {
+        writeCommand(_pan, panCommand);
+        writeCommand(_tilt, tiltCommand);
+        _manualTimed = durationMs > 0;
+        _manualMoving = panCommand != SERVO_STOP || tiltCommand != SERVO_STOP;
+        _manualStopAt = millis() + durationMs;
+    }
+
+    inline void startAngleMove(int panAngle, int tiltAngle, int speedCommand = SERVO_ANGLE_SPEED) {
+        _panTargetAngle = constrain(panAngle, 0, 180);
+        _tiltTargetAngle = constrain(tiltAngle, 0, 180);
+        speedCommand = constrain(speedCommand, SERVO_STOP + 1, SERVO_COMMAND_MAX);
+
+        _panStartAngle = _panAngle;
+        _tiltStartAngle = _tiltAngle;
+        _panMoveMs = abs(_panTargetAngle - _panStartAngle) * SERVO_MS_PER_DEGREE;
+        _tiltMoveMs = abs(_tiltTargetAngle - _tiltStartAngle) * SERVO_MS_PER_DEGREE;
+
+        if (_panMoveMs > 0) {
+            writeCommand(_pan, _panTargetAngle > _panStartAngle
+                ? speedCommand : SERVO_COMMAND_MAX - speedCommand);
+        } else {
+            writeCommand(_pan, SERVO_STOP);
+        }
+        if (_tiltMoveMs > 0) {
+            writeCommand(_tilt, _tiltTargetAngle > _tiltStartAngle
+                ? speedCommand : SERVO_COMMAND_MAX - speedCommand);
+        } else {
+            writeCommand(_tilt, SERVO_STOP);
+        }
+
+        _angleMoveStarted = millis();
+        _manualTimed = _panMoveMs > 0 || _tiltMoveMs > 0;
+        _manualMoving = _manualTimed;
+        _manualStopAt = _angleMoveStarted + max(_panMoveMs, _tiltMoveMs);
+    }
+
+    inline bool manual() {
+        if (_manualTimed) {
+            const unsigned long elapsed = millis() - _angleMoveStarted;
+            if (_panMoveMs > 0) {
+                const float progress = min(1.0f, static_cast<float>(elapsed) / _panMoveMs);
+                _panAngle = _panStartAngle + (_panTargetAngle - _panStartAngle) * progress;
+            }
+            if (_tiltMoveMs > 0) {
+                const float progress = min(1.0f, static_cast<float>(elapsed) / _tiltMoveMs);
+                _tiltAngle = _tiltStartAngle + (_tiltTargetAngle - _tiltStartAngle) * progress;
+            }
+        }
+        if (_manualTimed && millis() >= _manualStopAt) {
+            stop();
+            _panAngle = _panTargetAngle;
+            _tiltAngle = _tiltTargetAngle;
+            _manualTimed = false;
+            _manualMoving = false;
+            return false;
+        }
+        return _manualMoving;
+    }
+
+    inline void setAngleReference(int panAngle = 90, int tiltAngle = 90) {
+        _panAngle = constrain(panAngle, 0, 180);
+        _tiltAngle = constrain(tiltAngle, 0, 180);
     }
 
     inline void begin(uint8_t pinPan, uint8_t pinTilt) {
