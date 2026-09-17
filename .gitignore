@@ -20,5 +20,6 @@ Thumbs.db
 .vscode/ipch/
 .vscode 
 .pytest_cache/
+scripts/manual_clutter_crops
 
 NOTES.md
