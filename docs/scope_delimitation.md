@@ -8,7 +8,7 @@
 
 ## 1. System Overview
 
-CLASSCAN is an automated, ceiling-mounted edge computer vision turret engineered to monitor classroom occupancy and headcount in real time. The system processes visual data locally on a Raspberry Pi 3B using a lightweight TensorFlow Lite object detection model, broadcasts live counts and frame snapshots to a local wireless web dashboard, and drives a local dot-matrix LED display via an ESP32 microcontroller.
+CLASSCAN is an automated, ceiling-mounted edge computer vision turret engineered to monitor classroom occupancy and headcount in real time. The system processes visual data locally on a Raspberry Pi 3B using a custom TensorFlow Lite **density-map regression model** for headcount estimation and a secondary head detector for visual HUD overlays, broadcasts live counts and frame snapshots to a local wireless web dashboard, and drives a local dot-matrix LED display via an ESP32 microcontroller.
 
 ---
 
@@ -17,8 +17,9 @@ CLASSCAN is an automated, ceiling-mounted edge computer vision turret engineered
 The system is designed and verified to perform the following core operations:
 
 1. **Edge-Based Head and Occupancy Detection:**
-   - Detects people in classroom seating using a lightweight single-class **"head"** (head-and-shoulders) TFLite object detection model (`classcan_head_v1.tflite` — custom Keras multi-scale MobileNetV3-Large + 416×416 head detector with 3-head FPN, occupancy-based target encoding, soft-NMS).
-   - Executes all image preprocessing, tensor inference, and non-maximum suppression locally on the Raspberry Pi 3B quad-core ARM Cortex-A53 CPU without external cloud offloading.
+   - Estimates classroom headcount using a custom **density-map regression model** (`classcan_density_float32.tflite` — MobileNetV3-Large backbone + progressive upsampling decoder, 104×104 spatial density map output, Softplus activation). The model predicts a continuous spatial density surface over the frame; integrating the map gives the headcount directly, eliminating bounding-box NMS thresholding artifacts.
+   - A secondary single-class **"head"** (head-and-shoulders) box detector (`classcan_head_v1.tflite` — MobileNetV3-Large + 416×416, 3-head FPN, occupancy-based target encoding, Soft-NMS) provides visual bounding-box overlays for the dashboard HUD. It does **not** drive the headcount when the density model is active.
+   - Executes all image preprocessing, tensor inference, and post-processing locally on the Raspberry Pi 3B quad-core ARM Cortex-A53 CPU without external cloud offloading.
 
 2. **Compute-Aware Triggering:**
    - Employs a hybrid inference schedule combining a baseline heartbeat interval (default: 10 seconds) with an immediate motion-triggered re-detection mechanism (`ChangeTrigger`) based on normalized frame differencing.
@@ -78,4 +79,4 @@ To preserve system focus, privacy compliance, and real-time edge viability, the 
 - **Physical Space:** Standard Philippine classroom layout (approx. 7m × 9m, capacity: 40–50 students) equipped with wooden/plastic armchairs arranged in rows.
 - **Mounting Position:** Ceiling-mounted at the center or front-center of the room at an elevation of 2.5m to 3.0m with a downward pitch angle of 30° to 50°.
 - **Ambient Illumination Range:** 50 lux (dim evening classroom) to 500+ lux (bright daylight).
-- **Target Inference Speed:** ≤ 300 ms per frame on Raspberry Pi 3B CPU.
+- **Target Inference Speed:** ≤ 750 ms per inference cycle on Raspberry Pi 3B CPU (measured: ~702 ms for density-map model, ~557 ms for box detector, float32 TFLite, XNNPACK delegate). Both are within budget for the **periodic-snapshot + motion-triggered** architecture — inference runs are event-driven, not continuous stream processing, so per-cycle latency does not accumulate into real-time throughput requirements.
