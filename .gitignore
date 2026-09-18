@@ -24,5 +24,6 @@ scripts/manual_clutter_crops
 scripts/extracted_frames
 scripts/heatmaps
 scripts/hardpos_annotations.json
+manual_clutter_crops
 
 NOTES.md
