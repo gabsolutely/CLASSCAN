@@ -20,11 +20,15 @@ class Config:
     DASHBOARD_PORT = 8080
 
     # ── TFLite Models ──────────────────────────────────────────────────────
-    # Primary headcount engine: classcan_density_v4 density-map regression.
-    #   float32 preferred for full-precision inference; int8 for faster Pi throughput.
-    #   Export: python scripts/export_to_tflite.py --mode density --weights ...
+    # Primary headcount engine: classcan_density_v4_hardneg_ft_epoch4 (ADOPTED model).
+    #   Fine-tuned on 176 hard-negative real-footage crops (bags, chairs, tables, etc.)
+    #   from classcan_density_v4_best. Real-footage: MAE=3.87 (↓59%), r=0.448 (↑).
+    #   SCUT-HEAD 407-image check held: MAE=2.35, r=0.9908.
+    #   ⚠️  models/classcan_density_float32.tflite must be regenerated from epoch4 checkpoint.
+    #   Export: python scripts/export_to_tflite.py --mode density --weights classcan_density_v4_hardneg_ft_epoch4.weights.h5
     _DENSITY_FLOAT32 = str(MODELS_DIR / "classcan_density_float32.tflite")
     _DENSITY_INT8    = str(MODELS_DIR / "classcan_density_int8.tflite")
+
 
     # Secondary box detector: MobileNetV3-Large @ 416x416 (HUD bounding boxes).
     #   Export: python scripts/export_to_tflite.py --weights ckpt_ep60.weights.h5
@@ -47,6 +51,12 @@ class Config:
 
     CONF_THRESHOLD  = 0.35            # Objectness threshold — calibrated for count accuracy (MAE 3.57, r=0.987)
                                       # (use 0.50 if falling back to COCO SSD model)
+
+    # Per-frame relative density threshold: zero out density_map values below this
+    # fraction of the frame's own max before summing for headcount.
+    # Adopted alongside classcan_density_v4_hardneg_ft_epoch4 (real-footage MAE 3.87→3.08).
+    # Set to 0.0 to use raw unthresholded sum (matches original v4 SCUT-HEAD eval).
+    DENSITY_THRESHOLD = 0.15
 
     # ── Detection Timing ───────────────────────────────────────────────────
     HEARTBEAT_INTERVAL = 10.0         # Seconds between periodic scans

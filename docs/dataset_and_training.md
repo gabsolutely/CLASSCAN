@@ -135,11 +135,19 @@ This repurposes multi-scale to solve **dense-crowd cell collisions** rather than
 | V3 Full Run | Box Detector | MobileNetV3-Large | 416×416 | 60 | 0.2535 (ep60) | F1=30.1% | +10.6 pp F1 over V2; count-sweep best MAE=3.57 |
 | CrowdHuman (V3) | Box Detector | MobileNetV3-Large | 416×416 | 10 | 2.93 (ep7) | F1=0.0% | Objectness collapse; experiment concluded |
 | Tiled Box Model | Box Detector (2×2) | MobileNetV3-Large | 416×416 | 60 | — | F1=31.8%, MAE=3.84 | Locked-in box config (dual threshold + soft-NMS) |
-| **Density v4 (Final)** | **Density Map** | **MobileNetV3-Large** | **416×416** | **41** | **MAE=2.13 (ep41)** | **$r=0.9951$** | **Confirmed best model overall; quadrant MAE=0.93** |
+| Density v4 base | Density Map | MobileNetV3-Large | 416×416 | 41 | MAE=2.13 (ep41) | r=0.9951 | SCUT-HEAD 407-img benchmark; base for fine-tuning |
+| RPEE-Heads fine-tune | Density Map | MobileNetV3-Large | 416×416 | 8 | MAE=10.79 | r=0.9670 | ❌ Catastrophic negative; 0-20 MAPE=341%. Rejected. |
+| **Hard-neg Round 1 (ep4)** | **Density Map** | **MobileNetV3-Large** | **416×416** | **8** | **MAE=2.35 (SCUT)** | **Real r=0.448** | **✅ ADOPTED — 176 hard-neg crops; real MAE 9.46→3.87** |
+| Hard-neg Round 2 | Density Map | MobileNetV3-Large | 416×416 | 10 | MAE=2.41 (ep1) | Real r=0.410 | ❌ Not adopted; bias flipped, SCUT regression ep2 |
+| Hard-neg Round 3 | Density Map | MobileNetV3-Large | 416×416 | 15 | MAE=2.81 (ep15) | Real r=0.435 | ❌ Not adopted; MAE improved but r ceiling not broken |
+| Hard-neg Round 4 | Density Map | MobileNetV3-Large | 416×416 | TBD | TBD | TBD | In progress — LR raised to 5e-5 |
 
 **Final Checkpoints:**
 - Box Detection: Epoch 60 MobileNetV3-Large @ 416×416 (`val_loss=0.2535`, `train_loss=0.1498`).
-- Density Map: Epoch 41 `classcan_density_v4` (`MAE=2.13`, `r=0.9951`). Checkpoints on Drive at `/content/drive/MyDrive/models/`.
+- Density Map base: Epoch 41 `classcan_density_v4` (`MAE=2.13`, `r=0.9951`). File: `classcan_density_v4_best.weights.h5`.
+- **Density Map adopted (shipped):** `classcan_density_v4_hardneg_ft_epoch4.weights.h5` (round 1 fine-tune, epoch 4).
+  SCUT-HEAD: MAE=2.35, r=0.9908. Real footage: MAE=3.87 raw / 3.08 with threshold=0.15.
+- All checkpoints on Colab Drive at `/content/drive/MyDrive/models/` (secondary Google account).
 
 ### Density-Map Regression Pipeline (`classcan_density_v4`)
 Following external QA review (PeaNat), a density-map regression model was constructed to target MAE $\le 2.0$ and eliminate NMS bounding-box quantization errors:
@@ -334,25 +342,30 @@ Root cause: COCO person detector is confident on what it detects, but misses mos
 ## 10. Final Model Decisions & Deployment Architecture
 
 ### 10a. Confirmed Model Architecture Status
-The AI/model engineering phase is **functionally complete** with two validated deployment-ready architectures:
+The AI/model engineering phase has completed 4 rounds of real-footage fine-tuning. The shipped model is:
 
-1. **Primary / Best Overall: Density-Map Regression Model (`classcan_density_v4`)**
+1. **Primary / Adopted: `classcan_density_v4_hardneg_ft_epoch4`** (Hard-Negative Fine-Tune Round 1, Epoch 4)
    - **Backbone & Output:** MobileNetV3-Large + upsampling decoder producing a 104×104 density map (3.6M parameters, Softplus activation).
-   - **Validation Metrics (407 images):** Overall **MAE = 2.13**, **$r = 0.9951$**, **MAPE = 16.1%**, Within $\pm 2 = 66.1\%$.
-   - **Operational Range Performance:** In the 0–20 crowd size bucket (matching the ~10 students seen per quadrant scan), **MAE is 0.93 people** (< 1 student error).
-   - **Advantage:** Eliminates bounding box aspect ratio mismatch, overlapping box suppression failures, and NMS threshold tuning.
+   - **Base model:** `classcan_density_v4_best` (SCUT-HEAD+local, MAE=2.13, r=0.9951).
+   - **Fine-tune:** 8 epochs, 85%/15% original/hard-neg mix, 176 confirmed FP objects from real footage, LR=1e-5, fresh optimizer.
+   - **SCUT-HEAD validation (407 images):** MAE=2.35, r=0.9908 (no catastrophic regression).
+   - **Real-footage (5 clips, 117 frames):** Raw MAE=3.87 (↓59% from 9.46), r=0.448 (↑). With threshold=0.15: MAE=3.08, bias=-0.73.
+   - **Operational Range Performance:** 0–20 bucket (SCUT-HEAD): MAE=0.93 people (matching the ~10 students per quadrant scan).
+   - **⚠️ Deployment status:** `models/classcan_density_float32.tflite` must be regenerated from epoch4 checkpoint (currently contains old v4_best weights — app silently falls back to COCO SSD).
 
-2. **Secondary / Localized Box Detector (MobileNetV3-Large @ 416×416)**
-   - **Architecture:** 3-scale FPN (52×52 / 26×26 / 13×13) with occupancy-based target routing.
-   - **Locked-in Inference Pipeline:** 2×2 grid tiled inference (0.2 overlap) with dual thresholding (`full_obj=0.35`, `tile_obj=0.65`) and Soft-NMS merging ($\sigma=0.5, \text{thresh}=0.3$).
-   - **Validation Metrics:** Precision = 31.3%, Recall = 32.4%, **F1 = 31.8%**, **MAE = 3.84**, **$r = 0.986$**.
-   - **Advantage:** Produces visual bounding boxes for HUD overlay and dashboard streaming.
+2. **Secondary / Box Detector (MobileNetV3-Large @ 416×416)** — HUD bounding box visualization only.
+   - **Locked-in Inference Pipeline:** 2×2 grid tiled inference (0.2 overlap), dual thresholding (`full_obj=0.35`, `tile_obj=0.65`), Soft-NMS (σ=0.5, thresh=0.3).
+   - **Validation Metrics:** P=31.3%, R=32.4%, **F1=31.8%**, **MAE=3.84**, **r=0.986**.
 
 ### 10b. Operational Deployment Strategy
-- **Turret Scanning Context:** A 40-student classroom divided across 4 pan/tilt servo quadrants means each camera snapshot evaluates only ~10 students. The model's true deployment regime is the low-density bucket where accuracy is highest.
-- **Immediate Focus Shift:** Model training is frozen. Team resources are directed 100% to **OV4689 camera exposure tuning, gain calibration, and live physical hardware integration** on the Raspberry Pi 3B.
+- **Turret Scanning Context:** A 40-student classroom divided across 4 pan/tilt servo quadrants means each camera snapshot evaluates only ~10 students. The model's true deployment regime is the low-density bucket where accuracy is highest (SCUT-HEAD 0–20 bucket MAE=0.93).
+- **Post-Inference Threshold:** Apply `DENSITY_THRESHOLD=0.15` (per-frame relative threshold) before summing density map. Reduces real-footage MAE 3.87 → 3.08 and near-zeroes bias. Set in `config.py`.
+- **Immediate Focus Shift:** Rounds 1–3 fine-tuning complete. Round 4 (LR=5e-5) result pending. Non-model priority: export adopted checkpoint to TFLite, camera exposure/color tuning, first live camera→inference test.
 
 ### 10c. Long-Term / Post-PoC Research Avenues
-1. **Active Learning & Point Annotation:** Sample real classroom video frames, identify high-uncertainty or failure frames, annotate center-points only (faster than boxes), and incrementally retrain.
-2. **RPEE-Heads Dataset Integration:** Evaluate RPEE-Heads (CC BY-SA 4.0) to test generalized small-head feature representation ($<6\text{ px}^2$).
-3. **Domain Transfer Mitigation:** Sourced models top out at ~57% when applied out-of-domain without adaptation. Long-term accuracy gains require local fine-tuning on PCU-D classroom recordings rather than generic public datasets.
+1. **Round 4 result (pending):** If LR=5e-5 breaks the correlation=0.448 ceiling, adopt; otherwise declare round 1 final.
+2. **sit2 clip root-cause investigation:** This clip has been the correlation drag in every round (r 0.15–0.35). Diagnosing its specific content may unlock a targeted fix.
+3. **Track 2 hard-positive expansion:** Current 490 hard-positive annotations may be insufficient relative to clip diversity. Denser annotation coverage of missed heads could help correlation.
+4. **Active Learning loop:** Sample real classroom video frames, annotate failures, retrain, repeat — per original PeaNat recommendation.
+5. **RPEE-Heads dataset:** Confirmed negative result (MAE=10.79). Not pursued further.
+
