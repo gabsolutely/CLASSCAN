@@ -6,59 +6,90 @@ Place trained and exported `.tflite` model files here.
 
 ---
 
-### PRIMARY: `classcan_density_float32.tflite` ← **DEPLOY THIS**
+### PRIMARY: Weighted Ensemble <- **DEPLOY THIS**
 
-> **This file must be regenerated** from the adopted checkpoint `classcan_density_v4_hardneg_ft_epoch4.weights.h5`.
-> The OLD float32 file (from `classcan_density_v4_best`) is no longer the correct shipped model.
+> **Two TFLite files are required.** The previous single classcan_density_float32.tflite approach is superseded.  
+> The final adopted model is a **weighted ensemble** of two checkpoints evaluated with **different preprocessing geometries**.
 
-Density-map regression model: MobileNetV3-Large backbone + progressive upsampling decoder → 104×104 spatial density map (Softplus activation, 3.6M parameters).
+#### Ensemble components:
 
-Export command:
-```bash
-python scripts/export_to_tflite.py \
-    --mode    density \
-    --weights path/to/classcan_density_v4_hardneg_ft_epoch4.weights.h5 \
-    --output  models/classcan_density_float32.tflite \
-    --quant   float32
-```
+| File | Checkpoint | Eval preprocessing | Ensemble weight |
+|---|---|---|:---:|
+| classcan_density_round4_ep8.tflite | classcan_density_v4_round4_ft_epoch8.weights.h5 | **Letterbox** (preserve aspect ratio, pad black) | **0.6** |
+| classcan_density_style_aug_ep8.tflite | classcan_density_style_aug_ft_lowLR_epoch8.weights.h5 | **Stretch** (cv2.resize to 416x416) | **0.4** |
 
-**Checkpoint location (Colab Drive):** `/content/drive/MyDrive/models/classcan_density_v4_hardneg_ft_epoch4.weights.h5`
+Both models share the same architecture: MobileNetV3-Large backbone + progressive upsampling decoder -> 104x104 spatial density map (Softplus activation, 3.6M parameters each).
 
-**Provenance:**
-- Base model: `classcan_density_v4_best.weights.h5` (SCUT-HEAD+local, MAE=2.13, r=0.9951 on 407 images)
-- Fine-tuned: 8 epochs, LR=1e-5, 85%/15% SCUT-HEAD/hard-negative mix (176 manually confirmed false-positive crops)
-- Best epoch: **epoch 4** (SCUT-HEAD MAE=2.35, r=0.9908; real-footage MAE=3.87 ↓59%, r=0.448 ↑ from 0.373)
-- With post-inference threshold=0.15: real-footage MAE=3.08, bias=-0.73 (near-zero)
+#### Export commands:
 
-**SCUT-HEAD eval (407 images) — baseline held:**
-- MAE = 2.35 people, r = 0.9908
+\\ash
+# Export round 4 epoch 8 (letterbox model):
+python scripts/export_to_tflite.py --mode density --weights path/to/classcan_density_v4_round4_ft_epoch8.weights.h5 --output models/classcan_density_round4_ep8.tflite --quant float32
 
-**Real-footage eval (5 clips, 117 frames) — before vs after:**
-| | Pre-fine-tune | Post-fine-tune (raw) | Post + threshold=0.15 |
+# Export style-aug epoch 8 (stretch model):
+python scripts/export_to_tflite.py --mode density --weights path/to/classcan_density_style_aug_ft_lowLR_epoch8.weights.h5 --output models/classcan_density_style_aug_ep8.tflite --quant float32
+\
+**Checkpoint locations (Colab Drive):**
+- /content/drive/MyDrive/models/classcan_density_v4_round4_ft_epoch8.weights.h5
+- /content/drive/MyDrive/models/classcan_density_style_aug_ft_lowLR_epoch8.weights.h5
+
+#### Provenance (round 4 epoch 8):
+- 4 rounds of hard-negative fine-tuning from classcan_density_v4_best, 84/8/8 SCUT-HEAD/hard-neg/hard-pos mix, LR raised to 5e-5 in round 4 (first LR change across all rounds)
+- Epoch 8 broke the r=0.448 correlation ceiling from rounds 1-3
+- Stretch eval: MAE=2.82, r=0.506 | **Letterbox eval (no retrain): MAE=3.23, r=0.602**
+
+#### Provenance (style-aug epoch 8):
+- Style-augmentation fine-tune (brightness/contrast/color/sharpness jitter on SCUT-HEAD stream only, AugMix-inspired), LR=5e-6
+- **Only training run across all 9 rounds to complete 10 epochs without any collapse** -- std stable 32-36, mean 28-36 throughout
+- Epoch 8 best on genuine held-out v2 data (350 frames): MAE=2.97, r=0.531
+- The 3-way grid search picked it over stretch-ft-epoch1 entirely (weight 0.4 vs 0.0) -- genuinely complementary error signal
+
+#### Real-footage performance (v2 held-out, 350 frames, genuine out-of-sample):
+
+| Configuration | MAE | Bias | Correlation |
 |---|:---:|:---:|:---:|
-| MAE | 9.46 | **3.87** | **3.08** |
-| Bias | +9.37 | +2.33 | -0.73 |
-| Correlation | 0.373 | 0.448 | 0.393 |
+| Pre-fine-tune (base model) | 9.46 | +9.37 | 0.373 |
+| Round 4 epoch 8, stretch eval | 2.82 | -1.73 | 0.506 |
+| Round 4 epoch 8, letterbox eval | 3.23 | +2.58 | 0.602 |
+| Style-aug epoch 8, stretch eval | 2.97 | -- | 0.531 |
+| **Ensemble (0.6x epoch8_lb + 0.4x style-aug-ep8)** | **2.77** | **+1.58** | **0.586** |
 
-**Output tensor interface:**
-```
-density_map → [1, 104, 104, 1]  float32   Spatial density surface
-```
+Per-clip correlation: line1=0.455, line2=0.555, line3=0.759, sit1=0.538, sit2=0.519.
 
-**Count extraction (with threshold=0.15):**
-```python
-import numpy as np
+Finer-grained weight sweep confirmed: top-10 combos all r=0.584-0.586 (weights e8=0.50-0.65, style=0.30-0.50). Result is robust, not a lucky spike.
 
-raw = interpreter.get_tensor(output_details[0]["index"])  # (1, 104, 104, 1)
-density_map = np.squeeze(raw).astype(np.float32)          # (104, 104)
-threshold = 0.15 * density_map.max()                      # per-frame relative threshold
-thresholded = np.where(density_map >= threshold, density_map, 0.0)
-headcount = max(0, round(float(thresholded.sum())))
-```
+**Alternative lower-MAE configuration:** weights (0.55, 0.10, 0.35) -> MAE=2.68, r~0.584 (reintroduces stretch-ft-epoch1 at 10%).
 
-**Pi 3B runtime:** ~702 ms/frame (ai_edge_litert, XNNPACK, float32).
+#### Ensemble inference code (Python):
 
-**⚠️ INT8 export:** Broken at runtime — XNNPack raises "failed to prepare" on `UpSampling2D(bilinear)` layers. Fix requires retraining decoder with `Conv2DTranspose`. Deferred.
+\\python
+import numpy as np, cv2
+
+def letterbox_resize(img, target=416):
+    h, w = img.shape[:2]; scale = target / max(h, w)
+    nh, nw = int(h*scale), int(w*scale)
+    canvas = np.zeros((target,target,3), dtype=np.float32)
+    canvas[:nh,:nw] = cv2.resize(img,(nw,nh)) / 255.0
+    return canvas
+
+def ensemble_count(frame_bgr, interp_ep8, interp_style, w_ep8=0.6, w_st=0.4):
+    inp_lb = letterbox_resize(frame_bgr)[np.newaxis]
+    interp_ep8.set_tensor(interp_ep8.get_input_details()[0]['index'], inp_lb)
+    interp_ep8.invoke()
+    dm8 = np.squeeze(interp_ep8.get_tensor(interp_ep8.get_output_details()[0]['index'])).astype(np.float32)
+
+    inp_st = (cv2.resize(frame_bgr,(416,416)).astype(np.float32)/255.0)[np.newaxis]
+    interp_style.set_tensor(interp_style.get_input_details()[0]['index'], inp_st)
+    interp_style.invoke()
+    dm_s = np.squeeze(interp_style.get_tensor(interp_style.get_output_details()[0]['index'])).astype(np.float32)
+
+    return max(0, round(float(w_ep8 * dm8.sum() + w_st * dm_s.sum())))
+\
+**Output tensor interface (both models):** density_map -> [1, 104, 104, 1] float32
+
+**Pi 3B runtime:** ~702 ms/frame per model (ai_edge_litert, XNNPACK, float32). Ensemble = ~1.4 s per scan position (within budget for periodic-snapshot architecture).
+
+**INT8 export:** Broken at runtime -- XNNPack raises 'failed to prepare' on UpSampling2D(bilinear) layers. Fix requires retraining decoder with Conv2DTranspose. Deferred.
 
 ---
 

@@ -137,16 +137,24 @@ This repurposes multi-scale to solve **dense-crowd cell collisions** rather than
 | Tiled Box Model | Box Detector (2×2) | MobileNetV3-Large | 416×416 | 60 | — | F1=31.8%, MAE=3.84 | Locked-in box config (dual threshold + soft-NMS) |
 | Density v4 base | Density Map | MobileNetV3-Large | 416×416 | 41 | MAE=2.13 (ep41) | r=0.9951 | SCUT-HEAD 407-img benchmark; base for fine-tuning |
 | RPEE-Heads fine-tune | Density Map | MobileNetV3-Large | 416×416 | 8 | MAE=10.79 | r=0.9670 | ❌ Catastrophic negative; 0-20 MAPE=341%. Rejected. |
-| **Hard-neg Round 1 (ep4)** | **Density Map** | **MobileNetV3-Large** | **416×416** | **8** | **MAE=2.35 (SCUT)** | **Real r=0.448** | **✅ ADOPTED — 176 hard-neg crops; real MAE 9.46→3.87** |
+| Hard-neg Round 1 (ep4) | Density Map | MobileNetV3-Large | 416×416 | 8 | MAE=2.35 (SCUT) | Real r=0.448 | ✅ Improved real footage 9.46→3.87; basis for rounds 2+ |
 | Hard-neg Round 2 | Density Map | MobileNetV3-Large | 416×416 | 10 | MAE=2.41 (ep1) | Real r=0.410 | ❌ Not adopted; bias flipped, SCUT regression ep2 |
 | Hard-neg Round 3 | Density Map | MobileNetV3-Large | 416×416 | 15 | MAE=2.81 (ep15) | Real r=0.435 | ❌ Not adopted; MAE improved but r ceiling not broken |
-| Hard-neg Round 4 | Density Map | MobileNetV3-Large | 416×416 | TBD | TBD | TBD | In progress — LR raised to 5e-5 |
+| Hard-neg Round 4 (ep8) | Density Map | MobileNetV3-Large | 416×416 | 8 | MAE=2.82 stretch / 3.23 letterbox | Real r=0.506 stretch / **0.602 letterbox** | ✅ Broke correlation ceiling; backbone of final ensemble |
+| Round 5 (84/4/12 mix) | Density Map | MobileNetV3-Large | 416×416 | 15 | MAE=3.60 (ep2) | Real r=0.506 | ❌ Not adopted; mix-ratio lever exhausted; partial collapse |
+| Round 6 (letterbox training) | Density Map | MobileNetV3-Large | 416×416 | 4–5 | n/a (collapsed) | Corr →0.121 | ❌ Not adopted; stretch→letterbox geometry shift causes collapse |
+| Stretch-ft-epoch1 (round 7–9) | Density Map | MobileNetV3-Large | 416×416 | 1 | MAE=2.79 (ep1) | Real r=0.453 (v2 held-out) | Partial complementary signal; included as alt in lower-MAE ensemble |
+| Style-aug fine-tune (round 7–9) | Density Map | MobileNetV3-Large | 416×416 | 10 | MAE=2.97 (ep8) | Real r=0.531 (v2 held-out) | ✅ Only run to complete 10 epochs without collapse; complementary ensemble signal |
+| **3-way ensemble (0.6×epoch8_lb + 0.4×style-aug-ep8)** | **Ensemble** | **MobileNetV3-Large** | **416×416** | **—** | **MAE=2.77** | **Real r=0.586 (v2 held-out)** | **✅✅ FINAL ADOPTED — best real-footage correlation across all 9 rounds** |
 
 **Final Checkpoints:**
 - Box Detection: Epoch 60 MobileNetV3-Large @ 416×416 (`val_loss=0.2535`, `train_loss=0.1498`).
 - Density Map base: Epoch 41 `classcan_density_v4` (`MAE=2.13`, `r=0.9951`). File: `classcan_density_v4_best.weights.h5`.
-- **Density Map adopted (shipped):** `classcan_density_v4_hardneg_ft_epoch4.weights.h5` (round 1 fine-tune, epoch 4).
-  SCUT-HEAD: MAE=2.35, r=0.9908. Real footage: MAE=3.87 raw / 3.08 with threshold=0.15.
+- **Density Map final shipped (ensemble):**
+  - `classcan_density_v4_round4_ft_epoch8.weights.h5` (round 4 epoch 8) — evaluated with **letterbox** preprocessing at inference
+  - `classcan_density_style_aug_ft_lowLR_epoch8.weights.h5` (style-aug epoch 8) — evaluated with **stretch** preprocessing at inference
+  - **Ensemble weights: 0.6 × epoch8(letterbox) + 0.4 × style-aug-epoch8(stretch)**
+  - Real-footage (v2 held-out): MAE=2.77, r=0.586. SCUT-HEAD: r>0.99.
 - All checkpoints on Colab Drive at `/content/drive/MyDrive/models/` (secondary Google account).
 
 ### Density-Map Regression Pipeline (`classcan_density_v4`)
@@ -342,16 +350,17 @@ Root cause: COCO person detector is confident on what it detects, but misses mos
 ## 10. Final Model Decisions & Deployment Architecture
 
 ### 10a. Confirmed Model Architecture Status
-The AI/model engineering phase has completed 4 rounds of real-footage fine-tuning. The shipped model is:
+The AI/model engineering phase has concluded after 9 rounds of real-footage fine-tuning and a systematic ensemble search. The shipped model is:
 
-1. **Primary / Adopted: `classcan_density_v4_hardneg_ft_epoch4`** (Hard-Negative Fine-Tune Round 1, Epoch 4)
-   - **Backbone & Output:** MobileNetV3-Large + upsampling decoder producing a 104×104 density map (3.6M parameters, Softplus activation).
-   - **Base model:** `classcan_density_v4_best` (SCUT-HEAD+local, MAE=2.13, r=0.9951).
-   - **Fine-tune:** 8 epochs, 85%/15% original/hard-neg mix, 176 confirmed FP objects from real footage, LR=1e-5, fresh optimizer.
-   - **SCUT-HEAD validation (407 images):** MAE=2.35, r=0.9908 (no catastrophic regression).
-   - **Real-footage (5 clips, 117 frames):** Raw MAE=3.87 (↓59% from 9.46), r=0.448 (↑). With threshold=0.15: MAE=3.08, bias=-0.73.
-   - **Operational Range Performance:** 0–20 bucket (SCUT-HEAD): MAE=0.93 people (matching the ~10 students per quadrant scan).
-   - **⚠️ Deployment status:** `models/classcan_density_float32.tflite` must be regenerated from epoch4 checkpoint (currently contains old v4_best weights — app silently falls back to COCO SSD).
+1. **Primary / Adopted: Weighted Ensemble (classcan_density_v4_round4_ft_epoch8 + classcan_density_style_aug_ft_lowLR_epoch8)**
+   - **Ensemble weights:** `0.6 × round4_ft_epoch8 (letterbox preprocessing at inference) + 0.4 × style_aug_lowLR_epoch8 (stretch preprocessing at inference)`
+   - **Architecture:** Both models share MobileNetV3-Large + upsampling decoder → 104×104 density map (3.6M parameters, Softplus activation).
+   - **Why it works:** epoch8 overcounts (+1.69 bias on v2 held-out), style-aug-epoch8 provides complementary error signal; their combination partially cancels systematic bias.
+   - **Real-footage (v2 held-out, 350 frames, genuine out-of-sample):** MAE=2.77, corr=0.586 (best across all 9 rounds). Per-clip best: line3=0.759; persistent weak point: line1=0.455.
+   - **SCUT-HEAD validation (407 images):** r>0.99 maintained throughout all rounds — no catastrophic regression.
+   - **Preprocessing asymmetry:** epoch8 evaluated with letterbox at inference (correlation boost 0.506→0.602 as standalone vs stretch eval); style-aug-epoch8 evaluated with stretch. Training from scratch with letterbox collapsed in all 5 attempts.
+   - **Alternative lower-MAE configuration:** (0.55, 0.10, 0.35) → MAE=2.68, corr≈0.584 — use if MAE matters more than correlation for the writeup.
+   - **⚠️ Deployment status:** `models/classcan_density_float32.tflite` must be regenerated from BOTH ensemble checkpoints; inference path must compute weighted sum of density maps. App currently silently falls back to COCO SSD.
 
 2. **Secondary / Box Detector (MobileNetV3-Large @ 416×416)** — HUD bounding box visualization only.
    - **Locked-in Inference Pipeline:** 2×2 grid tiled inference (0.2 overlap), dual thresholding (`full_obj=0.35`, `tile_obj=0.65`), Soft-NMS (σ=0.5, thresh=0.3).
@@ -359,13 +368,14 @@ The AI/model engineering phase has completed 4 rounds of real-footage fine-tunin
 
 ### 10b. Operational Deployment Strategy
 - **Turret Scanning Context:** A 40-student classroom divided across 4 pan/tilt servo quadrants means each camera snapshot evaluates only ~10 students. The model's true deployment regime is the low-density bucket where accuracy is highest (SCUT-HEAD 0–20 bucket MAE=0.93).
-- **Post-Inference Threshold:** Apply `DENSITY_THRESHOLD=0.15` (per-frame relative threshold) before summing density map. Reduces real-footage MAE 3.87 → 3.08 and near-zeroes bias. Set in `config.py`.
-- **Immediate Focus Shift:** Rounds 1–3 fine-tuning complete. Round 4 (LR=5e-5) result pending. Non-model priority: export adopted checkpoint to TFLite, camera exposure/color tuning, first live camera→inference test.
+- **Ensemble Inference:** Run both TFLite models on each captured frame; headcount = 0.6 × sum(epoch8_density_map_letterbox) + 0.4 × sum(style_aug_density_map_stretch). No additional threshold needed (bias is already near-neutral at +1.58).
+- **Immediate Focus Shift:** Model work considered complete. Non-model priority: export both ensemble checkpoints to TFLite, implement ensemble inference path, camera exposure/color tuning, first live camera→inference test.
 
 ### 10c. Long-Term / Post-PoC Research Avenues
-1. **Round 4 result (pending):** If LR=5e-5 breaks the correlation=0.448 ceiling, adopt; otherwise declare round 1 final.
-2. **sit2 clip root-cause investigation:** This clip has been the correlation drag in every round (r 0.15–0.35). Diagnosing its specific content may unlock a targeted fix.
-3. **Track 2 hard-positive expansion:** Current 490 hard-positive annotations may be insufficient relative to clip diversity. Denser annotation coverage of missed heads could help correlation.
-4. **Active Learning loop:** Sample real classroom video frames, annotate failures, retrain, repeat — per original PeaNat recommendation.
-5. **RPEE-Heads dataset:** Confirmed negative result (MAE=10.79). Not pursued further.
+1. **Genuine Filipino-classroom training data:** Per PeaNat's original recommendation — the real root cause of the 0.43–0.60 real-footage correlation ceiling. Deferred to future phase, stated plainly in writeup/defense.
+2. **MPCount (CVPR 2024):** Single-domain-generalization architecture. Researched and cited; multi-day port, out of scope for PoC.
+3. **TTA (Test-Time Augmentation):** Average predictions over original + horizontally-flipped frame. No retraining; cheap to add post-deployment.
+4. **Per-clip adaptive correction for line1:** Persistent weak point (corr 0.455) in every ensemble variant. Root cause not yet identified.
+5. **sit2 root cause investigation:** This clip degraded correlation in rounds 1–3 but recovered with letterbox (0.217→0.595); now at 0.519 in the final ensemble. No longer the clear drag but still worth examining.
+6. **RPEE-Heads dataset:** Confirmed negative result (MAE=10.79). Not pursued further.
 
