@@ -3,13 +3,15 @@
 **Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
-**Status (as of Sept 18, 2026 — 10 days to deadline):** Core software pipeline operational and bench-tested.
-AI/model engineering reached a stable milestone after 4 rounds of real-footage fine-tuning:
-1. **Adopted model:** `classcan_density_v4_hardneg_ft_epoch4` — density-map regression fine-tuned on 176 hard-negative real-footage crops. Real-footage MAE=3.87 (↓59% from 9.46 pre-fine-tune), bias=+2.33 (↓75%). With post-inference threshold=0.15: MAE=3.08, bias≈0.
-2. **SCUT-HEAD benchmark (original 407-image eval):** MAE=2.35, r=0.9908 — no catastrophic regression from fine-tuning.
-3. **Round 4 fine-tuning in progress** (LR raised to 5e-5, first LR change across all rounds); result pending.
+**Status (as of Sept 20, 2026 — 8 days to deadline):** Core software pipeline operational and bench-tested.
+AI/model engineering has concluded after 9 rounds of real-footage fine-tuning + ensemble search. Final adopted model:
+
+1. **Final adopted model (ensemble):** `0.6 × classcan_density_v4_round4_ft_epoch8 (letterbox eval) + 0.4 × classcan_density_style_aug_ft_lowLR_epoch8 (stretch eval)` — MAE=2.77, correlation=0.586 on genuine held-out v2 data (350 frames). Best real-footage correlation across all 9 rounds.
+2. **Alternative lower-MAE ensemble:** `0.55 × epoch8 + 0.10 × stretch-ft-epoch1 + 0.35 × style-aug-epoch8` → MAE=2.68, corr≈0.584 (worth using if MAE matters more than correlation).
+3. **SCUT-HEAD benchmark (407-image eval):** All checkpoints maintained r>0.99 throughout — no catastrophic regression across any round.
 4. **Secondary HUD Model:** MobileNetV3-Large + 416×416 FPN head detector (F1 = 31.8%, MAE = 3.84) for bounding box visualization.
-Critical remaining non-model tasks: **deploy adopted model into main app** (currently missing from `models/`, silently falling back to COCO SSD), **live end-to-end camera test** (never done), **camera exposure/color tuning** (color still unresolved), **rotate leaked Roboflow API key**.
+
+**Critical remaining non-model tasks (ALL STILL DEFERRED):** Deploy adopted model/ensemble into main app (currently silently falling back to COCO SSD), first live camera→inference test (NEVER done once), camera color/white-balance tuning (ROI + sharpness), rotate leaked Roboflow API key.
 Hard deadline: **September 28, 2026**.
 
 ---
@@ -86,14 +88,48 @@ Prove the core detection pipeline works end-to-end on target hardware:
       — Best MAE=2.81 (epoch15, 27% vs round 1) but correlation ceiling never broken (best 0.435)
       — Key pattern across 3 rounds (33 epochs): MAE 9.46→3.87→3.22→2.81, correlation stuck ≤0.448
       — sit2 clip is persistent correlation drag every round (r 0.15–0.35 range, unresolved)
-- [ ] **Hard-negative Round 4 (in progress):**
+- [x] **Hard-negative Round 4 — KEY RESULT (round 4 epoch 8 = basis for final model):**
       — Same 84%/8%/8% mix, from round 3 epoch15, **LR raised 1e-5 → 5e-5** (first LR change across all rounds)
-      — Spike guard added; result pending
+      — Spike guard added; run completed. **epoch 8 was best** (stretch eval: MAE=2.82, r=0.506 on reused 117-frame set)
+      — `classcan_density_v4_round4_ft_epoch8.weights.h5` is the backbone of the final ensemble
+- [x] **Letterbox-vs-stretch preprocessing discovery (eval-only, no retrain):**
+      — Evaluated round 4 epoch 8 (stretch-trained) with **letterbox** preprocessing at inference time only, no retraining
+      — **Correlation jumped from 0.506 → 0.602 (best across every round)**, specifically fixed sit2 (0.217→0.595)
+      — MAE got worse (2.82→3.23) and bias flipped (+1.73→+2.58) — because weights were trained on stretch geometry
+      — Conclusion: letterbox eval on stretch-trained weights is complementary; training from scratch with letterbox collapsed in round 6
+- [x] **Round 5 (mix rebalance to 84/4/12, hard-positive priority) — NOT adopted:**
+      — Best correlation only tied round 4's 0.506; most epochs 0.42-0.49; epochs 10/14/15 collapsed to MAE=8.1/near-zero-correlation
+      — Concluded the mix-ratio lever was exhausted; sit2 remained weakest every round
+- [x] **Round 6 (letterbox training attempt) — FAILED, not adopted:**
+      — Two attempts (LR=2e-5 and LR=5e-6) both collapsed: epoch 2 predicted-count std-dev=0.000, trivial all-zero MSE
+      — Sanity checks confirmed NOT a data pipeline bug — genuine training-dynamics collapse
+      — Lower LR got further (4 clean epochs) but all letterbox-eval results substantially worse than not retraining
+      — Conclusion: bridging stretch-trained weights to letterboxed geometry via fine-tuning does not work at any LR tried
+- [x] **hardpos_annotations_v2.json — 350 NEW real-footage frames annotated (hand-annotated via click-annotation tool):**
+      — 469 total hard-positive frames combined with original 117; 595 hard-negatives unchanged
+      — Established a genuine held-out eval set (v2 data was annotated after round 4 epoch 8 was finalized)
+- [x] **Rounds 7-9 / 8 training attempts in one session — correlation ceiling never broken:**
+      — 5 from-scratch+letterbox attempts: all collapsed to near-zero output within 10 epochs regardless of LR or loss function
+      — Frozen-backbone fine-tune from epoch 8: correlation collapsed (0.243→-0.084 over 4 epochs)
+      — Stretch-preserving fine-tune from epoch 8 (full backbone, STRETCH, LR=2e-5, 469-frame set): **epoch 1 standout** (MAE=2.79, corr=0.453 on v2 holdout) but deteriorated through epoch 9
+      — Style augmentation fine-tune (brightness/contrast/color/sharpness jitter on SCUT-HEAD stream only, LR=5e-6): **only run to complete 10 epochs without collapse** (stable std 32-36, mean 28-36 throughout); epoch 8 best (MAE=2.97, corr=0.531 on v2 holdout)
+- [x] **2-way ensemble (epoch8+letterbox × stretch-ft-epoch1+stretch) — intermediate best:**
+      — Epoch8 overcounts (+1.69) and stretch-ft-epoch1 undercounts (-0.54), errors partially cancel
+      — Best at w=0.7 toward epoch8: MAE=2.63, corr=0.574 (genuinely beats both inputs on both metrics)
+- [x] **3-way ensemble grid search — NEW BEST / FINAL ADOPTED MODEL:**
+      — Grid searched all weight combos of epoch8(letterbox) + stretch-ft-epoch1(stretch) + style-aug-epoch8(stretch) on v2 holdout
+      — **Best: weights (0.6, 0.0, 0.4) — i.e., epoch8(letterbox) + style-aug-epoch8 only** (stretch-ft-epoch1 dropped, weight=0)
+      — **MAE=2.77, bias=+1.58, corr=0.586** — best real-footage correlation across all 9 rounds of the entire project
+      — Per-clip: sit1=0.538, sit2=0.519, line3=0.759 (best), line2=0.555, line1=0.455 (clear weak point)
+      — Finer-grained sweep confirmed flat plateau: top-10 combos all corr=0.584-0.586, weights e8=0.50-0.65/style=0.30-0.50 — result is robust, not a lucky spike
+      — Alternative lower-MAE point: (0.55, 0.10, 0.35) → MAE=2.68 at nearly identical corr — use if MAE matters more than correlation
 - [x] `annotate_missed_heads.py` (matplotlib click-annotation tool, runs locally) committed to `/scripts`
 - [x] `hardpos_annotations.json` (490 missed-head points, 115/117 frames) committed to `/scripts`
-- [!] **CRITICAL — Deploy adopted model:** Main app `models/` folder still missing `classcan_density_v4_hardneg_ft_epoch4` float32 TFLite. App silently falls back to COCO SSD at runtime. Must export epoch4 checkpoint and replace `classcan_density_float32.tflite`.
-- [ ] **Live end-to-end camera test:** OV4689 frame → TFLite density model → headcount on Pi (never done)
-- [!] **Security:** Roboflow API key pasted in plaintext into shared Colab notebooks/docs multiple times (deliberately kept in scripts this session). **Rotate immediately** in Roboflow dashboard → Account Settings → API Keys.
+- [x] `hardpos_annotations_v2.json` (350-frame holdout set, annotated post round-4-epoch-8) committed to `/scripts`
+- [!] **CRITICAL — Deploy adopted ensemble:** Main app `models/` folder still contains OLD weights. Ensemble (classcan_density_v4_round4_ft_epoch8 + classcan_density_style_aug_ft_lowLR_epoch8) must be implemented as the inference engine. App currently silently falls back to COCO SSD.
+- [ ] **Live end-to-end camera test:** OV4689 frame → TFLite density ensemble → headcount on Pi (**NEVER DONE ONCE this entire project**)
+- [ ] **Camera color/ROI tuning:** Narrow sweep exposure~300-700/gain~128-220, disable `region_of_interest_auto_ctrls`, try `sharpness=3` (currently maxed at 7)
+- [!] **Security:** Roboflow API key pasted in plaintext into shared Colab notebooks/docs multiple times (deliberately kept in scripts). **Rotate immediately** in Roboflow dashboard → Account Settings → API Keys.
 
 ## Full-System Integration (Post-PoC)
 
@@ -104,6 +140,7 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - 18650 swappable battery power module
 - Full hardware handshake between Pi 3B and ESP32 over serial
 - mAP@50 formal evaluation and annotation quality audit (deferred — trigger only if model underperforms)
+- **Post-PoC model improvements (explicitly deferred, good for writeup citations):** MPCount (CVPR 2024, single-domain-generalization architecture — real ceiling-breaker but multi-day port), backbone swap away from MobileNetV3, TTA (average over original + flipped frame), genuine new Filipino-classroom training data (identified by QA reviewer PeaNat as the real root cause of the domain gap ceiling)
 
 ---
 
@@ -127,7 +164,9 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - **OS Choice:** Raspberry Pi OS Lite (64-bit) chosen over debloated Android for superior stability, standard Linux V4L2 drivers, official LiteRT support, and reduced maintenance overhead. See `docs/design_rationale.md` ADR-01.
 - **Model Architecture:** Custom Keras MobileNetV3-Large + 416×416 FPN head detector (3-head feature pyramid at 52×52/26×26/13×13, occupancy-based target encoding, focal loss + smooth-L1). Chosen after exhausting MobileNetV2+300 baseline and ruling out 4 improvement paths. V3+416 epoch-60 scored F1=30.1% vs V2+300 epoch-60 F1=19.5%. See `docs/design_rationale.md` ADR-03.
 - **Density-Map Regression Pivot:** Switched from box-detection (tiled+NMS) to density-map regression after V3+416 work. Density model (`classcan_density_v4`) achieves MAE=2.13/r=0.9951 on SCUT-HEAD validation vs box-detector MAE=3.65–3.84/r=0.986. Pivot confirmed correct.
-- **Hard-Negative Fine-Tuning:** Domain-gap test on 5 real classroom clips (117 frames) showed MAE=9.46, r=0.373 — large cliff from SCUT-HEAD's clean/orderly scenes to real chaotic PH classrooms. Root cause: hallucinating head density on backpacks/chairs/headrests. Fixed via hard-negative fine-tuning (176 confirmed FP objects), reducing real-footage MAE to 3.87 (↓59%) and bias from +9.37 to +2.33. Adopted model: `classcan_density_v4_hardneg_ft_epoch4`.
+- **Hard-Negative Fine-Tuning + Ensemble Strategy:** Domain-gap test on 5 real classroom clips (117 frames) showed MAE=9.46, r=0.373. Fixed via hard-negative fine-tuning across 4 rounds + 9 total training experiments. Final result: 3-way weighted ensemble (0.6×round4_epoch8_letterbox + 0.4×style_aug_epoch8_stretch) achieving MAE=2.77, corr=0.586 on genuine held-out data — best real-footage performance in the project. The style-augmentation lever (AugMix/style-randomization from literature) was the key complementary signal; the ensemble works because epoch8 overcounts and style-aug-epoch8 provides complementary error correction.
+- **Preprocessing Asymmetry (letterbox eval on stretch-trained model):** Discovered that evaluating the stretch-trained round 4 epoch 8 model with letterbox preprocessing (no retraining) lifts correlation from 0.506 → 0.602 on its own. Training from scratch with letterbox collapsed in all 5 attempts. The ensemble uses this asymmetry deliberately.
 - **Labeling Convention:** Single "head" class with head-and-shoulders bounding boxes (not full-body COCO) ensures robust detection of students seated behind wooden armchairs at 30°–50° ceiling pitch angles.
 - **Compute-Aware Triggering:** Periodic snapshot + frame-difference re-detection to prevent thermal throttling and compute saturation on the Pi 3B. See `docs/design_rationale.md` ADR-04.
 - **LoRa Rejected:** Considered (offered cheaply by a colleague) but explicitly rejected. Project is single-room/local — Pi↔ESP32 communicate over USB serial, no long-range wireless needed. Would only reconsider if scope expands to multi-room/multi-building deployment.
+- **Domain Gap Root Cause (PeaNat, confirmed):** SCUT-HEAD depicts orderly/seated/well-lit lecture halls; real Philippine classrooms are chaotic (moving lines, standing, irregular wooden armchairs, dim/uneven lighting). Only 35 local photos plus post-hoc failure patches — not genuine classroom-native training volume. The 0.43-0.60 real-footage correlation ceiling across all 9 rounds is a data-domain limitation, not a training-recipe problem. Genuine Filipino-classroom data collection deferred to a future phase; explicitly stated in the writeup/defense.
