@@ -32,7 +32,7 @@ from config import Config
 from comms.dashboard_server import DashboardServer
 from comms.serial_bridge import SerialBridge
 from detection.change_trigger import ChangeTrigger
-from detection.detector import Detector, DensityDetector, draw_hud_overlay
+from detection.detector import Detector, DensityDetector, EnsembleDensityDetector, draw_hud_overlay
 from detection.zone_reconciler import ZoneReconciler
 from setup.startup import run_boot_sequence
 
@@ -94,9 +94,20 @@ def main():
 
     # 1. Initialize Subsystems
 
-    # Primary headcount engine: density-map regression (classcan_density_v4)
+    # ── Primary headcount engine: ensemble (final adopted) or single-model fallback ──
     density_detector = None
-    if cfg.DENSITY_MODEL_PATH:
+    if cfg.ENSEMBLE_ROUND4_EP8_PATH and cfg.ENSEMBLE_STYLE_AUG_EP8_PATH:
+        density_detector = EnsembleDensityDetector(
+            round4_ep8_path=cfg.ENSEMBLE_ROUND4_EP8_PATH,
+            style_aug_ep8_path=cfg.ENSEMBLE_STYLE_AUG_EP8_PATH,
+            camera_index=args.camera,
+            force_mock=args.mock,
+            mock_count=args.mock_count,
+        )
+    elif cfg.DENSITY_MODEL_PATH:
+        print("[CLASSCAN] Ensemble files not found — falling back to single density model.")
+        print(f"           To enable ensemble: export classcan_density_round4_ep8.tflite and")
+        print(f"           classcan_density_style_aug_ep8.tflite into models/ (see models/README.md)")
         density_detector = DensityDetector(
             model_path=cfg.DENSITY_MODEL_PATH,
             camera_index=args.camera,
@@ -105,7 +116,9 @@ def main():
         )
     else:
         print("[CLASSCAN] WARNING: No density model found. Headcount will use box detector count.")
-        print("           Expected: models/classcan_density_float32.tflite or classcan_density_int8.tflite")
+        print("           Expected: models/classcan_density_round4_ep8.tflite +")
+        print("                     models/classcan_density_style_aug_ep8.tflite")
+        print("           (or legacy fallback: models/classcan_density_float32.tflite)")
 
     # Secondary box detector: bounding boxes for HUD overlay
     detector = Detector(

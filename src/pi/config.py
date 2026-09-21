@@ -20,21 +20,29 @@ class Config:
     DASHBOARD_PORT = 8080
 
     # ── TFLite Models ──────────────────────────────────────────────────────
-    # Primary headcount engine: classcan_density_v4_hardneg_ft_epoch4 (ADOPTED model).
-    #   Fine-tuned on 176 hard-negative real-footage crops (bags, chairs, tables, etc.)
-    #   from classcan_density_v4_best. Real-footage: MAE=3.87 (↓59%), r=0.448 (↑).
-    #   SCUT-HEAD 407-image check held: MAE=2.35, r=0.9908.
-    #   ⚠️  models/classcan_density_float32.tflite must be regenerated from epoch4 checkpoint.
+
+    # ── Ensemble (FINAL ADOPTED — drop these two files into models/) ───────
+    # Export from Colab Drive checkpoints (see models/README.md):
+    #   round4_ep8:    classcan_density_v4_round4_ft_epoch8.weights.h5
+    #   style_aug_ep8: classcan_density_style_aug_ft_lowLR_epoch8.weights.h5
+    # When both are present, main.py uses EnsembleDensityDetector (MAE=2.77, r=0.586).
+    _ENSEMBLE_ROUND4_EP8    = str(MODELS_DIR / "classcan_density_round4_ep8.tflite")
+    _ENSEMBLE_STYLE_AUG_EP8 = str(MODELS_DIR / "classcan_density_style_aug_ep8.tflite")
+
+    ENSEMBLE_ROUND4_EP8_PATH: str | None = (
+        _ENSEMBLE_ROUND4_EP8 if os.path.isfile(_ENSEMBLE_ROUND4_EP8) else None
+    )
+    ENSEMBLE_STYLE_AUG_EP8_PATH: str | None = (
+        _ENSEMBLE_STYLE_AUG_EP8 if os.path.isfile(_ENSEMBLE_STYLE_AUG_EP8) else None
+    )
+
+    # ── Single density-model fallbacks (legacy / partial deploy) ───────────
+    # classcan_density_v4_hardneg_ft_epoch4 — used when ensemble files are absent.
+    #   Fine-tuned on 176 hard-negative crops. Real-footage: MAE=3.87 (↓59%), r=0.448.
+    #   ⚠️  Regenerate from epoch4 checkpoint before use.
     #   Export: python scripts/export_to_tflite.py --mode density --weights classcan_density_v4_hardneg_ft_epoch4.weights.h5
     _DENSITY_FLOAT32 = str(MODELS_DIR / "classcan_density_float32.tflite")
     _DENSITY_INT8    = str(MODELS_DIR / "classcan_density_int8.tflite")
-
-
-    # Secondary box detector: MobileNetV3-Large @ 416x416 (HUD bounding boxes).
-    #   Export: python scripts/export_to_tflite.py --weights ckpt_ep60.weights.h5
-    # Fallback: COCO MobileNetV2-SSD (smoke-test only — undercounts occluded students)
-    _HEAD_MODEL      = str(MODELS_DIR / "classcan_head_v1.tflite")
-    _FALLBACK_MODEL  = str(MODELS_DIR / "mobilenet_v2_ssd_classcan.tflite")
 
     # Resolved at startup — float32 first, int8 second, None if neither present
     DENSITY_MODEL_PATH: str | None = (
@@ -43,11 +51,13 @@ class Config:
         None
     )
 
-    # Box detector path (classcan_head_v1 if exported, else COCO SSD fallback)
-    HEAD_MODEL_PATH = _HEAD_MODEL if os.path.isfile(_HEAD_MODEL) else _FALLBACK_MODEL
+    # ── Box detector (HUD bounding-box overlay) ────────────────────────────
+    # classcan_head_v1 if exported, else COCO SSD fallback (smoke-test only)
+    _HEAD_MODEL     = str(MODELS_DIR / "classcan_head_v1.tflite")
+    _FALLBACK_MODEL = str(MODELS_DIR / "mobilenet_v2_ssd_classcan.tflite")
 
-    # Legacy alias used by Detector() and --model CLI flag
-    MODEL_PATH = HEAD_MODEL_PATH
+    HEAD_MODEL_PATH = _HEAD_MODEL if os.path.isfile(_HEAD_MODEL) else _FALLBACK_MODEL
+    MODEL_PATH      = HEAD_MODEL_PATH  # legacy alias used by Detector() and --model CLI
 
     CONF_THRESHOLD  = 0.35            # Objectness threshold — calibrated for count accuracy (MAE 3.57, r=0.987)
                                       # (use 0.50 if falling back to COCO SSD model)
