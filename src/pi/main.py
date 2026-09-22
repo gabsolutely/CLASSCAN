@@ -80,10 +80,20 @@ def main():
 
     # Hardware self-test
     if not args.mock and not args.skip_boot_check:
+        # Determine which density model path(s) to verify during boot
+        if cfg.ENSEMBLE_ROUND4_EP8_PATH and cfg.ENSEMBLE_STYLE_AUG_EP8_PATH:
+            # Ensemble mode: check both files
+            boot_density_path = cfg.ENSEMBLE_ROUND4_EP8_PATH   # first file
+            boot_density_path2 = cfg.ENSEMBLE_STYLE_AUG_EP8_PATH
+        else:
+            boot_density_path  = cfg.DENSITY_MODEL_PATH
+            boot_density_path2 = None
+
         run_boot_sequence(
             camera_index=args.camera,
             model_path=cfg.MODEL_PATH,
-            density_model_path=cfg.DENSITY_MODEL_PATH,
+            density_model_path=boot_density_path,
+            density_model_path2=boot_density_path2,
             serial_port=cfg.SERIAL_PORT,
             serial_baud=cfg.SERIAL_BAUD,
         )

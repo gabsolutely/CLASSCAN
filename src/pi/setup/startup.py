@@ -150,6 +150,7 @@ def run_boot_sequence(
     camera_index=0,
     model_path=None,
     density_model_path=None,
+    density_model_path2=None,
     serial_port=None,
     serial_baud=115200,
     skip_delays=False,
@@ -160,6 +161,8 @@ def run_boot_sequence(
     Critical checks (camera, model files, serial) prompt interactively on
     failure via _prompt_on_fail: Retry / Continue / Abort. Non-critical
     checks (TFLite runtime import) just print [FAIL] and move on.
+
+    density_model_path2: optional second density model file (ensemble mode).
     """
     print("=" * 52)
     _type_out("  CLASSCAN  //  Classroom Occupancy Sensing Turret",
@@ -182,6 +185,8 @@ def run_boot_sequence(
         _prompt_on_fail(_check_model_file, model_path)
     if density_model_path:
         _prompt_on_fail(_check_model_file, density_model_path)
+    if density_model_path2:
+        _prompt_on_fail(_check_model_file, density_model_path2)
 
     # Critical: serial link
     if serial_port:
