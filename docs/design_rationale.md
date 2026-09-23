@@ -121,7 +121,7 @@ Following external QA peer review (PeaNat) challenging box-level assumptions in 
 ### Rationale
 1. **Direct Alignment with Functional Goal:** Occupancy monitoring requires counting accuracy ($r=0.9951$, MAE < 1 person per quadrant), not arbitrary IoU box overlaps. Density maps directly integrate crowd counts while gracefully handling desk occlusions.
 2. **Deterministic Edge Performance:** Both models share the lightweight MobileNetV3-Large backbone, executing within ~0.56s on Pi 3B CPU without thermal throttling under the periodic snapshot architecture.
-3. **Domain Gap Realism:** Acknowledges that public dataset tuning has saturated; further optimization shifts entirely to camera exposure tuning, gain calibration, and on-site physical classroom validation.
+3. **Domain Gap Realism:** Acknowledges that public dataset tuning has saturated; further optimization shifts entirely to on-site physical classroom validation. Live deployment on real hardware confirmed Sept 23, 2026 — full pipeline (Pi + OV4689 + 3-way weighted ensemble) working end-to-end on first attempt.
 
 
 ---

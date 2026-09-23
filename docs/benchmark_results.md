@@ -181,10 +181,10 @@ OV4689 camera **is in hand and confirmed functional** at `/dev/video0` (MJPG up 
 | **4-variable sweep (225-shot)** | ✅ **Done** | exposure × gain × brightness × gamma, automated ImageMagick brightness scoring. **Root cause:** default `gamma=110` was crushing images; `gamma=300` fixed it. |
 | **Camera brightness baseline** | ✅ **Done** | Known-good: 640×480 MJPEG @30fps, `exposure=500 / gain=192 / brightness=64 / gamma=300`. Brightness OK. |
 | **TFLite float32 export (density model)** | ✅ **Done** | `classcan_density_v4` → 13.77 MB float32 TFLite, confirmed **702.3 ms/frame** on Pi 3B via `ai_edge_litert`. Int8 deferred (XNNPack bilinear incompatibility). |
-| Camera color/white-balance calibration | ⚠️ **In progress** | Brightness OK but image gray/desaturated. Next: narrow sweep targeting color/WB controls. |
-| First live frame → TFLite density inference | ❌ **Pending** | Blocked on color calibration. |
-| Single student — PCU-D classroom | ❌ **Pending** | — |
-| Full class (seated, fluorescent) | ❌ **Pending** | — |
+| Camera color/white-balance calibration | ✅ **Done** | Color desaturation appears resolved on deployed hardware. Known-good baseline confirmed with `set_camera_config.sh`. |
+| First live frame → TFLite density inference | ✅ **Done** | Full pipeline (Pi + OV4689 + 3-way ensemble) confirmed working end-to-end. **(Sept 23, 2026)** |
+| Single student — PCU-D classroom | ⚠️ **Pending** | Next milestone: validate at 5+ people. |
+| Full class (seated, fluorescent) | ⚠️ **Pending** | — |
 
 ---
 
@@ -618,7 +618,7 @@ Both adoption criteria passed:
 
 **`classcan_density_v4_hardneg_ft_epoch4` ADOPTED as the shipped model**, superseding `classcan_density_v4_best`.
 
-> ⚠️ **Deployment note:** The main app's `models/classcan_density_float32.tflite` still contains the OLD v4_best weights. The epoch4 checkpoint must be exported to TFLite float32 and placed there.
+> **Historical note:** This checkpoint was later superseded by the 3-way weighted ensemble (rounds 4–9). Final deployed model: `classcan_density_round4_ep8.tflite` + `classcan_density_style_aug_ep8.tflite` (0.6/0.4 weights). Deployed on Pi — Sept 23, 2026.
 
 ---
 
@@ -841,7 +841,7 @@ If MAE matters more than correlation for the writeup/defense:
 | `style-aug-epoch8` | `/content/drive/MyDrive/models/classcan_density_style_aug_ft_lowLR_epoch8.weights.h5` | Stretch at inference |
 | `stretch-ft-epoch1` (alt) | `/content/drive/MyDrive/models/classcan_density_stretch_ft_epoch1.weights.h5` | Stretch at inference |
 
-> ⚠️ **Deployment note:** The main app's `models/classcan_density_float32.tflite` still contains OLD weights. Both ensemble checkpoints must be exported to float32 TFLite and the inference path updated to compute a weighted average of both models' density map sums. App currently silently falls back to COCO SSD.
+> **Deployment status (Sept 23, 2026):** Both ensemble checkpoints exported to float32 TFLite and deployed on Pi. Weighted ensemble inference confirmed working end-to-end on real hardware. Dashboard functional. Camera color desaturation appears resolved. Known issues: frame delivery inconsistency, inference lag behind live video. AI not yet validated at 5+ people.
 
 ---
 

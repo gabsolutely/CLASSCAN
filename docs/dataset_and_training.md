@@ -275,11 +275,6 @@ for d in interpreter.get_output_details():
 ---
 
 
-## 8. Security Notice
-
-> [!CAUTION]
-> **Roboflow API Key Rotation:** If a Roboflow API key was previously pasted in plaintext into shared Colab notebooks or documents, rotate it immediately in the Roboflow workspace dashboard under Account Settings > API Keys. Never store raw API keys in version control or publicly shared notebooks.
-
 ---
 
 ## 9. Post-Training Evaluation
@@ -360,7 +355,7 @@ The AI/model engineering phase has concluded after 9 rounds of real-footage fine
    - **SCUT-HEAD validation (407 images):** r>0.99 maintained throughout all rounds — no catastrophic regression.
    - **Preprocessing asymmetry:** epoch8 evaluated with letterbox at inference (correlation boost 0.506→0.602 as standalone vs stretch eval); style-aug-epoch8 evaluated with stretch. Training from scratch with letterbox collapsed in all 5 attempts.
    - **Alternative lower-MAE configuration:** (0.55, 0.10, 0.35) → MAE=2.68, corr≈0.584 — use if MAE matters more than correlation for the writeup.
-   - **⚠️ Deployment status:** `models/classcan_density_float32.tflite` must be regenerated from BOTH ensemble checkpoints; inference path must compute weighted sum of density maps. App currently silently falls back to COCO SSD.
+   - **Deployment status (Sept 23, 2026):** Both ensemble checkpoints exported to float32 TFLite and deployed on Pi. Full pipeline confirmed working end-to-end on real hardware.
 
 2. **Secondary / Box Detector (MobileNetV3-Large @ 416×416)** — HUD bounding box visualization only.
    - **Locked-in Inference Pipeline:** 2×2 grid tiled inference (0.2 overlap), dual thresholding (`full_obj=0.35`, `tile_obj=0.65`), Soft-NMS (σ=0.5, thresh=0.3).
@@ -369,7 +364,7 @@ The AI/model engineering phase has concluded after 9 rounds of real-footage fine
 ### 10b. Operational Deployment Strategy
 - **Turret Scanning Context:** A 40-student classroom divided across 4 pan/tilt servo quadrants means each camera snapshot evaluates only ~10 students. The model's true deployment regime is the low-density bucket where accuracy is highest (SCUT-HEAD 0–20 bucket MAE=0.93).
 - **Ensemble Inference:** Run both TFLite models on each captured frame; headcount = 0.6 × sum(epoch8_density_map_letterbox) + 0.4 × sum(style_aug_density_map_stretch). No additional threshold needed (bias is already near-neutral at +1.58).
-- **Immediate Focus Shift:** Model work considered complete. Non-model priority: export both ensemble checkpoints to TFLite, implement ensemble inference path, camera exposure/color tuning, first live camera→inference test.
+- **Deployment Status (Sept 23, 2026):** Both ensemble checkpoints exported to float32 TFLite and deployed on Pi. Full pipeline (Pi + OV4689 + ensemble) confirmed working end-to-end on real hardware. Dashboard functional. Camera color desaturation appears resolved. Remaining open items: frame delivery inconsistency, inference lag, camera startup config wiring (`set_camera_config.sh` + `quirks=128` must be confirmed in `setup/startup.py`), and 5+ people validation.
 
 ### 10c. Long-Term / Post-PoC Research Avenues
 1. **Genuine Filipino-classroom training data:** Per PeaNat's original recommendation — the real root cause of the 0.43–0.60 real-footage correlation ceiling. Deferred to future phase, stated plainly in writeup/defense.
