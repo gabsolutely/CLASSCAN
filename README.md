@@ -5,7 +5,7 @@ A ceiling-mounted smart camera turret that automatically detects and counts peop
 
 ### __WORK IN PROGRESS, ACTIVELY CHANGING__
 
-**Status:** Core software pipeline operational and bench-tested on Raspberry Pi 3B running **Raspberry Pi OS Lite (64-bit, Trixie)**. AI/model engineering is **functionally complete**: confirmed best model is **`classcan_density_v4` density-map regression** (MAE=2.13, $r=0.9951$ overall; **MAE=0.93** in the 0–20 quadrant operational regime) alongside the locked-in **MobileNetV3-Large @ 416×416 box detector** (F1=31.8%, MAE=3.84, $r=0.986$ with 2×2 dual-threshold tiling and Soft-NMS). Active focus is 100% on the camera pipeline: exposure calibration, gain sweep, and live end-to-end integration.
+**Status (Sept 23, 2026):** **Live end-to-end pipeline deployed on real hardware.** Full pipeline (Pi + OV4689 + 3-way weighted ensemble) ran on first attempt — stitched together in under 2 days. Dashboard working. Camera color desaturation issue appears resolved. AI detection functional; not yet validated at 5+ people. Final adopted model is a **3-way weighted ensemble** (`0.6 × classcan_density_v4_round4_ft_epoch8` letterbox + `0.4 × classcan_density_style_aug_ft_lowLR_epoch8` stretch): **MAE=2.77, corr=0.586** on 350-frame genuine held-out real classroom footage. SCUT-HEAD benchmark: MAE=2.13, $r=0.9951$; quadrant operational regime MAE=0.93. Secondary HUD model: MobileNetV3-Large @ 416×416 (F1=31.8%, MAE=3.84). Open items: frame delivery inconsistency, inference lag, camera startup config wiring, 5+ people validation.
 
 ---
 
@@ -123,10 +123,11 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 
 ## Known Limitations & Open Items
 
-- **AI/Model Side Status:** Functionally complete. Model development is frozen; further gains from public datasets have reached diminishing returns.
-- **Camera Exposure Calibration:** OV4689 camera is live at `/dev/video0`. A 225-image 4-variable sweep (exposure × gain × brightness × gamma) identified `gamma=110` (default) as the root cause of all-black images. **Known-good baseline confirmed:** `exposure=500, gain=192, brightness=64, gamma=300` (brightness OK). Remaining issue is color/white-balance (image is bright but gray/desaturated). Next step: narrow sweep targeting color controls.
+- **AI/Model Side Status:** Functionally complete. Final model is a 3-way weighted ensemble (MAE=2.77, corr=0.586 on genuine held-out real footage). Model development is frozen.
+- **Camera:** OV4689 live at `/dev/video0`. Known-good baseline: `auto_exposure=1, exposure=500, gain=192, brightness=64, gamma=300, saturation=100, white_balance_automatic=0, white_balance_temperature~4600`. Color desaturation issue appears resolved on deployed hardware. Camera startup config (`set_camera_config.sh` + `quirks=128` via `/etc/modprobe.d/uvcvideo.conf`) must be confirmed wired into `setup/startup.py` for every boot.
+- **Frame delivery + inference lag:** Camera frame delivery is inconsistent and AI detection noticeably lags live video. Under investigation.
+- **5+ people validation:** AI detection not yet tested with real classroom occupancy (5+ people).
 - **Single-Camera Blind Spots:** By design, a sweeping turret observes one sector at a time. Zone-occupancy reflects the latest quadrant scan rather than continuous instantaneous truth — handled via change-triggered re-scans and reconciler consistency checks. An intentional, honestly-scoped limitation.
-- **Roboflow API Key:** Was exposed in a shared notebook; must be rotated in the Roboflow workspace settings before any further cloud data operations.
 
 ---
 
@@ -153,10 +154,13 @@ Full itemized BOM and cost breakdown: see [`docs/bom.md`](docs/bom.md).
 - [x] **Custom Model Training (Box):** Keras MobileNetV3-Large + 416×416 FPN head detector trained to epoch 60; locked in with 2×2 tiled inference + Soft-NMS (F1=31.8%, MAE=3.84, $r=0.986$).
 - [x] **Custom Model Training (Density):** Density-map regression v2 (`classcan_density_v4`) trained to epoch 41; confirmed best model overall (MAE=2.13, $r=0.9951$, quadrant MAE=0.93).
 - [x] **Physical Camera Integration:** OV4689 detected at `/dev/video0` (MJPG up to 2688×1520@30fps); 11-shot and 225-shot (4-variable) exposure sweeps completed on Pi.
-- [x] **Camera Brightness Calibration:** Gamma root cause identified (`gamma=110` → `gamma=300`). Known-good baseline: `exposure=500, gain=192, brightness=64, gamma=300`.
-- [x] **TFLite Model Export:** `classcan_density_v4` → 13.77 MB float32 TFLite confirmed at **702.3 ms/frame** on Pi 3B via `ai_edge_litert`. Int8 deferred (XNNPack bilinear incompatibility).
-- [ ] **Camera Color Calibration:** Narrow sweep around baseline targeting color/white-balance controls (image bright but gray/desaturated).
-- [ ] **Live End-to-End Camera Test:** OV4689 frame → TFLite density inference → headcount on Pi (first real live run).
+- [x] **Camera Baseline Calibration:** Gamma root cause identified (`gamma=110` → `gamma=300`). Known-good baseline: `auto_exposure=1, exposure=500, gain=192, brightness=64, gamma=300, saturation=100, wb_auto=0, wb_temp~4600`.
+- [x] **TFLite Model Export:** Both ensemble checkpoints → float32 TFLite (13.77 MB each, ~702 ms/frame on Pi 3B via `ai_edge_litert`). Int8 deferred (XNNPack bilinear incompatibility).
+- [x] **Camera Color:** Color desaturation issue appears resolved on deployed hardware. `set_camera_config.sh` baseline script in place.
+- [x] **Live End-to-End Camera Test:** OV4689 → 3-way ensemble TFLite inference → headcount on Pi confirmed working. Dashboard functional. **(COMPLETED Sept 23, 2026)**
+- [ ] **Camera Startup Config Wiring:** Confirm `set_camera_config.sh` and `quirks=128` (`/etc/modprobe.d/uvcvideo.conf`) are applied every boot via `setup/startup.py`.
+- [ ] **Frame Delivery + Lag:** Camera frame delivery inconsistent; inference lags live video. Investigate capture/inference threading.
+- [ ] **5+ People Validation:** AI detection not yet tested with real classroom occupancy.
 - [ ] **Illumination Module:** Finalize circuit design (LED array, driver transistor, LDR threshold) and wire to ESP32 ADC/GPIO.
 - [ ] **Turret & Quadrant Calibration:** Calibrate pan/tilt servo angles for Quadrants 1–4 once mounted in dome enclosure.
 - [ ] **Full-System Benchmarking:** Record end-to-end latency, temperature, and detection accuracy under live classroom lighting.

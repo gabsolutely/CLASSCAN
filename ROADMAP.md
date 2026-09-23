@@ -3,15 +3,14 @@
 **Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
-**Status (as of Sept 20, 2026 — 8 days to deadline):** Core software pipeline operational and bench-tested.
-AI/model engineering has concluded after 9 rounds of real-footage fine-tuning + ensemble search. Final adopted model:
+**Status (as of Sept 23, 2026 — 5 days to deadline):** **Live end-to-end pipeline deployed on real hardware.** Full pipeline (Pi + OV4689 + 3-way ensemble) ran on first attempt — stitched together in under 2 days. Dashboard working. AI detection functional; not yet validated at 5+ people. Camera color desaturation issue appears resolved on this hardware run.
 
 1. **Final adopted model (ensemble):** `0.6 × classcan_density_v4_round4_ft_epoch8 (letterbox eval) + 0.4 × classcan_density_style_aug_ft_lowLR_epoch8 (stretch eval)` — MAE=2.77, correlation=0.586 on genuine held-out v2 data (350 frames). Best real-footage correlation across all 9 rounds.
 2. **Alternative lower-MAE ensemble:** `0.55 × epoch8 + 0.10 × stretch-ft-epoch1 + 0.35 × style-aug-epoch8` → MAE=2.68, corr≈0.584 (worth using if MAE matters more than correlation).
 3. **SCUT-HEAD benchmark (407-image eval):** All checkpoints maintained r>0.99 throughout — no catastrophic regression across any round.
 4. **Secondary HUD Model:** MobileNetV3-Large + 416×416 FPN head detector (F1 = 31.8%, MAE = 3.84) for bounding box visualization.
 
-**Critical remaining non-model tasks (ALL STILL DEFERRED):** Deploy adopted model/ensemble into main app (currently silently falling back to COCO SSD), first live camera→inference test (NEVER done once), camera color/white-balance tuning (ROI + sharpness), rotate leaked Roboflow API key.
+**Remaining open items:** Camera frame delivery inconsistency + inference lag behind live video. AI detection not yet validated at 5+ people. Camera startup config (v4l2-ctl baseline + quirks=128) must be confirmed wired into `setup/startup.py`.
 Hard deadline: **September 28, 2026**.
 
 ---
@@ -126,10 +125,12 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [x] `annotate_missed_heads.py` (matplotlib click-annotation tool, runs locally) committed to `/scripts`
 - [x] `hardpos_annotations.json` (490 missed-head points, 115/117 frames) committed to `/scripts`
 - [x] `hardpos_annotations_v2.json` (350-frame holdout set, annotated post round-4-epoch-8) committed to `/scripts`
-- [!] **CRITICAL — Deploy adopted ensemble:** Main app `models/` folder still contains OLD weights. Ensemble (classcan_density_v4_round4_ft_epoch8 + classcan_density_style_aug_ft_lowLR_epoch8) must be implemented as the inference engine. App currently silently falls back to COCO SSD.
-- [ ] **Live end-to-end camera test:** OV4689 frame → TFLite density ensemble → headcount on Pi (**NEVER DONE ONCE this entire project**)
-- [ ] **Camera color/ROI tuning:** Narrow sweep exposure~300-700/gain~128-220, disable `region_of_interest_auto_ctrls`, try `sharpness=3` (currently maxed at 7)
-- [!] **Security:** Roboflow API key pasted in plaintext into shared Colab notebooks/docs multiple times (deliberately kept in scripts). **Rotate immediately** in Roboflow dashboard → Account Settings → API Keys.
+- [x] **Deploy adopted ensemble:** Weighted 3-way ensemble (0.6×round4_epoch8_letterbox + 0.4×style_aug_epoch8_stretch) wired into main app and running on Pi. App no longer falls back to COCO SSD.
+- [x] **Live end-to-end camera test:** OV4689 → TFLite density ensemble → headcount on Pi confirmed working. Dashboard functional. **(COMPLETED Sept 23, 2026)**
+- [x] **Camera color/desaturation:** Appears resolved on the deployed hardware run. Known-good baseline (`set_camera_config.sh`) in place.
+- [ ] **Camera startup config wiring:** Confirm `set_camera_config.sh` baseline (auto_exposure=1, exposure=500, gain=192, brightness=64, gamma=300, saturation=100, wb_auto=0, wb_temp~4600) and `quirks=128` (`/etc/modprobe.d/uvcvideo.conf`) are applied on every boot via `setup/startup.py`.
+- [ ] **Frame delivery + lag investigation:** Camera frame delivery inconsistent; AI detection noticeably lags live video. Investigate capture/inference threading.
+- [ ] **Validate at 5+ people:** AI detection not yet tested with real classroom occupancy.
 
 ## Full-System Integration (Post-PoC)
 
