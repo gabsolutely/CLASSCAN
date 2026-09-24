@@ -43,6 +43,27 @@ Import chain (ai-edge-litert is the production Pi 3B package):
   1. ai_edge_litert.interpreter  (official Google Pi wheel — preferred on device)
   2. tensorflow.lite.python.interpreter  (dev-machine fallback via full TF install)
 
+Camera Frame Acquisition — Stale-Buffer Fix (Sept 24, 2026)
+-------------------------------------------------------------
+OpenCV / V4L2 maintains an internal ring buffer (typically 3–4 frames deep).
+The camera hardware continuously fills this buffer at the configured frame rate
+regardless of what the Python process is doing.
+
+Problem: TFLite inference on the Pi 3B takes ~700 ms (density model) to ~1+ s
+(ensemble).  During that time many new camera frames pile up in the buffer.
+A naive cap.read() after inference returns the *oldest* buffered frame — potentially
+several seconds stale — handing the AI an image that no longer represents the
+live scene.  This was the root cause of the "AI operates on late frames / inference
+lags live video" symptom reported Sept 24, 2026.
+
+Fix: _grab_fresh_frame(cap) drains the buffer before every real-hardware capture:
+  1. Call cap.grab() in a tight loop (up to 8×) — advances the V4L2 DMA pointer
+     and discards each queued frame without decoding pixels (nearly free).
+  2. Call cap.retrieve() once to decode only the final, freshest frame.
+All three detector classes (DensityDetector, EnsembleDensityDetector, Detector)
+use _grab_fresh_frame() in their capture_frame() methods when not in mock mode.
+_MockCapture bypasses it (plain read — no buffer concept in simulation).
+
 Training & Model Evolution (summary)
 -------------------------------------
   V2+300 baseline → MobileNetV3-Large 416×416 (F1=30.1%) → count calibration

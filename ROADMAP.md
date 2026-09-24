@@ -3,7 +3,7 @@
 **Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
-**Status (as of Sept 23, 2026 — 5 days to deadline):** **Live end-to-end pipeline deployed on real hardware.** Full pipeline (Pi + OV4689 + 3-way ensemble) ran on first attempt — stitched together in under 2 days. Dashboard working. AI detection functional; not yet validated at 5+ people. Camera color desaturation issue appears resolved on this hardware run.
+**Status (as of Sept 24, 2026 — 4 days to deadline):** **Live end-to-end pipeline deployed on real hardware.** Full pipeline (Pi + OV4689 + 3-way ensemble) ran on first attempt — stitched together in under 2 days. Dashboard working. AI detection functional; not yet validated at 5+ people. Camera color desaturation issue appears resolved on this hardware run. **Frame delivery + inference lag: resolved Sept 24, 2026** (V4L2 buffer drain fix in `detector.py`).
 
 1. **Final adopted model (ensemble):** `0.6 × classcan_density_v4_round4_ft_epoch8 (letterbox eval) + 0.4 × classcan_density_style_aug_ft_lowLR_epoch8 (stretch eval)` — MAE=2.77, correlation=0.586 on genuine held-out v2 data (350 frames). Best real-footage correlation across all 9 rounds.
 2. **Alternative lower-MAE ensemble:** `0.55 × epoch8 + 0.10 × stretch-ft-epoch1 + 0.35 × style-aug-epoch8` → MAE=2.68, corr≈0.584 (worth using if MAE matters more than correlation).
@@ -129,7 +129,7 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [x] **Live end-to-end camera test:** OV4689 → TFLite density ensemble → headcount on Pi confirmed working. Dashboard functional. **(COMPLETED Sept 23, 2026)**
 - [x] **Camera color/desaturation:** Appears resolved on the deployed hardware run. Known-good baseline (`set_camera_config.sh`) in place.
 - [ ] **Camera startup config wiring:** Confirm `set_camera_config.sh` baseline (auto_exposure=1, exposure=500, gain=192, brightness=64, gamma=300, saturation=100, wb_auto=0, wb_temp~4600) and `quirks=128` (`/etc/modprobe.d/uvcvideo.conf`) are applied on every boot via `setup/startup.py`.
-- [ ] **Frame delivery + lag investigation:** Camera frame delivery inconsistent; AI detection noticeably lags live video. Investigate capture/inference threading.
+- [x] **Frame delivery + lag (FIXED Sept 24, 2026):** Root cause identified: OpenCV/V4L2 internal frame buffer queues stale frames during slow TFLite inference; `cap.read()` returned oldest buffered frame. Fix: `_grab_fresh_frame()` in `detector.py` drains buffer via `cap.grab()` loop (no pixel decode), then `cap.retrieve()` for only the freshest frame. Applied to `DensityDetector`, `EnsembleDensityDetector`, and `Detector`.
 - [ ] **Validate at 5+ people:** AI detection not yet tested with real classroom occupancy.
 
 ## Full-System Integration (Post-PoC)
