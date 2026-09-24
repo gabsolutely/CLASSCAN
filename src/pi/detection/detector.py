@@ -220,6 +220,42 @@ def _open_camera(camera_index: int) -> object:
     return cap
 
 
+def _grab_fresh_frame(cap) -> np.ndarray:
+    """
+    Drain OpenCV's internal frame buffer and return only the freshest frame.
+
+    OpenCV (especially with V4L2) queues several frames internally.  After a
+    slow AI inference pass those buffered frames go stale.  Calling cap.read()
+    without draining would hand the AI an old frame.
+
+    Strategy:
+      - Call cap.grab() (cheap — no pixel decode, just advances the DMA pointer)
+        in a tight loop until it returns False or no new frame arrives within a
+        tiny timeout window.
+      - cap.retrieve() decodes only the single final frame we kept.
+
+    Falls back to cap.read() if retrieve fails for any reason.
+    """
+    grabbed = False
+    # Drain up to 8 buffered frames; stop early when grabs stop succeeding
+    for _ in range(8):
+        ok = cap.grab()
+        if not ok:
+            break
+        grabbed = True
+
+    if grabbed:
+        ret, frame = cap.retrieve()
+        if ret and frame is not None:
+            return frame
+
+    # Fallback: plain read (works for mock capture and edge cases)
+    ret, frame = cap.read()
+    if not ret or frame is None:
+        raise RuntimeError("[CLASSCAN] Failed to capture frame from camera")
+    return frame
+
+
 # ─── DensityDetector — primary headcount engine ───────────────────────────────
 
 class DensityDetector:
@@ -283,11 +319,11 @@ class DensityDetector:
     # ── Frame capture ──────────────────────────────────────────────────────
 
     def capture_frame(self) -> np.ndarray:
-        """Grab latest frame from camera. Returns BGR ndarray."""
-        ret, frame = self.cap.read()
-        if not ret:
-            raise RuntimeError("[DensityDetector] Failed to capture frame from camera")
-        return frame
+        """Grab the freshest frame from camera (drains stale buffer). Returns BGR ndarray."""
+        if self.is_mock:
+            _, frame = self.cap.read()
+            return frame
+        return _grab_fresh_frame(self.cap)
 
     # ── Preprocessing ──────────────────────────────────────────────────────
 
@@ -433,11 +469,11 @@ class EnsembleDensityDetector:
     # ── Frame capture ──────────────────────────────────────────────────────
 
     def capture_frame(self) -> np.ndarray:
-        """Grab latest frame from camera. Returns BGR ndarray."""
-        ret, frame = self.cap.read()
-        if not ret:
-            raise RuntimeError("[EnsembleDensityDetector] Failed to capture frame")
-        return frame
+        """Grab the freshest frame from camera (drains stale buffer). Returns BGR ndarray."""
+        if self.is_mock:
+            _, frame = self.cap.read()
+            return frame
+        return _grab_fresh_frame(self.cap)
 
     # ── Preprocessing ─────────────────────────────────────────────────────
 
@@ -628,11 +664,11 @@ class Detector:
     # ── Frame capture ──────────────────────────────────────────────────────
 
     def capture_frame(self) -> np.ndarray:
-        """Grab latest frame from camera. Returns BGR ndarray."""
-        ret, frame = self.cap.read()
-        if not ret:
-            raise RuntimeError("[Detector] Failed to capture frame from camera")
-        return frame
+        """Grab the freshest frame from camera (drains stale buffer). Returns BGR ndarray."""
+        if self.is_mock:
+            _, frame = self.cap.read()
+            return frame
+        return _grab_fresh_frame(self.cap)
 
     # ── Preprocessing ──────────────────────────────────────────────────────
 
