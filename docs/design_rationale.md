@@ -247,3 +247,64 @@ The project moved to a custom Keras/TF training pipeline (see ADR-03) that:
 - Uses `tf.io.parse_single_example` and `tf.data.TFRecordDataset` directly — no `tensorflow_io` dependency
 - Maintains full control over the model architecture, loss function, and target encoding
 - Runs in a standard Colab GPU environment with no special Python version requirements
+
+---
+
+## ADR-09: Camera Frame Synchronization — V4L2 Buffer Drain via `cap.grab()` Loop
+
+**Date:** Sept 24, 2026
+
+### Context
+After the live end-to-end pipeline was confirmed working (Sept 23, 2026), two related symptoms remained:
+
+1. **AI operating on stale/late frames:** The density ensemble reported counts that appeared to reflect scenes from seconds earlier rather than the current live view.
+2. **Perceived inference lag behind the live video stream:** The HUD stream and the AI count output seemed temporally misaligned.
+
+### Root Cause Analysis
+OpenCV (using V4L2 on Linux/Pi OS) maintains an internal ring buffer of camera frames — typically 3–4 frames deep. The camera hardware writes to this buffer continuously at the configured frame rate (e.g., 30 FPS → 1 new frame every ~33 ms) regardless of Python process activity.
+
+TFLite inference on the Pi 3B is slow:
+- Single density model: ~700 ms/frame
+- Ensemble (two sequential invocations): ~1.4 s/frame
+
+During a 1.4-second inference pass, the camera produces ~42 new frames. These all queue in the buffer. After inference, the main loop calls `cap.read()` which pops the **oldest** queued frame — not the latest one. The AI was therefore always operating on footage that was 1–2 seconds behind real time, and the mismatch worsened as inference took longer.
+
+This is a well-known OpenCV/V4L2 issue in any application where capture and processing have asymmetric rates.
+
+### Decision
+Add `_grab_fresh_frame(cap)` — a module-level buffer-drain helper in `detector.py` — and replace every real-hardware `cap.read()` call in `capture_frame()` with it.
+
+```python
+def _grab_fresh_frame(cap) -> np.ndarray:
+    grabbed = False
+    for _ in range(8):        # drain up to 8 queued frames
+        ok = cap.grab()       # advances DMA pointer — no pixel decode
+        if not ok:
+            break
+        grabbed = True
+
+    if grabbed:
+        ret, frame = cap.retrieve()   # decode only the final frame
+        if ret and frame is not None:
+            return frame
+
+    ret, frame = cap.read()   # fallback for edge cases
+    ...
+    return frame
+```
+
+`cap.grab()` is the key operation: it advances the V4L2 DMA buffer pointer and discards the frame from the queue without decoding its pixels. This makes it effectively free (microseconds per call). Only the final `cap.retrieve()` performs a JPEG decode.
+
+### Rationale
+1. **Correct-by-construction frame freshness:** Every AI inference and every HUD push now operates on the most recently captured frame, regardless of how long the previous inference took.
+2. **No decode overhead for discarded frames:** `cap.grab()` without `cap.retrieve()` avoids JPEG decompression for intermediate buffer entries. Draining 8 frames costs negligible CPU.
+3. **Minimal code impact:** The fix is contained entirely within `_grab_fresh_frame()`. No threading, no queue primitives, no changes to the main loop logic.
+4. **Mock mode unaffected:** `_MockCapture.read()` is used directly in mock/simulation mode — it has no internal buffer concept.
+
+### Scope
+Applied to all three detector classes: `DensityDetector.capture_frame()`, `EnsembleDensityDetector.capture_frame()`, and `Detector.capture_frame()`.
+
+### Alternatives Considered
+- **Background capture thread with a `queue.Queue(maxsize=1)`:** Frames are decoded in a dedicated thread; the main loop always reads the most recent decoded frame from a 1-item queue (drop-if-full). Provides true parallel capture/inference but adds threading complexity, GIL interaction with NumPy array handoff, and thread lifecycle management — overkill for a PoC-deadline system.
+- **`cv2.CAP_PROP_BUFFERSIZE = 1`:** OpenCV exposes a property to set the V4L2 buffer size. However, on many kernel/driver versions this property is ignored or silently clamped; it cannot be relied upon across Pi OS releases. The grab-loop approach works unconditionally.
+- **Reducing `LOOP_SLEEP` or restructuring the main loop:** These address symptoms (throughput) rather than the root cause (buffer staleness).
