@@ -108,6 +108,49 @@
         </div>
       </div>
 
+      <!-- Manual Light Control (placeholder) -->
+      <div class="card">
+        <div class="card-label">Manual Light Control <span class="placeholder-badge">Placeholder</span></div>
+
+        <!-- Power toggle -->
+        <div class="light-toggle-row">
+          <span class="light-toggle-label" id="light-state-label">OFF</span>
+          <label class="light-switch" for="light-toggle" aria-label="Toggle lights">
+            <input type="checkbox" id="light-toggle" />
+            <span class="light-slider"></span>
+          </label>
+        </div>
+
+        <!-- Dimmer -->
+        <div class="light-dimmer-row">
+          <span class="light-dim-label">Brightness</span>
+          <div class="light-dim-track">
+            <input type="range" id="light-brightness" class="light-range" min="0" max="100" value="80" />
+          </div>
+          <span class="light-dim-val" id="light-brightness-val">80%</span>
+        </div>
+
+        <!-- Ambient sensor readings -->
+        <div class="light-sensors">
+          <div class="light-sensor-item">
+            <div class="light-sensor-label">Ambient Lux</div>
+            <div class="light-sensor-val" id="sensor-lux">342 lx</div>
+          </div>
+          <div class="light-sensor-item">
+            <div class="light-sensor-label">Color Temp</div>
+            <div class="light-sensor-val" id="sensor-cct">4200 K</div>
+          </div>
+          <div class="light-sensor-item">
+            <div class="light-sensor-label">IR Level</div>
+            <div class="light-sensor-val" id="sensor-ir">0.12</div>
+          </div>
+          <div class="light-sensor-item">
+            <div class="light-sensor-label">Light State</div>
+            <div class="light-sensor-val" id="sensor-state">—</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Real-time Event Log -->
       <div class="card" style="flex:1;">
         <div class="card-label">Event Log</div>

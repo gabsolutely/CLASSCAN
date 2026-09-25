@@ -204,6 +204,32 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // ── Manual Light Control (placeholder) ──────────────────────────
+  const lightToggle     = document.getElementById("light-toggle");
+  const lightStateLabel = document.getElementById("light-state-label");
+  const lightBrightness = document.getElementById("light-brightness");
+  const lightBrightVal  = document.getElementById("light-brightness-val");
+  const sensorState     = document.getElementById("sensor-state");
+
+  if (lightToggle && lightStateLabel) {
+    lightToggle.addEventListener("change", () => {
+      const on = lightToggle.checked;
+      lightStateLabel.textContent = on ? "ON" : "OFF";
+      lightStateLabel.classList.toggle("on", on);
+      if (sensorState) sensorState.textContent = on ? "ON" : "OFF";
+      log(`[Light] Power → ${on ? "ON" : "OFF"}`, on ? "ok" : "");
+    });
+  }
+
+  if (lightBrightness && lightBrightVal) {
+    lightBrightness.addEventListener("input", () => {
+      lightBrightVal.textContent = lightBrightness.value + "%";
+    });
+    lightBrightness.addEventListener("change", () => {
+      log(`[Light] Brightness → ${lightBrightness.value}%`);
+    });
+  }
+
   log("CLASSCAN dashboard ready. Click Connect to start monitoring.");
 });
 
