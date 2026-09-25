@@ -434,6 +434,179 @@ main {
   opacity: 0.85;
 }
 
+/* ── Manual Light Control ────────────────────────────────────────── */
+.placeholder-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 999px;
+  color: var(--amber);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+
+/* Power toggle row */
+.light-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.light-toggle-label {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  transition: color var(--transition);
+}
+
+.light-toggle-label.on {
+  color: var(--amber);
+}
+
+/* iOS-style toggle switch */
+.light-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.light-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.light-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: var(--transition);
+}
+
+.light-slider::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: var(--transition);
+}
+
+.light-switch input:checked + .light-slider {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: var(--amber);
+}
+
+.light-switch input:checked + .light-slider::before {
+  left: calc(100% - 19px);
+  background: var(--amber);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+}
+
+/* Dimmer row */
+.light-dimmer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.light-dim-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 60px;
+}
+
+.light-dim-track {
+  flex: 1;
+}
+
+.light-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  outline: none;
+  cursor: pointer;
+}
+
+.light-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.light-range::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.8);
+  transform: scale(1.15);
+}
+
+.light-dim-val {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--amber);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Sensor readings grid */
+.light-sensors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.light-sensor-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.light-sensor-label {
+  font-size: 0.63rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.light-sensor-val {
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
 /* ── Footer ──────────────────────────────────────────────────────── */
 footer {
   border-top: 1px solid var(--border);
