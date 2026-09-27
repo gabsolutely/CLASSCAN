@@ -111,8 +111,18 @@ async function poll() {
     setStatus("connected", "Connected");
 
     if (data.count !== undefined) updateCount(data.count);
-    if (data.snapshot)            updateSnapshot(data.snapshot, data.timestamp || "—");
     if (data.zones)               updateZones(data.zones);
+
+    // If live MJPEG stream is active, update metadata; if stream broke/empty, fallback to base64 snapshot
+    const img = document.getElementById("snapshot-img");
+    if (!img || !img.src || img.src.startsWith("data:") || img.naturalWidth === 0) {
+      if (data.snapshot) updateSnapshot(data.snapshot, data.timestamp || "—");
+    } else {
+      const timeEl = document.getElementById("snapshot-time");
+      const dimsEl = document.getElementById("snapshot-dims");
+      if (timeEl && data.timestamp) timeEl.textContent = data.timestamp;
+      if (dimsEl && data.fps !== undefined) dimsEl.textContent = `${data.fps} FPS`;
+    }
 
   } catch (err) {
     setStatus("error", "Connection error");
@@ -126,10 +136,26 @@ async function poll() {
 
 function togglePolling() {
   const btn = document.getElementById("connect-btn");
+  const urlInput = document.getElementById("pi-url");
+  const url = urlInput ? urlInput.value.replace(/\/$/, "") : "";
+  const img = document.getElementById("snapshot-img");
+  const ph  = document.getElementById("snapshot-placeholder");
+
   if (!polling) {
     polling = true;
     if (btn) btn.textContent = "Disconnect";
     log("Connecting to Pi 3B…");
+
+    // Connect directly to live MJPEG stream for real-time video
+    if (img && ph && url) {
+      img.src = `${url}/stream`;
+      img.style.display = "block";
+      ph.style.display  = "none";
+      img.onerror = () => {
+        log("MJPEG stream error, falling back to snapshot mode", "err");
+      };
+    }
+
     poll();
   } else {
     polling = false;
@@ -137,6 +163,12 @@ function togglePolling() {
     if (btn) btn.textContent = "Connect";
     setStatus("", "Disconnected");
     log("Disconnected.");
+
+    if (img && ph) {
+      img.src = "";
+      img.style.display = "none";
+      ph.style.display  = "flex";
+    }
   }
 }
 
