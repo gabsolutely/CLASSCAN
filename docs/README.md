@@ -2,6 +2,7 @@
 
 Project documentation, engineering decision records, and technical specifications:
 
+- [`system_overview.md`](system_overview.md) — **System documentation:** full architecture, AI model summary, dashboard API, serial protocol, configuration reference, and deployment gotchas. Start here.
 - [`scope_delimitation.md`](scope_delimitation.md) — System boundaries, capabilities, academic delimitations (PCU-D), and operational constraints.
 - [`bom.md`](bom.md) — Itemized Bill of Materials with hardware specifications, estimated component costs (PHP/USD), and procurement status.
 - [`design_rationale.md`](design_rationale.md) — Architectural Decision Records (ADRs) covering OS choice, heterogeneous compute, model pivot, and compute-aware triggering.
