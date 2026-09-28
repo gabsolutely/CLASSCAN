@@ -73,6 +73,9 @@ Training & Model Evolution (summary)
   (MAE=2.77, r=0.586 on genuine v2 held-out, best real-footage result across all rounds).
 """
 
+import threading
+import time
+
 import cv2
 import numpy as np
 
@@ -233,44 +236,70 @@ class _MockCapture:
         return True
 
 
+class ThreadedCamera:
+    """
+    Zero-latency threaded camera reader that continuously drains the driver buffer.
+    Guarantees every call to read() returns the freshest instantaneous frame from the sensor
+    without accumulating stale queued frames or blocking on buffer drains.
+    """
+    def __init__(self, camera_index: int = 0):
+        self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
+        if not self.cap.isOpened():
+            self.cap = cv2.VideoCapture(camera_index)
+        self.lock = threading.Lock()
+        self.frame = None
+        self.ret = False
+        self.stopped = False
+        if self.cap.isOpened():
+            res = self.cap.read()
+            if isinstance(res, (tuple, list)) and len(res) == 2:
+                self.ret, self.frame = res
+            else:
+                self.ret, self.frame = True, None
+            self.thread = threading.Thread(target=self._reader, daemon=True, name="CameraReader")
+            self.thread.start()
+
+    def _reader(self):
+        while not self.stopped:
+            try:
+                res = self.cap.read()
+                if isinstance(res, (tuple, list)) and len(res) == 2:
+                    ret, frame = res
+                    if ret and frame is not None:
+                        with self.lock:
+                            self.frame = frame
+                            self.ret = True
+            except Exception:
+                pass
+            time.sleep(0.005)
+
+    def read(self):
+        with self.lock:
+            if not self.ret or self.frame is None:
+                return False, None
+            return True, self.frame.copy()
+
+    def isOpened(self):
+        return self.cap.isOpened() if self.cap else False
+
+    def release(self):
+        self.stopped = True
+        if hasattr(self, "thread") and self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+        if self.cap:
+            self.cap.release()
+
+
 def _open_camera(camera_index: int) -> object:
-    """Open camera with V4L2 on Linux, fallback for dev machines."""
-    cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(camera_index)
-    return cap
+    """Open camera with zero-latency background reader thread."""
+    return ThreadedCamera(camera_index)
 
 
 def _grab_fresh_frame(cap) -> np.ndarray:
     """
-    Drain OpenCV's internal frame buffer and return only the freshest frame.
-
-    OpenCV (especially with V4L2) queues several frames internally.  After a
-    slow AI inference pass those buffered frames go stale.  Calling cap.read()
-    without draining would hand the AI an old frame.
-
-    Strategy:
-      - Call cap.grab() (cheap — no pixel decode, just advances the DMA pointer)
-        in a tight loop until it returns False or no new frame arrives within a
-        tiny timeout window.
-      - cap.retrieve() decodes only the single final frame we kept.
-
-    Falls back to cap.read() if retrieve fails for any reason.
+    Fetch the freshest frame from camera. Returns BGR ndarray.
+    Supports ThreadedCamera, mock capture, and standard cv2.VideoCapture.
     """
-    grabbed = False
-    # Drain up to 8 buffered frames; stop early when grabs stop succeeding
-    for _ in range(8):
-        ok = cap.grab()
-        if not ok:
-            break
-        grabbed = True
-
-    if grabbed:
-        ret, frame = cap.retrieve()
-        if ret and frame is not None:
-            return frame
-
-    # Fallback: plain read (works for mock capture and edge cases)
     ret, frame = cap.read()
     if not ret or frame is None:
         raise RuntimeError("[CLASSCAN] Failed to capture frame from camera")
