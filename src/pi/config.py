@@ -69,9 +69,9 @@ class Config:
     DENSITY_THRESHOLD = 0.15
 
     # ── Detection Timing ───────────────────────────────────────────────────
-    HEARTBEAT_INTERVAL = 10.0         # Seconds between periodic scans
-    LOOP_SLEEP         = 0.05         # Seconds between loop iterations (~20 Hz frame poll)
-    CHANGE_THRESHOLD   = 0.15         # Frame-diff ratio to trigger immediate re-detect
+    HEARTBEAT_INTERVAL = 3.0          # Seconds between periodic scans when scene is static
+    LOOP_SLEEP         = 0.033        # Seconds between loop iterations (~30 Hz frame poll)
+    CHANGE_THRESHOLD   = 0.015        # Frame-diff ratio to trigger immediate re-detect (calibrated for human motion)
 
     # ── Mode ("SWEEP" | "ZONE_CHECK") ──────────────────────────────────────
     MODE = "SWEEP"
