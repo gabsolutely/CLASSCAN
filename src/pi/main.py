@@ -150,6 +150,15 @@ def main():
 
     source_tag = "SIMULATED" if detector.is_mock else "HARDWARE"
 
+    # ── Watchdog state ────────────────────────────────────────────────────────
+    # Tracks health of camera, AI inference, and serial link so the dashboard
+    # can show alerts when something stops responding.
+    _WD_AI_TIMEOUT     = 15.0  # seconds — flag AI as down if no successful inference
+    _WD_CAMERA_TIMEOUT = 5.0   # seconds — flag camera as down if no valid frame
+    _wd_last_inference = time.time()  # updated after each successful inference cycle
+    _wd_last_frame     = time.time()  # updated whenever a non-None frame is captured
+
+
     print("-" * 60)
     print(f"[CLASSCAN] Dashboard live: http://{cfg.DASHBOARD_HOST}:{cfg.DASHBOARD_PORT}")
     print(f"[CLASSCAN] Video stream:   http://{cfg.DASHBOARD_HOST}:{cfg.DASHBOARD_PORT}/stream")
@@ -200,6 +209,7 @@ def main():
         When the main loop posts a frame (_infer_trigger), runs full TFLite
         inference and writes results to _result under _infer_lock.
         """
+        nonlocal _wd_last_inference
         while not _stop_flag.is_set():
             # Block until main loop signals (1-second timeout to re-check _stop_flag)
             triggered = _infer_trigger.wait(timeout=1.0)
@@ -253,6 +263,7 @@ def main():
                     _result["detections"]  = new_detections
                     _result["count"]       = new_count
                     _result["zone_counts"] = new_zone_counts
+                _wd_last_inference = time.time()  # watchdog: mark AI healthy
 
             except Exception as exc:
                 print(f"[CLASSCAN][InferenceWorker] Error: {exc}")
@@ -270,6 +281,8 @@ def main():
         while True:
             # 2. Grab Frame - always get the freshest available camera frame
             frame     = detector.capture_frame()
+            if frame is not None:
+                _wd_last_frame = time.time()  # watchdog: mark camera healthy
             esp_state = serial_bridge.get_state()  # "idle" | "moving"
 
             # 3. FPS calculation
@@ -310,6 +323,25 @@ def main():
                 serial_bridge.send_count(last_count)
                 print(f"[CLASSCAN] Headcount updated -> {last_count}")
 
+            # 5a. Watchdog — build health report for dashboard
+            _now = time.time()
+            _wd_camera_ok = (_now - _wd_last_frame)     < _WD_CAMERA_TIMEOUT
+            _wd_ai_ok     = (_now - _wd_last_inference) < _WD_AI_TIMEOUT
+            _wd_serial_ok = not serial_bridge._is_mock
+            _wd_alerts = []
+            if not _wd_camera_ok:
+                _wd_alerts.append("Camera disconnected or not responding")
+            if not _wd_ai_ok:
+                _wd_alerts.append("AI inference stalled — no result in >15 s")
+            if not _wd_serial_ok:
+                _wd_alerts.append("ESP32 serial not connected (simulated mode)")
+            watchdog_status = {
+                "camera": _wd_camera_ok,
+                "ai":     _wd_ai_ok,
+                "serial": _wd_serial_ok,
+                "alerts": _wd_alerts,
+            }
+
             # 6. Annotate and Push Frame to Dashboard.
             #    Boxes from the latest completed inference are overlaid on the
             #    current live frame - stream is always smooth, no inference wait.
@@ -324,6 +356,8 @@ def main():
                 top_conf=top_conf,
                 zones=zone_counts,
                 mode=cfg.MODE,
+                motion=motion_active,
+                watchdog=watchdog_status,
             )
 
             # 7. Handle Inbound Dashboard Commands

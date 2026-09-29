@@ -36,6 +36,13 @@ _latest_telemetry: dict = {
     "snapshot": "",
     "zones": None,
     "mode": "SWEEP",
+    "motion": False,
+    "watchdog": {
+        "camera": True,
+        "ai": True,
+        "serial": True,
+        "alerts": [],
+    },
 }
 
 
@@ -146,7 +153,8 @@ class DashboardServer:
         print(f"[DashboardServer] Listening on http://{host}:{port} (Serving {DASHBOARD_DIR})")
 
     def push(self, count: int, frame: np.ndarray, fps: float = 0.0, top_conf: float = 0.0,
-             zones: dict | None = None, mode: str = "SWEEP"):
+             zones: dict | None = None, mode: str = "SWEEP",
+             motion: bool = False, watchdog: dict | None = None):
         """Store latest count, annotated frame, and telemetry for polling & streaming."""
         global _latest_frame_jpg
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
@@ -163,6 +171,9 @@ class DashboardServer:
             _latest_telemetry["snapshot"] = b64
             _latest_telemetry["zones"] = zones
             _latest_telemetry["mode"] = mode
+            _latest_telemetry["motion"] = motion
+            if watchdog is not None:
+                _latest_telemetry["watchdog"] = watchdog
 
     def poll_command(self) -> str | None:
         """Non-blocking: returns a command string if one is queued, else None."""
