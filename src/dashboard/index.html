@@ -43,6 +43,9 @@
         <div class="card-label">Current Occupancy</div>
         <div class="count-number" id="count-display">—</div>
         <div class="count-label">people detected</div>
+        <div class="motion-badge" id="motion-badge" style="display:none">
+          <span class="motion-dot"></span> Motion Detected
+        </div>
       </div>
 
       <!-- Live Video Stream -->
@@ -155,6 +158,29 @@
       <div class="card" style="flex:1;">
         <div class="card-label">Event Log</div>
         <div class="log-scroll" id="log-scroll"></div>
+      </div>
+
+      <!-- Watchdog Status -->
+      <div class="card" id="watchdog-card">
+        <div class="card-label">System Health</div>
+        <div class="watchdog-grid" id="watchdog-grid">
+          <div class="wd-item" id="wd-camera">
+            <span class="wd-dot" id="wd-dot-camera"></span>
+            <span class="wd-label">Camera</span>
+            <span class="wd-status" id="wd-status-camera">—</span>
+          </div>
+          <div class="wd-item" id="wd-ai">
+            <span class="wd-dot" id="wd-dot-ai"></span>
+            <span class="wd-label">AI Engine</span>
+            <span class="wd-status" id="wd-status-ai">—</span>
+          </div>
+          <div class="wd-item" id="wd-serial">
+            <span class="wd-dot" id="wd-dot-serial"></span>
+            <span class="wd-label">ESP32 Serial</span>
+            <span class="wd-status" id="wd-status-serial">—</span>
+          </div>
+        </div>
+        <div class="wd-alerts" id="wd-alerts"></div>
       </div>
 
     </div>

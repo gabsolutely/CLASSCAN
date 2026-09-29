@@ -83,6 +83,47 @@ function updateSnapshot(b64, timestamp) {
   if (dimsEl) dimsEl.textContent = "JPEG";
 }
 
+// ── Motion indicator ─────────────────────────────────────────────────────
+function updateMotion(active) {
+  const badge = document.getElementById("motion-badge");
+  if (!badge) return;
+  badge.style.display = active ? "inline-flex" : "none";
+}
+
+// ── Watchdog / System Health ─────────────────────────────────────────────
+function updateWatchdog(wd) {
+  if (!wd) return;
+
+  const components = [
+    { key: "camera", id: "camera" },
+    { key: "ai",     id: "ai"     },
+    { key: "serial", id: "serial" },
+  ];
+
+  components.forEach(({ key, id }) => {
+    const ok     = wd[key];
+    const dotEl  = document.getElementById(`wd-dot-${id}`);
+    const statEl = document.getElementById(`wd-status-${id}`);
+    const itemEl = document.getElementById(`wd-${id}`);
+    if (!dotEl || !statEl || !itemEl) return;
+
+    dotEl.className    = `wd-dot ${ok ? "ok" : "error"}`;
+    statEl.textContent = ok ? "OK" : "ERROR";
+    itemEl.className   = `wd-item ${ok ? "wd-ok" : "wd-error"}`;
+  });
+
+  // Render alert messages
+  const alertsEl = document.getElementById("wd-alerts");
+  if (!alertsEl) return;
+  alertsEl.innerHTML = "";
+  (wd.alerts || []).forEach(msg => {
+    const div = document.createElement("div");
+    div.className = "wd-alert-msg";
+    div.innerHTML = `<span class="wd-alert-icon">⚠️</span>${msg}`;
+    alertsEl.appendChild(div);
+  });
+}
+
 // ── Zone update ─────────────────────────────────────────────────────────
 function updateZones(zones) {
   if (!zones) return;
@@ -112,6 +153,8 @@ async function poll() {
 
     if (data.count !== undefined) updateCount(data.count);
     if (data.zones)               updateZones(data.zones);
+    updateMotion(!!data.motion);
+    if (data.watchdog)            updateWatchdog(data.watchdog);
 
     // If live MJPEG stream is active, update metadata; if stream broke/empty, fallback to base64 snapshot
     const img = document.getElementById("snapshot-img");
