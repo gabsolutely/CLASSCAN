@@ -628,6 +628,122 @@ footer {
   animation: count-pop 0.25s ease forwards;
 }
 
+/* ── Motion Badge ────────────────────────────────────────────────── */
+.motion-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--amber);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  animation: motion-fade-in 0.2s ease;
+}
+
+.motion-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: pulse-motion 1s ease-in-out infinite;
+}
+
+@keyframes pulse-motion {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.75); }
+}
+
+@keyframes motion-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Watchdog / System Health ────────────────────────────────────── */
+.watchdog-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.wd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  transition: border-color var(--transition);
+}
+
+.wd-item.wd-error {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.07);
+}
+
+.wd-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+  transition: background var(--transition);
+}
+
+.wd-dot.ok    { background: var(--green); box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+.wd-dot.error { background: var(--red);   box-shadow: 0 0 6px rgba(239,68,68,0.5); animation: pulse-dot 1.2s ease-in-out infinite; }
+.wd-dot.warn  { background: var(--amber); box-shadow: 0 0 6px rgba(245,158,11,0.5); }
+
+.wd-label {
+  flex: 1;
+  font-size: 0.82rem;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.wd-status {
+  font-size: 0.75rem;
+  font-family: var(--mono);
+  color: var(--text-muted);
+}
+
+.wd-item.wd-error .wd-status { color: var(--red); }
+.wd-item.wd-ok    .wd-status { color: var(--green); }
+.wd-item.wd-warn  .wd-status { color: var(--amber); }
+
+.wd-alerts {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wd-alert-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  font-size: 0.77rem;
+  color: #fca5a5;
+  animation: motion-fade-in 0.25s ease;
+}
+
+.wd-alert-icon {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  margin-top: 1px;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   main {
