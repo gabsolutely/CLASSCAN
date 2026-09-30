@@ -72,7 +72,10 @@ CLASSCAN/
 ```
 while True:
   frame = detector.capture_frame()       # freshest frame (stale-buffer fix)
-  if (significant_change OR heartbeat):
+  if frame is not None:                  # guard: skip motion check on missed reads
+    if trigger.check(frame):             # frame-diff → extend motion window
+      motion_active_until = now + 2.0
+  if frame is not None and (motion_active OR heartbeat):
     count = ensemble.predict(frame)       # density map sum → headcount
     detections = detector.detect(frame)   # bounding boxes for HUD only
     serial_bridge.send_count(count)       # → ESP32 → LED matrix
@@ -90,6 +93,8 @@ Re-detection fires when any of three conditions are true:
 3. **Cold start** — fires unconditionally on the first loop iteration
 
 ESP32 state (`idle` / `moving`) gates motion-triggered re-detection: detections are skipped while the servo mount is sweeping to avoid blurry/transitional frames.
+
+**`None`-frame guard (Sept 30, 2026):** `trigger.check()` and `frame.copy()` are now skipped entirely when `capture_frame()` returns `None` (e.g., a dropped USB read). This prevents an unhandled `cv2.cvtColor(None, ...)` exception from crashing the loop mid-session and from incorrectly resetting `last_check_time`, which would silently suppress the heartbeat counter during camera glitches.
 
 ### 3.3 Stale-Buffer Fix (Sept 24, 2026)
 
@@ -174,6 +179,8 @@ Served directly from the Pi on port 8080. No build step required — plain HTML/
 ### Polling
 
 `app.js` polls `/status` every 2 s when connected. Snapshot is base64 JPEG encoded by `dashboard_server.py` and decoded client-side. The MJPEG stream is available separately at `/stream` for browsers that support `<img src="/stream">`.
+
+The **Event Log** panel in the dashboard UI accumulates all log messages for the session (uncapped in memory, capped at 200 entries in the DOM). The **⬇ Download Log** button exports the full in-memory log as a timestamped `classcan_eventlog_<datetime>.csv` with `Timestamp, Type, Message` columns — entirely client-side via a Blob URL, no server endpoint required.
 
 ---
 

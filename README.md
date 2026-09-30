@@ -5,7 +5,7 @@ A ceiling-mounted smart camera turret that automatically detects and counts peop
 
 ### __WORK IN PROGRESS, ACTIVELY CHANGING__
 
-**Status (Sept 24, 2026):** **Live end-to-end pipeline deployed on real hardware.** Full pipeline (Pi + OV4689 + 3-way weighted ensemble) ran on first attempt — stitched together in under 2 days. Dashboard working. Camera color desaturation issue appears resolved. AI detection functional; not yet validated at 5+ people. Final adopted model is a **3-way weighted ensemble** (`0.6 × classcan_density_v4_round4_ft_epoch8` letterbox + `0.4 × classcan_density_style_aug_ft_lowLR_epoch8` stretch): **MAE=2.77, corr=0.586** on 350-frame genuine held-out real classroom footage. SCUT-HEAD benchmark: MAE=2.13, $r=0.9951$; quadrant operational regime MAE=0.93. Secondary HUD model: MobileNetV3-Large @ 416×416 (F1=31.8%, MAE=3.84). Open items: inference lag **resolved** (V4L2 buffer drain fix deployed Sept 24), camera startup config wiring, 5+ people validation.
+**Status (Sept 30, 2026):** **Live end-to-end pipeline deployed on real hardware.** Full pipeline (Pi + OV4689 + 3-way weighted ensemble) ran on first attempt — stitched together in under 2 days. Dashboard working. Camera color desaturation issue appears resolved. AI detection functional; not yet validated at 5+ people. Final adopted model is a **3-way weighted ensemble** (`0.6 × classcan_density_v4_round4_ft_epoch8` letterbox + `0.4 × classcan_density_style_aug_ft_lowLR_epoch8` stretch): **MAE=2.77, corr=0.586** on 350-frame genuine held-out real classroom footage. SCUT-HEAD benchmark: MAE=2.13, $r=0.9951$; quadrant operational regime MAE=0.93. Secondary HUD model: MobileNetV3-Large @ 416×416 (F1=31.8%, MAE=3.84). Recent fixes (Sept 30): motion-trigger `None`-frame guard in `main.py` (dropped camera frames no longer crash/disrupt the heartbeat counter); dashboard **Download Event Log** button added (exports full session log as timestamped CSV). Open items: inference lag **resolved** (V4L2 buffer drain fix deployed Sept 24), camera startup config wiring, 5+ people validation.
 
 ---
 
@@ -19,7 +19,7 @@ Most schools still rely on manual headcount and attendance checking — slow, er
 - Displays the current headcount on an LED display in real time
 - Switchable camera behavior: continuous room-wide sweep for general occupancy, or targeted sequential quadrant/seat positioning (servo points at each calibrated position) for verified per-zone vacant/occupied status
 - Quadrant-based zone detection (not per-seat) to shrink blind-spot windows, reduce inference load, and absorb in-quadrant seat shuffling as a non-event; includes a self-consistency check that re-scans if per-quadrant counts don't reconcile with the expected total, rather than trusting a single pass blindly
-- Streams count + periodic snapshot images to a wireless laptop dashboard; dashboard can also send commands (e.g. mode switch, check specific zone) back to the turret
+- Streams count + periodic snapshot images to a wireless laptop dashboard; dashboard can also send commands (e.g. mode switch, check specific zone) back to the turret; supports one-click **event log CSV download** for the full monitoring session
 - Custom LDR-triggered illumination module (own-built, not a packaged IR unit) — brightens the scene automatically in dim/evening conditions
 - Uses pan/tilt servos to sweep the room for wider coverage from a single ceiling-mounted unit
 - Runs on swappable battery power for flexible testing across rooms
@@ -151,6 +151,7 @@ Full itemized BOM and cost breakdown: see [`docs/bom.md`](docs/bom.md).
 - [x] **Compute & OS:** Raspberry Pi 3B running headless Raspberry Pi OS Lite (64-bit, Trixie) with all dependencies (`ai-edge-litert`, OpenCV, NumPy, PySerial) in acrylic case with active cooling fan (GPIO Pins 4/6); Wi-Fi hardened (power-save disabled via `wifi-powersave-off.service`, cron watchdog `wifi-watchdog.sh` for auto-recovery).
 - [x] **Inference Pipeline:** Core `Detector` implementation verified on hardware; inference execution confirmed working on real test images (23/23 unit tests pass).
 - [x] **Logic & Communications:** `ChangeTrigger`, `ZoneReconciler`, `DashboardServer`, and serial bridge modules implemented and unit tested.
+- [x] **Motion-trigger `None`-frame guard (Sept 30, 2026):** `trigger.check()` and `frame.copy()` in `main.py` are now guarded against `None` frames — a missed camera read no longer throws an exception mid-loop or resets the heartbeat counter.
 - [x] **Custom Model Training (Box):** Keras MobileNetV3-Large + 416×416 FPN head detector trained to epoch 60; locked in with 2×2 tiled inference + Soft-NMS (F1=31.8%, MAE=3.84, $r=0.986$).
 - [x] **Custom Model Training (Density):** Density-map regression v2 (`classcan_density_v4`) trained to epoch 41; confirmed best model overall (MAE=2.13, $r=0.9951$, quadrant MAE=0.93).
 - [x] **Physical Camera Integration:** OV4689 detected at `/dev/video0` (MJPG up to 2688×1520@30fps); 11-shot and 225-shot (4-variable) exposure sweeps completed on Pi.
@@ -160,6 +161,7 @@ Full itemized BOM and cost breakdown: see [`docs/bom.md`](docs/bom.md).
 - [x] **Live End-to-End Camera Test:** OV4689 → 3-way ensemble TFLite inference → headcount on Pi confirmed working. Dashboard functional. **(COMPLETED Sept 23, 2026)**
 - [ ] **Camera Startup Config Wiring:** Confirm `set_camera_config.sh` and `quirks=128` (`/etc/modprobe.d/uvcvideo.conf`) are applied every boot via `setup/startup.py`.
 - [x] **Frame Delivery + Lag (FIXED Sept 24, 2026):** Root cause: OpenCV/V4L2 internal frame buffer queued stale frames during slow TFLite inference; `cap.read()` returned the oldest buffered frame. Fix: `_grab_fresh_frame()` in `detector.py` — drains buffer via `cap.grab()` loop (no pixel decode), then `cap.retrieve()` for only the freshest frame. Applied to all three detector classes.
+- [x] **Dashboard Event Log Download (Sept 30, 2026):** "⬇ Download Log" button added to the Event Log card. Exports full in-session log (all entries, uncapped) as a timestamped `classcan_eventlog_<datetime>.csv` — client-side only, no server endpoint required.
 - [ ] **5+ People Validation:** AI detection not yet tested with real classroom occupancy.
 - [ ] **Illumination Module:** Finalize circuit design (LED array, driver transistor, LDR threshold) and wire to ESP32 ADC/GPIO.
 - [ ] **Turret & Quadrant Calibration:** Calibrate pan/tilt servo angles for Quadrants 1–4 once mounted in dome enclosure.
