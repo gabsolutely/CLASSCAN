@@ -156,7 +156,14 @@
 
       <!-- Real-time Event Log -->
       <div class="card" style="flex:1;">
-        <div class="card-label">Event Log</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div class="card-label" style="margin-bottom:0;">Event Log</div>
+          <button id="btn-download-log" type="button" class="zone-cmd-btn"
+                  style="font-size:0.72rem; padding:4px 10px; border-radius:6px;"
+                  title="Download full session log as CSV">
+            ⬇ Download Log
+          </button>
+        </div>
         <div class="log-scroll" id="log-scroll"></div>
       </div>
 

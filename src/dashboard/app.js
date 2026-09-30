@@ -6,6 +6,10 @@ let polling     = false;
 let pollTimer   = null;
 let lastCount   = null;
 
+// In-memory log store for CSV export
+// Each entry: { ts: "HH:MM:SS", type: ""|"ok"|"err", message: string }
+const _eventLog = [];
+
 // ── Init zone grid ──────────────────────────────────────────────────────
 function initZoneGrid() {
   const grid = document.getElementById("zone-grid");
@@ -31,10 +35,40 @@ function log(msg, type = "") {
   entry.innerHTML = `<span class="ts">${ts}</span>${msg}`;
   scroll.appendChild(entry);
   scroll.scrollTop = scroll.scrollHeight;
-  // Cap log at 200 entries
+  // Cap DOM log at 200 entries
   while (scroll.children.length > 200) {
     scroll.removeChild(scroll.firstChild);
   }
+  // Mirror to in-memory store (uncapped — full session history for export)
+  _eventLog.push({ ts, type: type || "info", message: msg });
+}
+
+// ── Download event log as CSV ─────────────────────────────────────────────
+function downloadEventLog() {
+  if (_eventLog.length === 0) {
+    log("Event log is empty — nothing to download.", "err");
+    return;
+  }
+
+  const date    = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+  const header  = "Timestamp,Type,Message\n";
+  const rows    = _eventLog.map(e => {
+    // Escape double-quotes and wrap fields that may contain commas
+    const safe = s => `"${String(s).replace(/"/g, "\"\"")}"`;
+    return `${safe(e.ts)},${safe(e.type)},${safe(e.message)}`;
+  }).join("\n");
+
+  const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `classcan_eventlog_${date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  log(`Event log exported (${_eventLog.length} entries) → ${a.download}`, "ok");
 }
 
 // ── Status pill ─────────────────────────────────────────────────────────
@@ -303,6 +337,12 @@ document.addEventListener("DOMContentLoaded", () => {
     lightBrightness.addEventListener("change", () => {
       log(`[Light] Brightness → ${lightBrightness.value}%`);
     });
+  }
+
+  // Bind Download Log button
+  const downloadBtn = document.getElementById("btn-download-log");
+  if (downloadBtn) {
+    downloadBtn.addEventListener("click", downloadEventLog);
   }
 
   log("CLASSCAN dashboard ready. Click Connect to start monitoring.");
