@@ -296,15 +296,18 @@ def main():
             # 4. Schedule next inference pass when worker is idle and one is due.
             #    Motion detection extends the active inference window (2s) so AI
             #    stays locked onto moving targets with minimal latency.
-            significant_change = trigger.check(frame)
-            if significant_change:
-                motion_active_until = time.time() + 2.0
+            #    Guard: skip trigger.check() entirely when no frame is available
+            #    so a missed camera read never disrupts the heartbeat counter.
+            if frame is not None:
+                significant_change = trigger.check(frame)
+                if significant_change:
+                    motion_active_until = time.time() + 2.0
 
             motion_active = time.time() < motion_active_until
             heartbeat_due = (time.time() - last_check_time) >= cfg.HEARTBEAT_INTERVAL
 
             worker_idle = not _infer_busy.is_set() and not _infer_trigger.is_set()
-            if worker_idle and (not initial_infer_queued or motion_active or heartbeat_due):
+            if frame is not None and worker_idle and (not initial_infer_queued or motion_active or heartbeat_due):
                 initial_infer_queued = True
                 last_check_time      = time.time()
                 # Copy the frame so inference operates on a stable snapshot
