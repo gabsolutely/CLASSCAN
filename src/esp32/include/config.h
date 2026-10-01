@@ -16,6 +16,13 @@
 // ── LDR Thresholds ─────────────────────────────────────────────────────
 // ADC reads 0–4095; lower = darker. Tune once illumination module is built.
 #define LDR_DIM_THRESHOLD  1500  // Below this → enable illumination
+#define LDR_HYSTERESIS      75   // Dead-band on each side — prevents chattering
+                                 // ON  when ldrVal < (LDR_DIM_THRESHOLD + LDR_HYSTERESIS)
+                                 // OFF when ldrVal > (LDR_DIM_THRESHOLD - LDR_HYSTERESIS)
+
+// How often to send an illumination-state report to the Pi (ms).
+// Set 0 to disable periodic reporting (state changes are always reported).
+#define ILLUMINATION_REPORT_INTERVAL_MS  5000
 
 // ── MG90S 360 continuous-rotation servos ────────────────────────────────
 // These values are speed commands, not positions.  90 is neutral/stop.
