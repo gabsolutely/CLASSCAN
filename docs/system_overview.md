@@ -47,11 +47,13 @@ CLASSCAN/
 │   │   │   └── zone_reconciler.py
 │   │   ├── comms/
 │   │   │   ├── dashboard_server.py ← HTTP server: static assets, /status, /stream, /command
-│   │   │   └── serial_bridge.py    ← JSON serial protocol to ESP32
+│   │   │   └── serial_bridge.py    ← JSON serial protocol to ESP32; handles ldr messages
 │   │   └── setup/
-│   │       ├── startup.py       ← Boot self-test sequence (camera, model, serial checks)
-│   │       ├── wifi-powersave-off.service  ← systemd: keeps Wi-Fi from sleeping
-│   │       └── wifi-watchdog.sh ← cron: cycles wlan0 / reboots on connectivity loss
+│   │       ├── startup.py                   ← Boot self-test sequence (camera, model, serial checks)
+│   │       ├── direct_connect.sh            ← Configure eth0 static IP for direct cable connection
+│   │       ├── usb_gadget.sh                ← Enable USB gadget (RNDIS) for USB-cable-only access
+│   │       ├── wifi-powersave-off.service   ← systemd: keeps Wi-Fi from sleeping
+│   │       └── wifi-watchdog.sh             ← cron: cycles wlan0 / reboots on connectivity loss
 │   ├── dashboard/
 │   │   ├── index.html           ← Dashboard UI
 │   │   ├── styles.css
@@ -200,9 +202,12 @@ Newline-delimited JSON over USB serial at 115200 baud.
 ```json
 {"type": "state", "value": "idle"}
 {"type": "state", "value": "moving"}
+{"type": "ldr",   "value": 1342, "illumination": true}
 ```
 
-`SerialBridge` in `serial_bridge.py` runs a daemon reader thread to keep `_state` updated. If the serial port is unavailable (bench-testing), it silently enters simulated serial mode (all sends are no-ops, state stays `"idle"`).
+`SerialBridge` in `serial_bridge.py` runs a daemon reader thread to keep `_state`, `_illumination`, and `_ldr_value` updated. Accessors: `get_state()`, `get_illumination()`, `get_ldr_value()`. If the serial port is unavailable (bench-testing), it silently enters simulated serial mode (all sends are no-ops, state stays `"idle"`).
+
+The `ldr` message fires on every illumination state change, plus as a heartbeat every 5 s (`ILLUMINATION_REPORT_INTERVAL_MS` in `config.h`). The Pi main loop surfaces both values in the dashboard watchdog status.
 
 ---
 
