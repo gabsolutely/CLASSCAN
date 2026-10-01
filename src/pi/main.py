@@ -339,10 +339,12 @@ def main():
             if not _wd_serial_ok:
                 _wd_alerts.append("ESP32 serial not connected (simulated mode)")
             watchdog_status = {
-                "camera": _wd_camera_ok,
-                "ai":     _wd_ai_ok,
-                "serial": _wd_serial_ok,
-                "alerts": _wd_alerts,
+                "camera":       _wd_camera_ok,
+                "ai":           _wd_ai_ok,
+                "serial":       _wd_serial_ok,
+                "illumination": serial_bridge.get_illumination(),
+                "ldr":          serial_bridge.get_ldr_value(),
+                "alerts":       _wd_alerts,
             }
 
             # 6. Annotate and Push Frame to Dashboard.
