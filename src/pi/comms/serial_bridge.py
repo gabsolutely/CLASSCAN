@@ -11,7 +11,14 @@ Protocol (newline-delimited JSON):
   ESP32 → Pi:
     {"type": "state",  "value": "idle" | "moving"}
     {"type": "ldr",    "value": <adc 0-4095>, "illumination": true | false}
+
+Notes:
+  - In mock mode (serial port unavailable) all sends are silent no-ops and
+    state/illumination accessors return their default values.
+  - The background reader thread exits cleanly when the port disconnects
+    (OSError / SerialException); it does not restart automatically.
 """
+
 
 import json
 import threading
@@ -62,11 +69,21 @@ class SerialBridge:
                             self._illumination = bool(msg["illumination"])
 
             except (json.JSONDecodeError, UnicodeDecodeError):
-                pass
+                pass  # Malformed line — ignore and continue
+            except (OSError, serial.SerialException) as e:
+                # Port disconnected or closed — exit reader cleanly
+                print(f"[SerialBridge] Port disconnected, reader stopping: {e}")
+                return
             except Exception as e:
                 print(f"[SerialBridge] Read error: {e}")
 
+
     # ── State accessors ──────────────────────────────────────────────────────
+
+    @property
+    def is_connected(self) -> bool:
+        """True when the serial port opened successfully (not in mock mode)."""
+        return not self._is_mock
 
     def get_state(self) -> str:
         """Returns ESP32 servo state: 'idle' or 'moving'."""
@@ -82,6 +99,7 @@ class SerialBridge:
         """Returns the last raw ADC reading from the LDR (0-4095), or None if not yet received."""
         with self._lock:
             return self._ldr_value
+
 
     # ── Senders ──────────────────────────────────────────────────────────────
 
@@ -124,8 +142,20 @@ class SerialBridge:
             "speed": speed,
         })
 
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def flush_input(self) -> None:
+        """Drain any stale bytes sitting in the receive buffer.
+
+        Useful to call after a reconnect or mode-change where queued old
+        messages could otherwise confuse the reader.
+        """
+        if self._ser and self._ser.is_open:
+            self._ser.reset_input_buffer()
+
     # ── Cleanup ───────────────────────────────────────────────────────────────
 
-    def close(self):
+    def close(self) -> None:
+        """Close the serial port (no-op in mock mode)."""
         if self._ser and self._ser.is_open:
             self._ser.close()

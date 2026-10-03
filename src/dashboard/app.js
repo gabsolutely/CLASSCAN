@@ -141,10 +141,22 @@ function updateWatchdog(wd) {
     const itemEl = document.getElementById(`wd-${id}`);
     if (!dotEl || !statEl || !itemEl) return;
 
+    // Serial: show "Simulated" rather than "ERROR" when ESP32 is absent
+    const label = (key === "serial" && !ok) ? "Simulated" : (ok ? "OK" : "ERROR");
     dotEl.className    = `wd-dot ${ok ? "ok" : "error"}`;
-    statEl.textContent = ok ? "OK" : "ERROR";
+    statEl.textContent = label;
     itemEl.className   = `wd-item ${ok ? "wd-ok" : "wd-error"}`;
   });
+
+  // LDR live readout in the sensor-state element
+  const sensorState = document.getElementById("sensor-state");
+  if (sensorState) {
+    const ldrRaw = wd.ldr;
+    const illum  = wd.illumination;
+    if (ldrRaw !== null && ldrRaw !== undefined) {
+      sensorState.textContent = illum ? `ON (LDR: ${ldrRaw})` : `OFF (LDR: ${ldrRaw})`;
+    }
+  }
 
   // Render alert messages
   const alertsEl = document.getElementById("wd-alerts");
@@ -246,6 +258,12 @@ function togglePolling() {
       img.style.display = "none";
       ph.style.display  = "flex";
     }
+
+    // Clear stale metadata
+    const timeEl = document.getElementById("snapshot-time");
+    const dimsEl = document.getElementById("snapshot-dims");
+    if (timeEl) timeEl.textContent = "—";
+    if (dimsEl) dimsEl.textContent = "—";
   }
 }
 

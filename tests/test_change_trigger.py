@@ -92,6 +92,24 @@ class TestChangeTrigger(unittest.TestCase):
         result = t.check(make_frame(255))
         self.assertFalse(bool(result), "First call must never trigger")
 
+    def test_full_range_delta_triggers_at_zero_threshold(self):
+        """255-delta vs threshold=0.0 must always trigger."""
+        self._patch()
+        t = ChangeTrigger(threshold=0.0)
+        t.check(make_frame(0))
+        result = t.check(make_frame(255))
+        # diff = 255/255 = 1.0 >= 0.0
+        self.assertTrue(bool(result), "Full-range delta should trigger at threshold=0.0")
+
+    def test_reset_clears_reference(self):
+        """After reset(), the next call seeds without triggering even at threshold=0."""
+        self._patch()
+        t = ChangeTrigger(threshold=0.0)  # any diff triggers
+        t.check(make_frame(0))
+        t.reset()
+        result = t.check(make_frame(200))  # first call after reset — should seed, not trigger
+        self.assertFalse(bool(result), "First check after reset() must not trigger")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

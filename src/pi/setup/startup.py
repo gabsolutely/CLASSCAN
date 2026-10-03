@@ -8,8 +8,8 @@ TFLite runtime, model file, serial port — rather than assuming success.
 Critical checks (camera, model files, serial) prompt interactively on
 failure: [R]etry the check, [C]ontinue anyway, or [A]bort the boot.
 Non-critical checks (TFLite runtime import) just print [FAIL] and move on,
-since retrying an import failure without changing the environment first
-(e.g. installing a package) can't succeed anyway.
+since retrying an import failure without first fixing the environment
+(e.g. installing a missing package) cannot succeed anyway.
 """
 
 import os
@@ -127,7 +127,7 @@ def _check_model_file(model_path):
 
 
 def _check_serial(serial_port, baud):
-    """open the configured serial port."""
+    """Try to open the configured serial port to verify it is available."""
     try:
         import serial
     except ImportError as e:
