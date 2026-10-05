@@ -6,7 +6,7 @@
 
 ## 0 · Code & Tests (do once, on dev machine)
 
-- [ ] **All 27 unit tests pass** — `python -m pytest tests/ -v`
+- [ ] **All 29 unit tests pass** — `python -m pytest tests/ -v`
 - [ ] **No uncommitted changes** — `git status` is clean
 - [ ] **Push to remote** — `git push origin main` (backup before physical demo)
 
