@@ -227,6 +227,8 @@ Pi 3B loop:
 
 This is a capstone project developed at Philippine Christian University – Dasmariñas (PCU-D).
 
+For a structured comparison against competing systems and a statement of technical novelty, see [`docs/novelty_and_competitive_analysis.md`](docs/novelty_and_competitive_analysis.md).
+
 ---
 
 This README is updated continuously as the physical integration and hardware assembly progress.
