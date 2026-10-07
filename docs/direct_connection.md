@@ -100,17 +100,57 @@ ssh pi@192.168.7.1
 
 ---
 
+## Option C — Wi-Fi Hotspot (No cables needed)
+
+Configure the Pi to broadcast its own Wi-Fi network. Your laptop/phone connects directly to it — no school router needed.
+
+> [!IMPORTANT]
+> The Pi 3B has **one Wi-Fi chip**. While the hotspot is active it **cannot** also connect to another Wi-Fi network. Use ethernet for SSH if you need a shell while the hotspot is running.
+
+### On the Pi
+
+```bash
+# Start hotspot now (lost on reboot)
+sudo bash src/pi/setup/hotspot.sh
+
+# Or — install as a boot service (survives reboots)
+sudo bash src/pi/setup/hotspot.sh --persistent
+
+# Stop the hotspot and release wlan0
+sudo bash src/pi/setup/hotspot.sh --stop
+
+# Check status
+sudo bash src/pi/setup/hotspot.sh --status
+```
+
+Default credentials (edit the top of `hotspot.sh` to change):
+- **SSID**: `CLASSCAN`
+- **Password**: `classcan2024`
+- **Pi IP**: `192.168.20.1`
+
+### On your device (any OS)
+
+1. Go to Wi-Fi settings and connect to **`CLASSCAN`**
+2. Enter password **`classcan2024`**
+3. Open browser → `http://192.168.20.1:8080`
+   - Or try the mDNS alias: `http://classcan.local:8080`
+
+No static IP configuration needed — the Pi's DHCP server handles it automatically.
+
+---
+
 ## Side-by-side comparison
 
-| | Ethernet cable (Option A) | USB cable (Option B) |
-|---|---|---|
-| **Cable** | Ethernet patch cable | Micro-USB data cable |
-| **Pi port used** | Ethernet jack | Micro-USB (power port) |
-| **Laptop setup** | Set static IP manually | RNDIS driver (once) |
-| **Pi IP** | `192.168.10.1` | `192.168.7.1` |
-| **Also powers Pi?** | No (need separate power) | Yes (if laptop USB supplies 900 mA+) |
-| **Speed** | 100 Mbps | ~12 Mbps (USB 2.0 FS) |
-| **Recommended for** | Normal use / demo | Bench testing / no spare cables |
+| | Ethernet cable (Option A) | USB cable (Option B) | Wi-Fi Hotspot (Option C) |
+|---|---|---|---|
+| **Cable** | Ethernet patch cable | Micro-USB data cable | None |
+| **Pi port used** | Ethernet jack | Micro-USB (power port) | Built-in wlan0 |
+| **Device setup** | Set static IP manually | RNDIS driver (once) | None (DHCP) |
+| **Pi IP** | `192.168.10.1` | `192.168.7.1` | `192.168.20.1` |
+| **Also powers Pi?** | No (need separate power) | Yes (if laptop USB supplies 900 mA+) | No |
+| **Speed** | 100 Mbps | ~12 Mbps (USB 2.0 FS) | ~50 Mbps (802.11n) |
+| **Multiple viewers?** | No | No | Yes (up to ~5 concurrent) |
+| **Recommended for** | Normal use / bench | Bench testing / no spare cables | **Demo / no-cable scenario** |
 
 > [!NOTE]
 > The Pi 3B's micro-USB port can power the board *and* act as a USB gadget simultaneously, but it is fussy about current. If the Pi browncounts under load, use a dedicated 5 V / 2.5 A power supply for power and use the ethernet option for connectivity.
@@ -126,3 +166,6 @@ ssh pi@192.168.7.1
 | Windows shows "Unidentified network" | Normal for a direct link with no gateway — the dashboard still works |
 | RNDIS adapter shown but no IP | Reboot the Pi; unplug/replug USB; confirm dnsmasq is running (`systemctl status dnsmasq`) |
 | USB gadget mode not appearing | Double-check you have a **data** cable (not charge-only); confirm `dtoverlay=dwc2` is in `/boot/config.txt` after running the script |
+| CLASSCAN hotspot not visible | Run `sudo bash hotspot.sh --status`; check `journalctl -u hostapd -n 30` for errors |
+| Hotspot visible but no IP assigned | dnsmasq may have failed — run `sudo systemctl restart dnsmasq` then reconnect |
+| `hostapd: nl80211: Could not configure driver` | Another process owns wlan0 (e.g. wpa_supplicant) — run `sudo systemctl stop wpa_supplicant` then retry |
