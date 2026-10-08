@@ -1,5 +1,5 @@
 # CLASSCAN — Prototype Deployment Checklist
-> **Hard deadline: September 28, 2026**  
+> **Hard deadline: September 28, 2026** (passed — project continues for polish and real-classroom validation)  
 > Work through this list top-to-bottom before the demo. Tick each box as you go.
 
 ---
@@ -42,8 +42,12 @@ python scripts/export_to_tflite.py --mode density \
 
 ### 2a · OS & Network
 - [ ] Pi boots to Raspberry Pi OS Lite 64-bit (Trixie)
-- [ ] Pi is on the **same Wi-Fi network** as the demo laptop
-- [ ] Pi IP address is known — `hostname -I` (write it here: `_____________`)
+- [ ] Pi has a path to the demo laptop — **choose one connectivity option:**
+  - **Option A — same Wi-Fi router:** Pi and laptop on the same network; Pi IP via `hostname -I`
+  - **Option B — direct ethernet cable:** run `sudo bash src/pi/setup/direct_connect.sh`; Pi IP `192.168.10.1`; set laptop to `192.168.10.2 / 255.255.255.0`
+  - **Option C — USB gadget (RNDIS):** run `sudo bash src/pi/setup/usb_gadget.sh` + reboot; Pi IP `192.168.7.1`
+  - **Option D — Wi-Fi Hotspot (no cables):** run `sudo bash src/pi/setup/hotspot.sh`; connect laptop to SSID `CLASSCAN` (pw: `classcan2024`); Pi IP `192.168.20.1`
+- [ ] Pi IP address is known (write it here: `_____________`)
 - [ ] SSH access confirmed — `ssh pi@<ip>` responds
 
 ### 2b · Wi-Fi Resilience Services
@@ -173,6 +177,7 @@ python main.py
 | INT8 quantization broken | XNNPack fails on `UpSampling2D(bilinear)`; float32 only; ~1.4 s/scan — within budget |
 | Not validated at 5+ people | Data-domain gap (SCUT-HEAD vs Filipino classroom); real-footage r ceiling = 0.586 |
 | `line1` clip weakest (r=0.455) | Students moving in a line; static seated scenes perform better |
+| Hotspot mutual-exclusion | Pi 3B has one Wi-Fi chip: hotspot active = no simultaneous router Wi-Fi; use ethernet for SSH |
 
 ---
 

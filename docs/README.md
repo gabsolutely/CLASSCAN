@@ -9,6 +9,6 @@ Project documentation, engineering decision records, and technical specification
 - [`calibration_procedure.md`](calibration_procedure.md) — Post-mounting calibration procedure for quadrant pan/tilt angles, LDR thresholds, camera exposure/gain, and motion sensitivity.
 - [`dataset_and_training.md`](dataset_and_training.md) — Dataset specifications (SCUT-HEAD Part A + Local Classroom), head annotation conventions, and TFLite quantization.
 - [`benchmark_results.md`](benchmark_results.md) — Baseline model validation records, Pi 3B latency benchmarks, power/thermal profiling, and field testing protocol.
-- [`direct_connection.md`](direct_connection.md) — Headless connectivity options: USB gadget mode (RNDIS) and direct ethernet static IP setup.
+- [`direct_connection.md`](direct_connection.md) — Headless connectivity options: direct ethernet (Option A), USB gadget/RNDIS (Option B), and Wi-Fi hotspot/`hotspot.sh` (Option C — no cables, Pi broadcasts its own `CLASSCAN` AP).
 - [`novelty_and_competitive_analysis.md`](novelty_and_competitive_analysis.md) — Novelty statement and competitive landscape: how CLASSCAN differs from commercial people-counters, cloud SaaS, generic open-source pipelines, RFID attendance systems, and facial recognition approaches.
 

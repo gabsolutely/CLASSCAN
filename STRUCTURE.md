@@ -21,6 +21,13 @@ CLASSCAN/
 │   │   └── comms/
 │   │       ├── serial_bridge.py    ← USB serial ↔ ESP32 (JSON protocol)
 │   │       └── dashboard_server.py ← HTTP server → laptop dashboard
+│   │   └── setup/
+│   │       ├── startup.py                   ← Boot self-test sequence
+│   │       ├── direct_connect.sh            ← eth0 static IP (Pi 192.168.10.1)
+│   │       ├── usb_gadget.sh                ← USB gadget/RNDIS (Pi 192.168.7.1)
+│   │       ├── hotspot.sh                   ← wlan0 AP mode (Pi 192.168.20.1, SSID CLASSCAN)
+│   │       ├── wifi-powersave-off.service   ← systemd: keeps Wi-Fi awake
+│   │       └── wifi-watchdog.sh             ← cron: reconnect / reboot on drop
 │   │
 │   ├── esp32/                  ← ESP32 firmware (PlatformIO / Arduino Framework)
 │   │   ├── platformio.ini      ← PlatformIO build & dependency config
@@ -37,7 +44,7 @@ CLASSCAN/
 │       ├── styles.css          ← Dark-mode design system & animations
 │       └── app.js              ← Polling logic, event handlers & UI state
 │
-├── models/                     ← TFLite model files (classcan_density_float32.tflite primary; classcan_head_v1.tflite secondary)
+├── models/                     ← TFLite model files (classcan_density_round4_ep8.tflite + classcan_density_style_aug_ep8.tflite ensemble; mobilenet_v2_ssd fallback)
 ├── docs/                       ← Scope, BOM, design docs
 ├── cad/                        ← Enclosure CAD files
 ├── hardware/                   ← Wiring diagrams, pinouts

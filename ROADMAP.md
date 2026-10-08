@@ -3,15 +3,15 @@
 **Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
-**Status (as of Oct 3, 2026 — post-deadline):** **Live end-to-end pipeline deployed on real hardware.** Full pipeline (Pi + OV4689 + 3-way ensemble) ran on first attempt — stitched together in under 2 days. Dashboard working. AI detection functional; not yet validated at 5+ people. Camera color desaturation issue appears resolved on this hardware run. **Frame delivery + inference lag: resolved Sept 24, 2026** (V4L2 buffer drain fix in `detector.py`). **Sept 30 fixes:** motion-trigger `None`-frame guard in `main.py` (dropped camera reads no longer crash the loop or reset the heartbeat counter); dashboard **Download Event Log** button added (full session CSV export, client-side). **Oct 3:** USB gadget/RNDIS (`usb_gadget.sh`) and direct ethernet (`direct_connect.sh`) connectivity scripts committed; serial bridge state/command handling hardened.
+**Status (as of Oct 8, 2026 — post-deadline):** **Live end-to-end pipeline deployed on real hardware.** Full pipeline (Pi + OV4689 + 3-way ensemble) ran on first attempt — stitched together in under 2 days. Dashboard working. AI detection functional; not yet validated at 5+ people. Camera color desaturation issue appears resolved on this hardware run. **Frame delivery + inference lag: resolved Sept 24, 2026** (V4L2 buffer drain fix in `detector.py`). **Sept 30 fixes:** motion-trigger `None`-frame guard in `main.py` (dropped camera reads no longer crash the loop or reset the heartbeat counter); dashboard **Download Event Log** button added (full session CSV export, client-side). **Oct 3:** USB gadget/RNDIS (`usb_gadget.sh`) and direct ethernet (`direct_connect.sh`) connectivity scripts committed; serial bridge state/command handling hardened. **Oct 7:** Wi-Fi hotspot (`hotspot.sh`) added — Pi broadcasts its own `CLASSCAN` access point (192.168.20.1), no router needed, supports multiple simultaneous viewers.
 
 1. **Final adopted model (ensemble):** `0.6 × classcan_density_v4_round4_ft_epoch8 (letterbox eval) + 0.4 × classcan_density_style_aug_ft_lowLR_epoch8 (stretch eval)` — MAE=2.77, correlation=0.586 on genuine held-out v2 data (350 frames). Best real-footage correlation across all 9 rounds.
 2. **Alternative lower-MAE ensemble:** `0.55 × epoch8 + 0.10 × stretch-ft-epoch1 + 0.35 × style-aug-epoch8` → MAE=2.68, corr≈0.584 (worth using if MAE matters more than correlation).
 3. **SCUT-HEAD benchmark (407-image eval):** All checkpoints maintained r>0.99 throughout — no catastrophic regression across any round.
 4. **Secondary HUD Model:** MobileNetV3-Large + 416×416 FPN head detector (F1 = 31.8%, MAE = 3.84) for bounding box visualization.
 
-**Remaining open items:** Camera frame delivery inconsistency + inference lag behind live video. AI detection not yet validated at 5+ people. Camera startup config (v4l2-ctl baseline + quirks=128) must be confirmed wired into `setup/startup.py`.
-Hard deadline: **September 28, 2026**.
+**Remaining open items:** Camera startup config (v4l2-ctl baseline + quirks=128) must be confirmed wired into `setup/startup.py`. AI detection not yet validated at 5+ people.
+Hard deadline: **September 28, 2026** (passed — project continues post-deadline for polish and validation).
 
 ---
 
@@ -129,6 +129,7 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [x] **Live end-to-end camera test:** OV4689 → TFLite density ensemble → headcount on Pi confirmed working. Dashboard functional. **(COMPLETED Sept 23, 2026)**
 - [x] **Camera color/desaturation:** Appears resolved on the deployed hardware run. Known-good baseline (`set_camera_config.sh`) in place.
 - [x] **Headless connectivity (Oct 3, 2026):** USB gadget mode (RNDIS via micro-USB, `usb_gadget.sh`) and direct ethernet link (`direct_connect.sh`) both implemented and documented in `docs/direct_connection.md`.
+- [x] **Wi-Fi Hotspot (Oct 7, 2026):** `hotspot.sh` turns Pi wlan0 into a standalone AP (SSID `CLASSCAN`, Pi IP `192.168.20.1`, WPA2). One-shot and persistent (boot service) modes. No router or cables required; supports multiple simultaneous viewers. Documented in `docs/direct_connection.md` Option C.
 - [ ] **Camera startup config wiring:** Confirm `set_camera_config.sh` baseline (auto_exposure=1, exposure=500, gain=192, brightness=64, gamma=300, saturation=100, wb_auto=0, wb_temp~4600) and `quirks=128` (`/etc/modprobe.d/uvcvideo.conf`) are applied on every boot via `setup/startup.py`.
 - [x] **Frame delivery + lag (FIXED Sept 24, 2026):** Root cause identified: OpenCV/V4L2 internal frame buffer queues stale frames during slow TFLite inference; `cap.read()` returned oldest buffered frame. Fix: `_grab_fresh_frame()` in `detector.py` drains buffer via `cap.grab()` loop (no pixel decode), then `cap.retrieve()` for only the freshest frame. Applied to `DensityDetector`, `EnsembleDensityDetector`, and `Detector`.
 - [ ] **Validate at 5+ people:** AI detection not yet tested with real classroom occupancy.

@@ -52,6 +52,7 @@ CLASSCAN/
 │   │       ├── startup.py                   ← Boot self-test sequence (camera, model, serial checks)
 │   │       ├── direct_connect.sh            ← Configure eth0 static IP for direct cable connection
 │   │       ├── usb_gadget.sh                ← Enable USB gadget (RNDIS) for USB-cable-only access
+│   │       ├── hotspot.sh                   ← Turn wlan0 into a standalone Wi-Fi AP (CLASSCAN, 192.168.20.1)
 │   │       ├── wifi-powersave-off.service   ← systemd: keeps Wi-Fi from sleeping
 │   │       └── wifi-watchdog.sh             ← cron: cycles wlan0 / reboots on connectivity loss
 │   ├── dashboard/
@@ -285,3 +286,8 @@ python -m pytest tests/ -v
 5. **MJPEG stream vs snapshot** — the dashboard polls `/status` for the base64 snapshot; the raw MJPEG stream at `/stream` is also available if you want a lower-latency video-only view.
 
 6. **Single-process, no restart** — if `main.py` crashes, restart it manually. No watchdog daemon wraps the main process (add `nohup python main.py &` + a systemd service for production hardening).
+
+7. **Connectivity options** — see [`docs/direct_connection.md`](direct_connection.md) for all three headless options:
+   - **Option A — Direct ethernet** (`direct_connect.sh`): Pi IP `192.168.10.1` — recommended for normal use
+   - **Option B — USB gadget/RNDIS** (`usb_gadget.sh`): Pi IP `192.168.7.1` — one-cable power + network
+   - **Option C — Wi-Fi Hotspot** (`hotspot.sh`): Pi IP `192.168.20.1`, SSID `CLASSCAN` — no cables, multiple viewers; Pi 3B has one Wi-Fi chip so hotspot active = no simultaneous router Wi-Fi
