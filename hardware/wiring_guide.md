@@ -105,17 +105,24 @@ ESP32 GPIO 21 (Tilt PWM) ──────────────────�
 
 ---
 
-## 4. MAX7219 8×32 LED Matrix Display Connection
+## 4. SSD1309 OLED Display Connection (2.42", 128x64, I2C)
 
-| MAX7219 Pin | ESP32 Pin | Wire Color Convention | Description |
-|---|---|:---:|---|
-| **VCC** | `+5V Bus` (or VIN) | Red | 5V display power |
-| **GND** | `Common GND` | Black | Ground reference |
-| **DIN** | `GPIO 23` | Yellow | SPI Master-Out Slave-In (MOSI) |
-| **CS / LOAD** | `GPIO 5` | Green | SPI Chip Select / Latch |
-| **CLK** | `GPIO 14` | Blue | SPI Clock |
+The headcount is shown on a **2.42" SSD1309 OLED module** — crisp white
+pixels on a pure-black background, clearly legible in daylight and dim
+classroom conditions. Two wires is all the interface needs.
 
----
+| SSD1306 Pin | ESP32 Pin   | Wire Color | Description                                      |
+|-------------|:-----------:|:----------:|--------------------------------------------------|
+| **VCC**     | `3V3`       | Red        | 3.3 V display power (module has onboard reg)     |
+| **GND**     | `Common GND`| Black      | Ground reference                                 |
+| **SDA**     | `GPIO 16`   | Yellow     | I2C data (Bus 1, 400 kHz)                        |
+| **SCL**     | `GPIO 17`   | Blue       | I2C clock (Bus 1, 400 kHz)                       |
+
+> [!NOTE]
+> The default I2C address is **0x3C**. If the display stays blank, try **0x3D**
+> (set `OLED_I2C_ADDR` in `config.h`). Both addresses appear as a solder-bridge
+> jumper on the back of most modules.
+
 
 ## 5. Active Cooling Fan Wiring (Raspberry Pi 3B)
 
