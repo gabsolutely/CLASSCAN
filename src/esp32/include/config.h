@@ -11,7 +11,15 @@
 #define PIN_LDR            34    // Analog input (ADC1_CH6)
 #define PIN_ILLUMINATION   25    // Digital output → MOSFET gate / LED driver
 #define PIN_PAN            18    // PWM output → pan servo signal
-#define PIN_TILT           21    // PWM output -> tilt servo signal
+#define PIN_TILT           21    // PWM output → tilt servo signal
+#define PIN_OLED_SDA       16    // I2C SDA → SSD1309 OLED display
+#define PIN_OLED_SCL       17    // I2C SCL → SSD1309 OLED display
+
+// ── OLED Display (2.42" SSD1309, 128×64, I2C) ────────────────────────────
+// SSD1309 is electrically identical to SSD1306; Adafruit SSD1306 lib works as-is.
+#define OLED_I2C_ADDR   0x3C    // Most common address (try 0x3D if blank)
+#define OLED_WIDTH       128
+#define OLED_HEIGHT       64
 
 // ── LDR Thresholds ─────────────────────────────────────────────────────
 // ADC reads 0–4095; lower = darker. Tune once illumination module is built.
