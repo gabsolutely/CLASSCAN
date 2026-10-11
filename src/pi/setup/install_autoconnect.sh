@@ -47,17 +47,22 @@ grep -qxF "dwc2" "$MODULES_FILE" 2>/dev/null \
 grep -qxF "g_ether" "$MODULES_FILE" 2>/dev/null \
     || { echo "g_ether" >> "$MODULES_FILE"; log "  Added g_ether to $MODULES_FILE"; }
 
-# ── 3. Static IP for usb0 ────────────────────────────────────────────────────
+# ── 3. Static IP for usb0 (systemd-networkd) ────────────────────────────────
+# /etc/network/interfaces.d/ may not exist on Trixie (ifupdown not default).
+# Use systemd-networkd .network files instead — always present on Pi OS Trixie.
 
-log "Writing usb0 static IP config (/etc/network/interfaces.d/classcan-usb0.conf) ..."
-cat > /etc/network/interfaces.d/classcan-usb0.conf <<'EOF'
+log "Writing usb0 static IP config (/etc/systemd/network/10-classcan-usb0.network) ..."
+mkdir -p /etc/systemd/network
+cat > /etc/systemd/network/10-classcan-usb0.network <<'EOF'
 # CLASSCAN USB gadget network — written by install_autoconnect.sh
-auto usb0
-allow-hotplug usb0
-iface usb0 inet static
-    address 192.168.7.1
-    netmask 255.255.255.0
+[Match]
+Name=usb0
+
+[Network]
+Address=192.168.7.1/24
 EOF
+systemctl enable systemd-networkd
+log "  usb0 static IP configured via systemd-networkd."
 
 # ── 4. dnsmasq: USB DHCP ─────────────────────────────────────────────────────
 
@@ -104,21 +109,23 @@ domain=local
 address=/classcan.local/192.168.20.1
 EOF
 
-# ── 7. Persist wlan0 static IP via dhcpcd ────────────────────────────────────
+# ── 7. Persist wlan0 static IP (systemd-networkd) ───────────────────────────
+# dhcpcd may not be present on Trixie. Use systemd-networkd instead.
 
-DHCPCD_CONF="/etc/dhcpcd.conf"
-if ! grep -q "classcan-hotspot" "$DHCPCD_CONF" 2>/dev/null; then
-    log "Appending wlan0 static IP to $DHCPCD_CONF ..."
-    cat >> "$DHCPCD_CONF" <<'EOF'
-
+log "Writing wlan0 static IP config (/etc/systemd/network/10-classcan-wlan0.network) ..."
+mkdir -p /etc/systemd/network
+cat > /etc/systemd/network/10-classcan-wlan0.network <<'EOF'
 # CLASSCAN hotspot static IP — written by install_autoconnect.sh
-interface wlan0
-    static ip_address=192.168.20.1/24
-    nohook wpa_supplicant
+[Match]
+Name=wlan0
+
+[Network]
+Address=192.168.20.1/24
+# No DHCP client — hostapd manages this interface
+LinkLocalAddressing=no
 EOF
-else
-    log "dhcpcd.conf already has CLASSCAN wlan0 entry — skipping."
-fi
+systemctl enable systemd-networkd
+log "  wlan0 static IP configured via systemd-networkd."
 
 # ── 8. Install the boot runtime script + systemd service ─────────────────────
 

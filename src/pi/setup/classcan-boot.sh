@@ -24,10 +24,12 @@ log "Bringing up wlan0 hotspot ..."
 pkill -f "wpa_supplicant.*wlan0" 2>/dev/null && \
     log "  Stopped wpa_supplicant on wlan0." || true
 
-# Assign static IP
+# Bring up the interface; systemd-networkd applies the static IP from
+# /etc/systemd/network/10-classcan-wlan0.network (written by install_autoconnect.sh)
 ip link set wlan0 up
-ip addr flush dev wlan0 2>/dev/null || true
-ip addr add 192.168.20.1/24 dev wlan0
+networkctl reconfigure wlan0 2>/dev/null || true
+sleep 1
+
 
 # Start hostapd (uses /etc/hostapd/classcan-hotspot.conf set by install script)
 systemctl restart hostapd
