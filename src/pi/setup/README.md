@@ -4,6 +4,38 @@ This directory contains system-level configuration files and deployment scripts 
 
 ---
 
+## 0. Auto-Connect on Boot (Hotspot + USB) — **Do This First**
+
+Run **once** on the Pi to permanently enable zero-config access from any device:
+
+```bash
+sudo bash src/pi/setup/install_autoconnect.sh
+sudo reboot
+```
+
+After reboot, you can always reach the Pi — no ethernet, no router, no prior Wi-Fi setup:
+
+| Method | Connect | SSH | Dashboard |
+|---|---|---|---|
+| **Wi-Fi hotspot** | Join `CLASSCAN` (pw: `classcan2024`) | `ssh pi@192.168.20.1` | `http://192.168.20.1:8080` |
+| **USB data cable** | Plug micro-USB → laptop | `ssh pi@192.168.7.1` | `http://192.168.7.1:8080` |
+
+> **Windows USB note:** A "Remote NDIS" adapter appears in Device Manager. If it shows as unknown, update the driver: Device Manager → right-click → Update Driver → Browse → Let me pick → **Remote NDIS Compatible Device**.
+
+### What the install script does
+- Installs `hostapd` + `dnsmasq`
+- Enables `dwc2` USB OTG overlay and `g_ether` module (USB gadget networking)
+- Writes all config files for hostapd, dnsmasq, dhcpcd, and network interfaces
+- Installs and enables `classcan-boot.service` (systemd) — runs [`classcan-boot.sh`](classcan-boot.sh) on every boot to bring up wlan0 hotspot and verify USB gadget
+
+### Files added by this feature
+| File | Purpose |
+|---|---|
+| [`install_autoconnect.sh`](install_autoconnect.sh) | One-time install — run once, then reboot |
+| [`classcan-boot.sh`](classcan-boot.sh) | Boot-time bringup script (called by systemd) |
+
+---
+
 ## 1. System Dependencies & Python Runtime
 
 Ensure basic tools and compilation headers are installed:
