@@ -4,7 +4,7 @@ This directory contains system-level configuration files and deployment scripts 
 
 ---
 
-## 0. Auto-Connect on Boot (Hotspot + USB) — **Do This First**
+## 0. Auto-Connect on Boot — **Do This First After Every Reflash**
 
 Run **once** on the Pi to permanently enable zero-config access from any device:
 
@@ -13,26 +13,34 @@ sudo bash src/pi/setup/install_autoconnect.sh
 sudo reboot
 ```
 
-After reboot, you can always reach the Pi — no ethernet, no router, no prior Wi-Fi setup:
+After reboot, reach the Pi via **any** of these — no prior setup needed:
 
-| Method | Connect | SSH | Dashboard |
+| Method | How to connect | SSH | Dashboard |
 |---|---|---|---|
 | **Wi-Fi hotspot** | Join `CLASSCAN` (pw: `classcan2024`) | `ssh pi@192.168.20.1` | `http://192.168.20.1:8080` |
 | **USB data cable** | Plug micro-USB → laptop | `ssh pi@192.168.7.1` | `http://192.168.7.1:8080` |
+| **Ethernet (recovery)** | Plug cable into any router | Check router for Pi's IP | `http://<ip>:8080` |
+
+> **Ethernet recovery:** If the hotspot breaks, plug an ethernet cable into a router and check the router's device list for a device named `raspberrypi`. SSH in with `ssh pi@<that-ip>`.
 
 > **Windows USB note:** A "Remote NDIS" adapter appears in Device Manager. If it shows as unknown, update the driver: Device Manager → right-click → Update Driver → Browse → Let me pick → **Remote NDIS Compatible Device**.
 
-### What the install script does
+### What the install script sets up
 - Installs `hostapd` + `dnsmasq`
 - Enables `dwc2` USB OTG overlay and `g_ether` module (USB gadget networking)
-- Writes all config files for hostapd, dnsmasq, dhcpcd, and network interfaces
-- Installs and enables `classcan-boot.service` (systemd) — runs [`classcan-boot.sh`](classcan-boot.sh) on every boot to bring up wlan0 hotspot and verify USB gadget
+- Writes **systemd-networkd** `.network` files for `wlan0` (static `192.168.20.1`), `usb0` (static `192.168.7.1`), and `eth0` (DHCP)
+- Installs and enables `classcan-boot.service` — runs [`classcan-boot.sh`](classcan-boot.sh) on every boot to bring up the wlan0 hotspot
 
-### Files added by this feature
+### Files in this directory
 | File | Purpose |
 |---|---|
-| [`install_autoconnect.sh`](install_autoconnect.sh) | One-time install — run once, then reboot |
-| [`classcan-boot.sh`](classcan-boot.sh) | Boot-time bringup script (called by systemd) |
+| [`install_autoconnect.sh`](install_autoconnect.sh) | **Run this once after reflash.** Sets up all networking permanently. |
+| [`classcan-boot.sh`](classcan-boot.sh) | Boot-time bringup (called by systemd — do not run directly) |
+| [`wifi-watchdog.sh`](wifi-watchdog.sh) | Cron watchdog — restarts hotspot if it dies, reboots as last resort |
+| [`wifi-powersave-off.service`](wifi-powersave-off.service) | Disables brcmfmac power-save bug that causes hotspot to drop |
+| [`hotspot.sh`](hotspot.sh) | Standalone hotspot bringup (one-shot or `--persistent`) |
+| [`direct_connect.sh`](direct_connect.sh) | One-shot static ethernet (laptop ↔ Pi direct cable, `--persistent` saves it) |
+| [`usb_gadget.sh`](usb_gadget.sh) | Standalone USB gadget setup (same as install script, but standalone) |
 
 ---
 
