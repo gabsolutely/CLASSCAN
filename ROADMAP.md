@@ -138,7 +138,7 @@ Prove the core detection pipeline works end-to-end on target hardware:
 ## Full-System Integration (Post-PoC)
 
 - Pan/tilt servos, sweep mode, quadrant/zone targeting (servo "radar" mount prototype on ESP32)
-- LED matrix headcount display driven by ESP32
+- SSD1309 OLED headcount display driven by ESP32
 - Custom LDR-triggered illumination LED module
 - 3D-printed ceiling-mount dome enclosure
 - 18650 swappable battery power module
@@ -158,7 +158,7 @@ Prove the core detection pipeline works end-to-end on target hardware:
 | OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure calibration in progress) |
 | Light Sensor (LDR) + Illumination LEDs | **In hand / circuit in development** |
 | Pan/Tilt Servos (MG90S x2) | **In hand** |
-| LED Matrix Display | **In hand** |
+| OLED Display (SSD1309) | **In hand** |
 | Power supply & batteries | **In hand & verified** |
 
 ---

@@ -27,7 +27,7 @@ The system is designed and verified to perform the following core operations:
 
 3. **Dual-Tier Hardware Architecture (Pi 3B + ESP32):**
    - **Pi 3B (Brain):** Video capture via UVC, frame differencing, TFLite inference, zone reconciliation, dashboard web server, and serial command bridging.
-   - **ESP32 (Hands):** Real-time pan/tilt servo PWM control, analog ambient light monitoring via LDR, driving custom LED illumination, and refreshing the local LED matrix headcount display.
+   - **ESP32 (Hands):** Real-time pan/tilt servo PWM control, analog ambient light monitoring via LDR, driving custom LED illumination, and refreshing the local SSD1309 OLED headcount display.
    - **Autonomous Failsafe:** The ESP32 maintains room sweeping, lighting regulation, and local LED count display independently if the Pi 3B or local Wi-Fi connection is disrupted.
 
 4. **Macro-Quadrant Spatial Zoning & Self-Consistency Checking:**

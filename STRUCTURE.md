@@ -35,7 +35,7 @@ CLASSCAN/
 │   │   │   ├── config.h            ← Pin & timing constants
 │   │   │   ├── ldr_illumination.h  ← LDR-triggered illumination module
 │   │   │   ├── servo_controller.h  ← Pan/tilt sweep + zone-step
-│   │   │   └── led_matrix.h        ← LED matrix display driver stub
+│   │   │   └── led_matrix.h        ← OLED display driver stub
 │   │   └── src/
 │   │       └── main.cpp        ← Firmware entry point & state loops
 │   │

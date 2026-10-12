@@ -28,7 +28,7 @@ CLASSCAN deliberately standardizes on **Raspberry Pi OS Lite (64-bit Debian 13 /
 ## ADR-02: Heterogeneous Dual-Tier Architecture — Pi 3B (Brain) vs. ESP32 (Hands)
 
 ### Context
-The system combines heavy computational tasks (neural network inference, HTTP MJPEG streaming, frame differencing) with real-time hardware I/O (PWM servo driving, analog sensor polling, LED matrix multiplexing).
+The system combines heavy computational tasks (neural network inference, HTTP MJPEG streaming, frame differencing) with real-time hardware I/O (PWM servo driving, analog sensor polling, OLED display I2C updates).
 
 ### Decision
 Adopt a decoupled, dual-tier architecture mirroring industrial robotics:

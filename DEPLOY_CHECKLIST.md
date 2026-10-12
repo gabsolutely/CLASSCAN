@@ -112,7 +112,7 @@ python scripts/export_to_tflite.py --mode density \
   ```
 - [ ] Servo mechanism physically attached and free to rotate without obstruction
 - [ ] LDR and illumination LED circuit wired per `hardware/wiring_guide.md`
-- [ ] LED matrix wired and powered
+- [ ] OLED display (SSD1309) wired and powered
 
 ---
 
@@ -155,7 +155,7 @@ python main.py
 - [ ] Pi powered from stable supply (not laptop USB); active fan spinning
 - [ ] ESP32 connected to Pi via USB serial cable
 - [ ] Servo bracket pointing in default center position; free to sweep
-- [ ] LED matrix displays received headcount
+- [ ] OLED displays received headcount
 - [ ] LDR / illumination circuit responds to ambient light changes
 
 ---
