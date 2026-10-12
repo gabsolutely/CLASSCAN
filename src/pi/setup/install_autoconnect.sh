@@ -3,12 +3,14 @@
 # CLASSCAN — Auto-Connect Install Script
 # ============================================================================
 # Run this ONCE on the Pi to permanently enable:
-#   • Wi-Fi hotspot (wlan0 → SSID "CLASSCAN", 192.168.20.1)
-#   • USB gadget networking (micro-USB port → 192.168.7.1)
+#   • Wi-Fi hotspot  (wlan0 → SSID "CLASSCAN", 192.168.20.1)
+#   • USB gadget     (micro-USB port → 192.168.7.1)
+#   • Ethernet DHCP  (eth0  → DHCP from any router — SSH recovery fallback)
 #
-# After this script + one reboot, you can ALWAYS reach the Pi by:
+# After this script + one reboot, reach the Pi via ANY of:
 #   Wi-Fi  → connect to "CLASSCAN" → ssh pi@192.168.20.1  /  http://192.168.20.1:8080
 #   USB    → plug data cable       → ssh pi@192.168.7.1   /  http://192.168.7.1:8080
+#   LAN    → plug ethernet cable   → check router for Pi's IP (hostname: raspberrypi)
 #
 # Usage:
 #   sudo bash install_autoconnect.sh
@@ -63,6 +65,24 @@ Address=192.168.7.1/24
 EOF
 systemctl enable systemd-networkd
 log "  usb0 static IP configured via systemd-networkd."
+
+# ── 3b. eth0 DHCP via systemd-networkd (ethernet recovery fallback) ──────────
+# If an ethernet cable is plugged into a router the Pi gets a DHCP lease,
+# allowing SSH access even when wlan0 hotspot is broken — critical for recovery.
+
+log "Writing eth0 DHCP config (/etc/systemd/network/10-classcan-eth0.network) ..."
+cat > /etc/systemd/network/10-classcan-eth0.network <<'EOF'
+# CLASSCAN ethernet recovery — written by install_autoconnect.sh
+# Enables DHCP on eth0 so the Pi gets a router-assigned IP when a cable is
+# plugged in. Check your router's device list for the IP, then ssh pi@<ip>.
+[Match]
+Name=eth0
+
+[Network]
+DHCP=yes
+MulticastDNS=yes
+EOF
+log "  eth0 DHCP configured via systemd-networkd."
 
 # ── 4. dnsmasq: USB DHCP ─────────────────────────────────────────────────────
 
@@ -136,9 +156,10 @@ log "Installing systemd service: $SERVICE_DST ..."
 cat > "$SERVICE_DST" <<EOF
 [Unit]
 Description=CLASSCAN Boot — Hotspot + USB Gadget
-After=network-pre.target
-Before=network.target
-DefaultDependencies=no
+# Run after systemd-networkd is up so that networkctl reconfigure works
+# reliably and eth0 DHCP is not disrupted.
+After=systemd-networkd.service
+Wants=systemd-networkd.service
 
 [Service]
 Type=oneshot

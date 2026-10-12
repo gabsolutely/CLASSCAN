@@ -25,7 +25,7 @@ PI_IP="192.168.10.1"
 PI_MASK="255.255.255.0"
 IFACE="eth0"
 DASHBOARD_PORT="8080"
-PERSISTENT_FILE="/etc/network/interfaces.d/classcan-eth-static.conf"
+PERSISTENT_FILE="/etc/systemd/network/10-classcan-eth-static.network"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -59,16 +59,21 @@ apply_ip() {
 
 write_persistent() {
     log "Writing persistent config to $PERSISTENT_FILE ..."
+    mkdir -p /etc/systemd/network
     cat > "$PERSISTENT_FILE" <<EOF
 # CLASSCAN static ethernet — written by direct_connect.sh
-# Remove this file to restore DHCP on eth0.
-auto $IFACE
-iface $IFACE inet static
-    address $PI_IP
-    netmask $PI_MASK
+# Remove this file to restore DHCP behaviour on eth0.
+[Match]
+Name=$IFACE
+
+[Network]
+Address=${PI_IP}/24
+# No gateway or DHCP — direct cable connection
 EOF
-    log "Persistent config written."
-    log "Restart networking to activate: sudo systemctl restart networking"
+    systemctl enable systemd-networkd 2>/dev/null || true
+    networkctl reconfigure "$IFACE" 2>/dev/null || true
+    log "Persistent config written. eth0 will have $PI_IP on every boot."
+    log "Laptop: set your ethernet adapter to 192.168.10.2 / 255.255.255.0"
 }
 
 print_summary() {
