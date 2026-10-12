@@ -105,23 +105,27 @@ ESP32 GPIO 21 (Tilt PWM) ──────────────────�
 
 ---
 
-## 4. SSD1309 OLED Display Connection (2.42", 128x64, I2C)
+## 4. SSD1309 OLED Display Connection (2.42", 128×64, I2C)
 
 The headcount is shown on a **2.42" SSD1309 OLED module** — crisp white
 pixels on a pure-black background, clearly legible in daylight and dim
-classroom conditions. Two wires is all the interface needs.
-
-| SSD1306 Pin | ESP32 Pin   | Wire Color | Description                                      |
-|-------------|:-----------:|:----------:|--------------------------------------------------|
-| **VCC**     | `3V3`       | Red        | 3.3 V display power (module has onboard reg)     |
-| **GND**     | `Common GND`| Black      | Ground reference                                 |
-| **SDA**     | `GPIO 16`   | Yellow     | I2C data (Bus 1, 400 kHz)                        |
-| **SCL**     | `GPIO 17`   | Blue       | I2C clock (Bus 1, 400 kHz)                       |
+classroom conditions.
 
 > [!NOTE]
-> The default I2C address is **0x3C**. If the display stays blank, try **0x3D**
-> (set `OLED_I2C_ADDR` in `config.h`). Both addresses appear as a solder-bridge
-> jumper on the back of most modules.
+> The SSD1309 is electrically identical to the SSD1306 and works with the
+> **Adafruit SSD1306 library** as-is — no driver change needed.
+
+| SSD1309 Pin | ESP32 Pin    | Wire Color | Description                                      |
+|-------------|:------------:|:----------:|--------------------------------------------------|
+| **VCC**     | `3V3`        | Red        | 3.3 V display power (module has onboard regulator)|
+| **GND**     | `Common GND` | Black      | Ground reference                                 |
+| **SDA**     | `GPIO 16`    | Yellow     | I2C data (Bus 1, 400 kHz)                        |
+| **SCL**     | `GPIO 17`    | Blue       | I2C clock (Bus 1, 400 kHz)                       |
+
+> [!NOTE]
+> The default I2C address is **0x3C** (`OLED_I2C_ADDR` in `config.h`).
+> If the display stays blank after boot, try **0x3D** — the address is
+> selected by a solder-bridge jumper on the back of most modules.
 
 
 ## 5. Active Cooling Fan Wiring (Raspberry Pi 3B)
