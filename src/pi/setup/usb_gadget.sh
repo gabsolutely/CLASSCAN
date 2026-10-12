@@ -41,7 +41,7 @@ IFACE="usb0"
 DASHBOARD_PORT="8080"
 CONFIG_TXT="/boot/config.txt"
 MODULES_FILE="/etc/modules"
-INTERFACES_DIR="/etc/network/interfaces.d"
+NETWORK_FILE="/etc/systemd/network/10-classcan-usb0.network"
 DNSMASQ_CONF="/etc/dnsmasq.d/classcan-usb.conf"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -87,19 +87,22 @@ enable_gether() {
     fi
 }
 
-# ── step 3 — static IP for usb0 ──────────────────────────────────────────────
+# ── step 3 — static IP for usb0 (systemd-networkd) ──────────────────────────
+# /etc/network/interfaces.d/ doesn't exist on Pi OS Trixie (no ifupdown).
+# systemd-networkd is always present and the correct tool on Trixie.
 
 configure_usb0_ip() {
-    local conf="${INTERFACES_DIR}/classcan-usb0.conf"
-    log "Writing $conf ..."
-    cat > "$conf" <<EOF
+    log "Writing systemd-networkd config $NETWORK_FILE ..."
+    mkdir -p /etc/systemd/network
+    cat > "$NETWORK_FILE" <<EOF
 # CLASSCAN USB gadget network — written by usb_gadget.sh
-auto $IFACE
-allow-hotplug $IFACE
-iface $IFACE inet static
-    address $GADGET_IP
-    netmask 255.255.255.0
+[Match]
+Name=$IFACE
+
+[Network]
+Address=${GADGET_IP}/24
 EOF
+    systemctl enable systemd-networkd --quiet 2>/dev/null || true
     log "usb0 static IP configured: $GADGET_IP"
 }
 

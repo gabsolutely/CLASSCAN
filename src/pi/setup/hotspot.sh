@@ -133,20 +133,22 @@ enable_persistent() {
     systemctl enable hostapd
     systemctl enable dnsmasq
 
-    # Persist static IP via dhcpcd (Pi OS default network manager)
-    local DHCPCD_CONF="/etc/dhcpcd.conf"
-    if ! grep -q "classcan-hotspot" "$DHCPCD_CONF" 2>/dev/null; then
-        log "Appending static IP to $DHCPCD_CONF ..."
-        cat >> "$DHCPCD_CONF" <<EOF
+    # Persist static IP via systemd-networkd (dhcpcd is not present on Trixie)
+    local NET_FILE="/etc/systemd/network/10-classcan-wlan0.network"
+    log "Writing $NET_FILE ..."
+    mkdir -p /etc/systemd/network
+    cat > "$NET_FILE" <<EOF
 
 # CLASSCAN hotspot static IP — written by hotspot.sh
-interface $IFACE
-    static ip_address=${PI_IP}/24
-    nohook wpa_supplicant
+[Match]
+Name=$IFACE
+
+[Network]
+Address=${PI_IP}/24
+# No DHCP client — hostapd manages this interface
+LinkLocalAddressing=no
 EOF
-    else
-        log "dhcpcd.conf already has CLASSCAN entry — skipping."
-    fi
+    systemctl enable systemd-networkd 2>/dev/null || true
     log "Hotspot will start automatically on boot."
 }
 
