@@ -36,7 +36,9 @@ DHCP_MASK="255.255.255.0"
 DHCP_LEASE="12h"
 DASHBOARD_PORT="8080"
 
-HOSTAPD_CONF="/etc/hostapd/classcan-hotspot.conf"
+# NOTE: must be hostapd.conf (not a custom name) — the systemd unit has
+#   ConditionFileNotEmpty=/etc/hostapd/hostapd.conf which fires before DAEMON_CONF is read.
+HOSTAPD_CONF="/etc/hostapd/hostapd.conf"
 DNSMASQ_CONF="/etc/dnsmasq.d/classcan-hotspot.conf"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -106,14 +108,19 @@ EOF
 assign_static_ip() {
     log "Assigning static IP $PI_IP to $IFACE ..."
     ip link set "$IFACE" up
+    # Flush ALL addresses (including any DHCP lease from a school router)
+    # so wlan0 ends up with only our static AP address.
     ip addr flush dev "$IFACE" 2>/dev/null || true
     ip addr add "${PI_IP}/24" dev "$IFACE"
+    log "  $IFACE now has ${PI_IP}/24"
 }
 
 start_services() {
     log "Starting hostapd ..."
     systemctl unmask hostapd 2>/dev/null || true
-    systemctl start hostapd
+    # Reload unit files so systemd re-evaluates ConditionFileNotEmpty
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl restart hostapd
 
     log "Starting dnsmasq ..."
     systemctl restart dnsmasq
@@ -125,6 +132,10 @@ start_services() {
         log "hostapd running OK"
     else
         warn "hostapd failed to start. Run: sudo journalctl -u hostapd -n 30"
+        warn "Trying to start hostapd directly for diagnostics ..."
+        hostapd -dd "$HOSTAPD_CONF" &
+        sleep 2
+        kill %1 2>/dev/null || true
     fi
 }
 

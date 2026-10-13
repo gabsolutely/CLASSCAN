@@ -39,7 +39,7 @@ if ! ip addr show wlan0 | grep -q "192.168.20.1"; then
 fi
 
 
-# Start hostapd (uses /etc/hostapd/classcan-hotspot.conf set by install script)
+# Start hostapd (uses /etc/hostapd/hostapd.conf written by hotspot.sh / install_autoconnect.sh)
 systemctl restart hostapd
 
 # Give it a moment to come up
