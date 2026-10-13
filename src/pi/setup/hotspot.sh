@@ -105,6 +105,27 @@ address=/classcan.local/$PI_IP
 EOF
 }
 
+release_from_nm() {
+    if command -v nmcli &>/dev/null && systemctl is-active --quiet NetworkManager; then
+        log "NetworkManager is running — unmanaging $IFACE so hostapd can own it ..."
+        nmcli device disconnect "$IFACE" 2>/dev/null || true
+        nmcli device set "$IFACE" managed no
+        sleep 1
+        log "  $IFACE released from NetworkManager."
+    else
+        # Legacy: kill wpa_supplicant directly
+        pkill -f "wpa_supplicant.*$IFACE" 2>/dev/null && \
+            log "  Stopped wpa_supplicant on $IFACE." || true
+    fi
+}
+
+restore_to_nm() {
+    if command -v nmcli &>/dev/null && systemctl is-active --quiet NetworkManager; then
+        log "Returning $IFACE to NetworkManager ..."
+        nmcli device set "$IFACE" managed yes
+    fi
+}
+
 assign_static_ip() {
     log "Assigning static IP $PI_IP to $IFACE ..."
     ip link set "$IFACE" up
@@ -168,7 +189,8 @@ stop_hotspot() {
     systemctl stop hostapd  2>/dev/null && log "hostapd stopped." || warn "hostapd was not running."
     systemctl stop dnsmasq  2>/dev/null && log "dnsmasq stopped."  || warn "dnsmasq was not running."
     ip addr flush dev "$IFACE" 2>/dev/null || true
-    log "Done. wlan0 released — reconnect to your normal Wi-Fi if needed."
+    restore_to_nm
+    log "Done. wlan0 released — NetworkManager will reconnect to your normal Wi-Fi."
 }
 
 show_status() {
@@ -219,6 +241,7 @@ case "${1:-}" in
         install_deps
         write_hostapd_conf
         write_dnsmasq_conf
+        release_from_nm
         assign_static_ip
         start_services
         enable_persistent
@@ -228,6 +251,7 @@ case "${1:-}" in
         install_deps
         write_hostapd_conf
         write_dnsmasq_conf
+        release_from_nm
         assign_static_ip
         start_services
         print_summary
