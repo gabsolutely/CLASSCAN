@@ -355,7 +355,8 @@ def main():
             #    current live frame - stream is always smooth, no inference wait.
             top_conf = max((d["score"] for d in detections), default=0.0)
             annotated_frame = draw_hud_overlay(
-                frame, detections, fps=current_fps, mode_str=cfg.MODE, source_tag=source_tag
+                frame, detections, fps=current_fps, mode_str=cfg.MODE,
+                source_tag=source_tag, count=last_count,
             )
             dashboard.push(
                 count=last_count,

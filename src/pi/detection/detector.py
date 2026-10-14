@@ -868,15 +868,19 @@ def draw_hud_overlay(
     fps: float = 0.0,
     mode_str: str = "SWEEP",
     source_tag: str = "HARDWARE",
+    count: int | None = None,
 ) -> np.ndarray:
     """
     Draw bounding boxes and HUD info bar on a BGR frame for the dashboard stream.
+
+    count: if provided, overrides len(detections) in the HUD bar. Pass last_count
+           (from the density detector) so the HUD matches the dashboard number.
 
     Returns a new BGR ndarray with annotations.
     """
     out = frame.copy()
     h, w = out.shape[:2]
-    count = len(detections)
+    count = count if count is not None else len(detections)
 
     # Draw detection boxes
     for det in detections:
