@@ -150,6 +150,7 @@ def main():
     last_fps_time   = time.time()
     fps_counter     = 0
     current_fps     = 0.0
+    _last_frame_count = -1  # tracks ThreadedCamera.frame_count to skip duplicate frames
 
     source_tag = "SIMULATED" if detector.is_mock else "HARDWARE"
 
@@ -282,8 +283,17 @@ def main():
 
     try:
         while True:
-            # 2. Grab Frame - always get the freshest available camera frame
-            frame     = detector.capture_frame()
+            # 2. Grab Frame — only process if a genuinely new frame arrived from sensor.
+            # ThreadedCamera.frame_count increments on each new capture; comparing it
+            # here avoids pushing duplicate frames at 30Hz to a 15 FPS camera, which
+            # was the root cause of choppy/stuttery MJPEG video.
+            raw_cap = getattr(detector.cap, "cap", None)  # ThreadedCamera wraps cv2.cap
+            _cam = detector.cap  # ThreadedCamera itself
+            _new_frame_count = getattr(_cam, "frame_count", _last_frame_count + 1)
+            frame = detector.capture_frame()
+            is_new_frame = _new_frame_count != _last_frame_count
+            if is_new_frame:
+                _last_frame_count = _new_frame_count
             if frame is not None:
                 _wd_last_frame = time.time()  # watchdog: mark camera healthy
             esp_state = serial_bridge.get_state()  # "idle" | "moving"
@@ -301,7 +311,9 @@ def main():
             #    stays locked onto moving targets with minimal latency.
             #    Guard: skip trigger.check() entirely when no frame is available
             #    so a missed camera read never disrupts the heartbeat counter.
-            if frame is not None:
+            # Only run motion detection on genuinely new frames (avoids double-checking
+            # the same frame when the 30Hz loop outruns the 15 FPS camera).
+            if frame is not None and is_new_frame:
                 significant_change = trigger.check(frame)
                 if significant_change:
                     motion_active_until = time.time() + 2.0
@@ -351,23 +363,24 @@ def main():
             }
 
             # 6. Annotate and Push Frame to Dashboard.
-            #    Boxes from the latest completed inference are overlaid on the
-            #    current live frame - stream is always smooth, no inference wait.
-            top_conf = max((d["score"] for d in detections), default=0.0)
-            annotated_frame = draw_hud_overlay(
-                frame, detections, fps=current_fps, mode_str=cfg.MODE,
-                source_tag=source_tag, count=last_count,
-            )
-            dashboard.push(
-                count=last_count,
-                frame=annotated_frame,
-                fps=current_fps,
-                top_conf=top_conf,
-                zones=zone_counts,
-                mode=cfg.MODE,
-                motion=motion_active,
-                watchdog=watchdog_status,
-            )
+            #    Only push when a new frame is available — avoids flooding the MJPEG
+            #    stream with duplicate frames when the loop outruns the camera.
+            if frame is not None and is_new_frame:
+                top_conf = max((d["score"] for d in detections), default=0.0)
+                annotated_frame = draw_hud_overlay(
+                    frame, detections, fps=current_fps, mode_str=cfg.MODE,
+                    source_tag=source_tag, count=last_count,
+                )
+                dashboard.push(
+                    count=last_count,
+                    frame=annotated_frame,
+                    fps=current_fps,
+                    top_conf=top_conf,
+                    zones=zone_counts,
+                    mode=cfg.MODE,
+                    motion=motion_active,
+                    watchdog=watchdog_status,
+                )
 
             # 7. Handle Inbound Dashboard Commands
             cmd = dashboard.poll_command()

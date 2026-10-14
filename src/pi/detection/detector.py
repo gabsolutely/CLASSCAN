@@ -250,6 +250,7 @@ class ThreadedCamera:
         self.frame = None
         self.ret = False
         self.stopped = False
+        self.frame_count = 0   # increments on every new frame from the sensor
         if self.cap.isOpened():
             res = self.cap.read()
             if isinstance(res, (tuple, list)) and len(res) == 2:
@@ -269,6 +270,7 @@ class ThreadedCamera:
                         with self.lock:
                             self.frame = frame
                             self.ret = True
+                            self.frame_count += 1
             except Exception:
                 pass
             time.sleep(0.005)
