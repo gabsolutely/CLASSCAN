@@ -20,9 +20,20 @@ warn() { echo "[classcan-boot] WARNING: $*" >&2; }
 
 log "Bringing up wlan0 hotspot ..."
 
-# Kill wpa_supplicant on wlan0 if it's running (conflicts with hostapd)
-pkill -f "wpa_supplicant.*wlan0" 2>/dev/null && \
-    log "  Stopped wpa_supplicant on wlan0." || true
+# Release wlan0 from NetworkManager (NM runs on Trixie and will conflict with
+# hostapd if it keeps hold of the interface). The persistent fix is the NM
+# conf.d file written by install_autoconnect.sh; this is a boot-time guard
+# for the first boot and any recovery scenario where NM grabbed it anyway.
+if command -v nmcli &>/dev/null && systemctl is-active --quiet NetworkManager; then
+    nmcli device disconnect wlan0 2>/dev/null || true
+    nmcli device set wlan0 managed no 2>/dev/null || true
+    sleep 1
+    log "  wlan0 released from NetworkManager."
+else
+    # Legacy fallback (no NM): kill wpa_supplicant directly
+    pkill -f "wpa_supplicant.*wlan0" 2>/dev/null && \
+        log "  Stopped wpa_supplicant on wlan0." || true
+fi
 
 # Bring up the interface and assign static IP.
 # Try systemd-networkd first; fall back to explicit ip addr add so this

@@ -94,9 +94,13 @@ dhcp-range=192.168.7.2,192.168.7.10,255.255.255.0,24h
 EOF
 
 # ── 5. hostapd config (wlan0 hotspot) ────────────────────────────────────────
+# IMPORTANT: must be /etc/hostapd/hostapd.conf — the systemd unit has
+#   ConditionFileNotEmpty=/etc/hostapd/hostapd.conf which is evaluated before
+#   DAEMON_CONF is read. A different filename causes a silent no-op start.
 
-log "Writing hostapd config (/etc/hostapd/classcan-hotspot.conf) ..."
-cat > /etc/hostapd/classcan-hotspot.conf <<'EOF'
+log "Writing hostapd config (/etc/hostapd/hostapd.conf) ..."
+mkdir -p /etc/hostapd
+cat > /etc/hostapd/hostapd.conf <<'EOF'
 # CLASSCAN hotspot — written by install_autoconnect.sh
 interface=wlan0
 driver=nl80211
@@ -115,8 +119,26 @@ rsn_pairwise=CCMP
 EOF
 
 # Point hostapd daemon at our config
-sed -i 's|^#\?DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/classcan-hotspot.conf"|' \
+sed -i 's|^#\?DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' \
     /etc/default/hostapd 2>/dev/null || true
+
+# ── 5b. Tell NetworkManager to leave wlan0 alone ─────────────────────────────
+# NM runs on Trixie and will fight hostapd for wlan0 unless explicitly told
+# not to. This conf file is the persistent fix that survives reboots.
+# To temporarily use wlan0 as a WiFi client (e.g. to install packages),
+# run:  sudo bash src/pi/setup/wifi-client.sh on
+# Then: sudo bash src/pi/setup/wifi-client.sh off  when done.
+
+log "Telling NetworkManager to leave wlan0 alone (hostapd owns it) ..."
+mkdir -p /etc/NetworkManager/conf.d
+cat > /etc/NetworkManager/conf.d/classcan-unmanaged.conf <<'EOF'
+# CLASSCAN — wlan0 is managed by hostapd (AP mode), not NetworkManager.
+# Remove this file and restart NM to temporarily use wlan0 as a WiFi client.
+[keyfile]
+unmanaged-devices=interface-name:wlan0
+EOF
+systemctl reload NetworkManager 2>/dev/null || systemctl restart NetworkManager || true
+log "  wlan0 unmanaged by NM."
 
 # ── 6. dnsmasq: Wi-Fi DHCP ───────────────────────────────────────────────────
 
