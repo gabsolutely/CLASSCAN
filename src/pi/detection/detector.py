@@ -647,6 +647,7 @@ class Detector:
         camera_index: int = 0,
         force_mock: bool = False,
         mock_count: int = 4,
+        shared_cap=None,
     ):
         self.conf_threshold = conf_threshold
         self.is_mock = force_mock
@@ -698,7 +699,14 @@ class Detector:
         if force_mock:
             self.cap         = _MockCapture(mock_count=mock_count)
             self._mock_count = mock_count
+            self._owns_cap   = True
             print(f"[Detector] Mock mode — simulating {mock_count} detections")
+        elif shared_cap is not None:
+            # Reuse a camera already opened by another detector (e.g. EnsembleDensityDetector).
+            # V4L2 only allows one exclusive open per device, so we must share.
+            self.cap       = shared_cap
+            self._owns_cap = False
+            print(f"[Detector] Sharing camera with density detector")
         else:
             self.cap = _open_camera(camera_index)
             if not self.cap.isOpened():
@@ -706,6 +714,7 @@ class Detector:
                     f"[Detector] Cannot open camera device {camera_index}. "
                     "Check: camera connected? correct device index? V4L2 driver loaded?"
                 )
+            self._owns_cap = True
 
         print(f"[Detector] Model loaded: {model_path}")
         print(f"[Detector] Input size:   {self.input_w}×{self.input_h}  dtype={self.input_dtype.__name__}")

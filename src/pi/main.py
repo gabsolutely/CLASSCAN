@@ -129,12 +129,15 @@ def main():
         print("           (or legacy fallback: models/classcan_density_float32.tflite)")
 
     # Secondary box detector: bounding boxes for HUD overlay
+    # Share the camera already opened by density_detector — V4L2 only allows
+    # one exclusive open per device, so Detector must reuse the same handle.
     detector = Detector(
         model_path=cfg.MODEL_PATH,
         conf_threshold=cfg.CONF_THRESHOLD,
         camera_index=args.camera,
         force_mock=args.mock,
         mock_count=args.mock_count,
+        shared_cap=density_detector.cap if density_detector is not None else None,
     )
     trigger    = ChangeTrigger(threshold=cfg.CHANGE_THRESHOLD)
     reconciler = ZoneReconciler(zone_names=list(cfg.ZONE_POSITIONS.keys()))
