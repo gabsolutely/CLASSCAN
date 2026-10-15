@@ -290,7 +290,6 @@ def main():
             # ThreadedCamera.frame_count increments on each new capture; comparing it
             # here avoids pushing duplicate frames at 30Hz to a 15 FPS camera, which
             # was the root cause of choppy/stuttery MJPEG video.
-            raw_cap = getattr(detector.cap, "cap", None)  # ThreadedCamera wraps cv2.cap
             _cam = detector.cap  # ThreadedCamera itself
             _new_frame_count = getattr(_cam, "frame_count", _last_frame_count + 1)
             frame = detector.capture_frame()
@@ -301,8 +300,10 @@ def main():
                 _wd_last_frame = time.time()  # watchdog: mark camera healthy
             esp_state = serial_bridge.get_state()  # "idle" | "moving"
 
-            # 3. FPS calculation
-            fps_counter += 1
+            # 3. FPS — count only when a new frame arrived from the sensor so
+            #    the displayed rate matches actual stream output, not loop rate.
+            if is_new_frame:
+                fps_counter += 1
             elapsed_fps = time.time() - last_fps_time
             if elapsed_fps >= 1.0:
                 current_fps   = fps_counter / elapsed_fps
