@@ -232,6 +232,9 @@ def main():
 
             try:
                 if cfg.MODE == "SWEEP":
+                    # Always run box detector for HUD bounding-box overlay.
+                    # Count comes from density_detector (accurate); boxes from
+                    # COCO SSD are visual-only and may miss some people.
                     new_detections = detector.detect(frame)
                     if density_detector:
                         result    = density_detector.predict(frame)
@@ -340,6 +343,11 @@ def main():
                 last_count = new_count
                 serial_bridge.send_count(last_count)
                 print(f"[CLASSCAN] Headcount updated -> {last_count}")
+
+            # Cap boxes to last_count (top-N by confidence) so the visual always
+            # agrees with the number. count=0 → no boxes; count=N → at most N boxes.
+            if detections and last_count < len(detections):
+                detections = sorted(detections, key=lambda d: d["score"], reverse=True)[:last_count]
 
             # 5a. Watchdog — build health report for dashboard
             _now = time.time()

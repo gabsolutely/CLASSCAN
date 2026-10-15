@@ -244,6 +244,14 @@ class ThreadedCamera:
     """
     def __init__(self, camera_index: int = 0):
         self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
+        if self.cap.isOpened():
+            # Try MJPEG first for best quality; fall back to YUYV if camera refuses.
+            mjpg = cv2.VideoWriter_fourcc(*"MJPG")
+            yuyv = cv2.VideoWriter_fourcc(*"YUYV")
+            if not self.cap.set(cv2.CAP_PROP_FOURCC, mjpg):
+                self.cap.set(cv2.CAP_PROP_FOURCC, yuyv)
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         if not self.cap.isOpened():
             self.cap = cv2.VideoCapture(camera_index)
         self.lock = threading.Lock()
@@ -255,10 +263,25 @@ class ThreadedCamera:
             res = self.cap.read()
             if isinstance(res, (tuple, list)) and len(res) == 2:
                 self.ret, self.frame = res
+                if self.ret and self.frame is not None:
+                    self.frame = self._to_bgr(self.frame)
             else:
                 self.ret, self.frame = True, None
             self.thread = threading.Thread(target=self._reader, daemon=True, name="CameraReader")
             self.thread.start()
+
+    @staticmethod
+    def _to_bgr(frame: np.ndarray) -> np.ndarray:
+        """Convert raw YUYV / single-channel frames to BGR if needed."""
+        if frame is None:
+            return frame
+        if frame.ndim == 2:
+            # Raw YUYV packed as 2-channel or single grayscale — convert
+            return cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_YUYV)
+        if frame.ndim == 3 and frame.shape[2] == 2:
+            return cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_YUYV)
+        return frame  # already BGR
+
 
     def _reader(self):
         while not self.stopped:
@@ -267,6 +290,7 @@ class ThreadedCamera:
                 if isinstance(res, (tuple, list)) and len(res) == 2:
                     ret, frame = res
                     if ret and frame is not None:
+                        frame = self._to_bgr(frame)
                         with self.lock:
                             self.frame = frame
                             self.ret = True

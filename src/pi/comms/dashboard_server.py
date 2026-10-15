@@ -15,7 +15,7 @@ import json
 import queue
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import cv2
@@ -147,7 +147,7 @@ class DashboardServer:
     def __init__(self, host: str = "0.0.0.0", port: int = 8080):
         self._host = host
         self._port = port
-        self._server = HTTPServer((host, port), _Handler)
+        self._server = ThreadingHTTPServer((host, port), _Handler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         print(f"[DashboardServer] Listening on http://{host}:{port} (Serving {DASHBOARD_DIR})")
