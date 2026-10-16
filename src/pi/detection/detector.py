@@ -247,6 +247,9 @@ class ThreadedCamera:
     def __init__(self, camera_index: int = 0):
         self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
         if self.cap.isOpened():
+            # 1-frame driver buffer so cap.read() always returns the freshest
+            # frame; prevents stale frame accumulation during inference pauses.
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             # Try MJPEG first for best quality; fall back to YUYV if camera refuses.
             mjpg = cv2.VideoWriter_fourcc(*"MJPG")
             yuyv = cv2.VideoWriter_fourcc(*"YUYV")
@@ -254,6 +257,7 @@ class ThreadedCamera:
                 self.cap.set(cv2.CAP_PROP_FOURCC, yuyv)
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            self.cap.set(cv2.CAP_PROP_FPS, 30)  # request 30 FPS; camera negotiates down if needed
         if not self.cap.isOpened():
             self.cap = cv2.VideoCapture(camera_index)
         self.lock = threading.Lock()
@@ -363,7 +367,9 @@ class DensityDetector:
         camera_index: int = 0,
         force_mock: bool = False,
         mock_count: int = 4,
+        density_threshold: float = 0.0,
     ):
+        self.density_threshold = density_threshold
         self.is_mock = force_mock
 
         # ── Load TFLite model ──────────────────────────────────────────────
@@ -440,8 +446,21 @@ class DensityDetector:
 
         raw = self.interpreter.get_tensor(self._out_density_idx)  # (1,104,104) or (1,104,104,1)
         density_map = np.squeeze(raw).astype(np.float32)          # → (104, 104)
-        raw_sum     = float(density_map.sum())
-        count       = max(0, round(raw_sum))
+
+        # Per-frame noise suppression:
+        # 1. Absolute peak cutoff: A human head produces a density peak >= 0.10.
+        #    If map peak is below 0.08, the scene has no heads (pure diffuse noise).
+        # 2. Relative + absolute floor: Zero out cells below max(0.015, peak * threshold).
+        if self.density_threshold > 0.0:
+            peak = float(density_map.max())
+            if peak < 0.08:
+                density_map = np.zeros_like(density_map)
+            else:
+                cutoff = max(0.015, peak * self.density_threshold)
+                density_map = np.where(density_map >= cutoff, density_map, np.float32(0))
+
+        raw_sum = float(density_map.sum())
+        count   = max(0, round(raw_sum)) if raw_sum >= 0.5 else 0
 
         return {
             "count":       count,
@@ -505,10 +524,12 @@ class EnsembleDensityDetector:
         camera_index: int = 0,
         force_mock: bool = False,
         mock_count: int = 4,
+        density_threshold: float = 0.0,
     ):
-        self.w_round4    = w_round4
-        self.w_style_aug = w_style_aug
-        self.is_mock     = force_mock
+        self.w_round4          = w_round4
+        self.w_style_aug       = w_style_aug
+        self.density_threshold = density_threshold
+        self.is_mock           = force_mock
 
         # ── Load both TFLite interpreters ─────────────────────────────────
         self._interp_r4 = Interpreter(model_path=round4_ep8_path)
@@ -626,9 +647,23 @@ class EnsembleDensityDetector:
         sum_sa    = float(dm_sa.sum())
 
         # Weighted combination
-        raw_sum     = self.w_round4 * sum_r4 + self.w_style_aug * sum_sa
-        count       = max(0, round(raw_sum))
         density_map = self.w_round4 * dm_r4 + self.w_style_aug * dm_sa
+
+        # Per-frame noise suppression on blended map:
+        # 1. Absolute peak cutoff: A human head produces a density peak >= 0.10.
+        #    If blended map peak is below 0.08, the scene has no heads (pure diffuse noise).
+        # 2. Relative + absolute floor: Zero out cells below max(0.015, peak * threshold).
+        # Keeps raw component sums (sum_r4, sum_sa) unmodified for diagnostics.
+        if self.density_threshold > 0.0:
+            peak = float(density_map.max())
+            if peak < 0.08:
+                density_map = np.zeros_like(density_map)
+            else:
+                cutoff = max(0.015, peak * self.density_threshold)
+                density_map = np.where(density_map >= cutoff, density_map, np.float32(0))
+
+        raw_sum = float(density_map.sum())
+        count   = max(0, round(raw_sum)) if raw_sum >= 0.5 else 0
 
         return {
             "count":             count,

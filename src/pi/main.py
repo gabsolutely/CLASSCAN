@@ -111,6 +111,7 @@ def main():
             camera_index=args.camera,
             force_mock=args.mock,
             mock_count=args.mock_count,
+            density_threshold=cfg.DENSITY_THRESHOLD,  # suppress background density-map noise
         )
     elif cfg.DENSITY_MODEL_PATH:
         print("[CLASSCAN] Ensemble files not found - falling back to single density model.")
@@ -121,6 +122,7 @@ def main():
             camera_index=args.camera,
             force_mock=args.mock,
             mock_count=args.mock_count,
+            density_threshold=cfg.DENSITY_THRESHOLD,  # suppress background density-map noise
         )
     else:
         print("[CLASSCAN] WARNING: No density model found. Headcount will use box detector count.")
@@ -148,9 +150,9 @@ def main():
     last_count      = 0
     last_check_time = time.time()
     last_fps_time   = time.time()
-    fps_counter     = 0
     current_fps     = 0.0
-    _last_frame_count = -1  # tracks ThreadedCamera.frame_count to skip duplicate frames
+    _last_frame_count     = -1  # tracks ThreadedCamera.frame_count to skip duplicate frames
+    _fps_frame_count_ref  = 0   # camera frame_count snapshot at last FPS measurement window
 
     source_tag = "SIMULATED" if detector.is_mock else "HARDWARE"
 
@@ -239,15 +241,22 @@ def main():
                     if density_detector:
                         result    = density_detector.predict(frame)
                         new_count = result["count"]
+                        # Cross-consistency safeguard: if box detector sees 0 people and density
+                        # raw_sum is low (below 0.9), suppress residual background noise so count agrees with visual (0).
+                        if len(new_detections) == 0 and result["raw_sum"] < 0.9:
+                            new_count = 0
                     else:
                         new_count = len(new_detections)
                     new_zone_counts = None
 
                 elif cfg.MODE == "ZONE_CHECK":
                     new_zone_counts = detector.detect_zones(frame, cfg.ZONE_POSITIONS)
+                    new_detections  = detector.detect(frame)
                     if density_detector:
                         result    = density_detector.predict(frame)
                         new_count = result["count"]
+                        if len(new_detections) == 0 and result["raw_sum"] < 0.9:
+                            new_count = 0
                     else:
                         with _infer_lock:
                             prev_count = _result["count"]
@@ -259,7 +268,6 @@ def main():
                                 frame, cfg.ZONE_POSITIONS)
                             new_count, _ = reconciler.reconcile(
                                 new_zone_counts, prev_count)
-                    new_detections = detector.detect(frame)
 
                 else:
                     new_detections  = []
@@ -286,6 +294,7 @@ def main():
 
     try:
         while True:
+            loop_start_time = time.time()
             # 2. Grab Frame — only process if a genuinely new frame arrived from sensor.
             # ThreadedCamera.frame_count increments on each new capture; comparing it
             # here avoids pushing duplicate frames at 30Hz to a 15 FPS camera, which
@@ -300,15 +309,17 @@ def main():
                 _wd_last_frame = time.time()  # watchdog: mark camera healthy
             esp_state = serial_bridge.get_state()  # "idle" | "moving"
 
-            # 3. FPS — count only when a new frame arrived from the sensor so
-            #    the displayed rate matches actual stream output, not loop rate.
-            if is_new_frame:
-                fps_counter += 1
+            # 3. FPS — measured from ThreadedCamera.frame_count delta over the
+            #    elapsed window, not from main-loop iterations. If the camera
+            #    delivers multiple frames between loop ticks (camera rate > loop rate)
+            #    the old iteration counter would undercount; frame_count sees every
+            #    frame the sensor produced regardless of main-loop speed.
             elapsed_fps = time.time() - last_fps_time
             if elapsed_fps >= 1.0:
-                current_fps   = fps_counter / elapsed_fps
-                fps_counter   = 0
-                last_fps_time = time.time()
+                _cam_fc_now          = getattr(_cam, "frame_count", _fps_frame_count_ref)
+                current_fps          = max(0.0, (_cam_fc_now - _fps_frame_count_ref) / elapsed_fps)
+                _fps_frame_count_ref = _cam_fc_now
+                last_fps_time        = time.time()
 
             # 4. Schedule next inference pass when worker is idle and one is due.
             #    Motion detection extends the active inference window (2s) so AI
@@ -345,9 +356,12 @@ def main():
                 serial_bridge.send_count(last_count)
                 print(f"[CLASSCAN] Headcount updated -> {last_count}")
 
-            # Cap boxes to last_count (top-N by confidence) so the visual always
-            # agrees with the number. count=0 → no boxes; count=N → at most N boxes.
-            if detections and last_count < len(detections):
+            # Visual-count consistency:
+            # If last_count is 0, never show residual or false boxes.
+            # If last_count < len(detections), cap boxes to top-N by confidence.
+            if last_count == 0:
+                detections = []
+            elif detections and last_count < len(detections):
                 detections = sorted(detections, key=lambda d: d["score"], reverse=True)[:last_count]
 
             # 5a. Watchdog — build health report for dashboard
@@ -401,7 +415,16 @@ def main():
                 elif cmd == "MODE_ZONE":
                     cfg.MODE = "ZONE_CHECK"
 
-            time.sleep(cfg.LOOP_SLEEP)
+            # Dynamic loop pacing: when a new frame is processed, sleep just enough
+            # to hit target 30 FPS without artificial delay.
+            # If no new frame arrived, sleep briefly (5ms) to yield CPU to background threads.
+            if is_new_frame:
+                loop_elapsed = time.time() - loop_start_time
+                target_period = 1.0 / 30.0  # target 30 FPS
+                sleep_time = max(0.002, target_period - loop_elapsed)
+                time.sleep(sleep_time)
+            else:
+                time.sleep(0.005)
 
     except KeyboardInterrupt:
         print("\n[CLASSCAN] Shutting down gracefully...")
