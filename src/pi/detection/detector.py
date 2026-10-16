@@ -223,8 +223,10 @@ class _MockCapture:
         self.mock_count = mock_count
         self._frame_w = 640
         self._frame_h = 480
+        self.frame_count = 0  # mirrors ThreadedCamera.frame_count for consistent dedup logic
 
     def read(self):
+        self.frame_count += 1  # every read is a "new" frame in simulation
         frame = np.zeros((self._frame_h, self._frame_w, 3), dtype=np.uint8)
         frame[:] = (30, 30, 30)
         return True, frame
@@ -879,7 +881,11 @@ class Detector:
     # ── Cleanup ───────────────────────────────────────────────────────────
 
     def release(self):
-        if hasattr(self, "cap"):
+        # Only release the camera if this instance owns it.
+        # When shared_cap was passed in, _owns_cap is False and the
+        # owning detector (e.g. EnsembleDensityDetector) is responsible
+        # for tearing down the ThreadedCamera.
+        if hasattr(self, "_owns_cap") and self._owns_cap and hasattr(self, "cap"):
             self.cap.release()
 
     def __del__(self):

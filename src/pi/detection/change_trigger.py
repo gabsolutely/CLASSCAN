@@ -18,12 +18,12 @@ import numpy as np
 
 
 class ChangeTrigger:
-    def __init__(self, threshold: float = 0.15):
+    def __init__(self, threshold: float = 0.015):
         """
         Args:
             threshold: fraction of maximum possible pixel diff
                        that must be exceeded to flag a significant change.
-                       0.015 ≈ 1.5% mean normalised pixel change (camera motion)
+                       0.015 ≈ 1.5% mean normalised pixel change (camera motion) — production default
                        0.15  ≈ 15% (large scene shift; used in unit tests only)
         """
         self.threshold  = threshold

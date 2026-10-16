@@ -181,7 +181,7 @@ def main():
     # FIX - producer/consumer split:
     #   Main loop         : grabs fresh frame -> annotates with last inference
     #                       boxes -> pushes to stream. Runs at full camera rate
-    #                       (~20 Hz, limited by LOOP_SLEEP=0.05 s). Never
+    #                       (~30 Hz, limited by LOOP_SLEEP=0.033 s). Never
     #                       blocks on AI inference.
     #   InferenceWorker   : waits for a frame, runs detector.detect() and
     #                       density_detector.predict(), writes results atomically.
