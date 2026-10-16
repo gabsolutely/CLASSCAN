@@ -2,9 +2,11 @@
 const ZONES     = ["Q1", "Q2", "Q3", "Q4"];
 const MAX_SEATS = 10;  // per zone — must match Pi config.py
 
-let polling     = false;
-let pollTimer   = null;
-let lastCount   = null;
+let polling        = false;
+let pollTimer      = null;
+let lastCount      = null;
+let streamMode     = false;
+let streamFailed   = false;
 
 // In-memory log store for CSV export
 // Each entry: { ts: "HH:MM:SS", type: ""|"ok"|"err", message: string }
@@ -202,15 +204,14 @@ async function poll() {
     updateMotion(!!data.motion);
     if (data.watchdog)            updateWatchdog(data.watchdog);
 
-    // If live MJPEG stream is active, update metadata; if stream broke/empty, fallback to base64 snapshot
-    const img = document.getElementById("snapshot-img");
-    if (!img || !img.src || img.src.startsWith("data:") || img.naturalWidth === 0) {
+    // Only fall back to base64 snapshot if the live MJPEG stream failed or was disabled
+    if (streamFailed) {
       if (data.snapshot) updateSnapshot(data.snapshot, data.timestamp || "—");
     } else {
       const timeEl = document.getElementById("snapshot-time");
       const dimsEl = document.getElementById("snapshot-dims");
       if (timeEl && data.timestamp) timeEl.textContent = data.timestamp;
-      if (dimsEl && data.fps !== undefined) dimsEl.textContent = `${data.fps} FPS`;
+      if (dimsEl && data.fps !== undefined) dimsEl.textContent = `${data.fps} FPS (Live)`;
     }
 
   } catch (err) {
@@ -232,28 +233,42 @@ function togglePolling() {
 
   if (!polling) {
     polling = true;
+    streamMode = true;
+    streamFailed = false;
     if (btn) btn.textContent = "Disconnect";
     log("Connecting to Pi 3B…");
 
     // Connect directly to live MJPEG stream for real-time video
     if (img && ph && url) {
+      img.onerror = () => {
+        if (!streamFailed) {
+          streamFailed = true;
+          log("MJPEG stream error, falling back to snapshot mode", "err");
+        }
+      };
+      img.onload = () => {
+        streamFailed = false;
+        img.style.display = "block";
+        ph.style.display  = "none";
+      };
       img.src = `${url}/stream`;
       img.style.display = "block";
       ph.style.display  = "none";
-      img.onerror = () => {
-        log("MJPEG stream error, falling back to snapshot mode", "err");
-      };
     }
 
     poll();
   } else {
     polling = false;
+    streamMode = false;
+    streamFailed = false;
     clearTimeout(pollTimer);
     if (btn) btn.textContent = "Connect";
     setStatus("", "Disconnected");
     log("Disconnected.");
 
     if (img && ph) {
+      img.onerror = null;
+      img.onload  = null;
       img.src = "";
       img.style.display = "none";
       ph.style.display  = "flex";

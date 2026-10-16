@@ -27,7 +27,11 @@ DASHBOARD_DIR = (BASE_DIR.parent / "dashboard").resolve()
 # ── Shared state across server threads ─────────────────────────────────────────
 _command_queue: queue.Queue[str] = queue.Queue()
 _state_lock = threading.Lock()
+_frame_condition = threading.Condition(_state_lock)
+_frame_id: int = 0
 _latest_frame_jpg: bytes | None = None
+_latest_snapshot_b64: str = ""
+_last_snapshot_ts: float = 0.0
 _latest_telemetry: dict = {
     "count": 0,
     "fps": 0.0,
@@ -81,7 +85,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-        # 3. Live MJPEG Video Stream
+        # 3. Live MJPEG Video Stream (Synchronized: zero duplicate frames)
         elif self.path == "/stream":
             self.send_response(200)
             self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
@@ -89,20 +93,25 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Pragma", "no-cache")
             self._send_cors_headers()
             self.end_headers()
+            last_sent_id = -1
             try:
                 while True:
-                    with _state_lock:
+                    with _frame_condition:
+                        while _frame_id == last_sent_id or _latest_frame_jpg is None:
+                            if not _frame_condition.wait(timeout=0.5):
+                                # Heartbeat check to detect dead client connections
+                                break
+                        if _frame_id == last_sent_id or _latest_frame_jpg is None:
+                            continue
                         jpg = _latest_frame_jpg
-                    if jpg is None:
-                        time.sleep(0.04)
-                        continue
+                        last_sent_id = _frame_id
+
                     header = (
                         b"--frame\r\n"
                         b"Content-Type: image/jpeg\r\n"
                         b"Content-Length: " + str(len(jpg)).encode() + b"\r\n\r\n"
                     )
                     self.wfile.write(header + jpg + b"\r\n")
-                    time.sleep(0.04)  # ~25 FPS output cap
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
@@ -156,24 +165,31 @@ class DashboardServer:
              zones: dict | None = None, mode: str = "SWEEP",
              motion: bool = False, watchdog: dict | None = None):
         """Store latest count, annotated frame, and telemetry for polling & streaming."""
-        global _latest_frame_jpg
+        global _latest_frame_jpg, _frame_id, _latest_snapshot_b64, _last_snapshot_ts
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
         jpg_bytes = bytes(buf)
-        b64 = base64.b64encode(buf).decode("utf-8")
         ts = time.strftime("%H:%M:%S")
 
-        with _state_lock:
+        now = time.time()
+        # Throttled base64 conversion (max 1x per second) to preserve CPU for streaming & AI
+        if now - _last_snapshot_ts >= 1.0 or not _latest_snapshot_b64:
+            _latest_snapshot_b64 = base64.b64encode(buf).decode("utf-8")
+            _last_snapshot_ts = now
+
+        with _frame_condition:
             _latest_frame_jpg = jpg_bytes
+            _frame_id += 1
             _latest_telemetry["count"] = count
             _latest_telemetry["fps"] = round(fps, 1)
             _latest_telemetry["top_conf"] = round(top_conf, 3)
             _latest_telemetry["timestamp"] = ts
-            _latest_telemetry["snapshot"] = b64
+            _latest_telemetry["snapshot"] = _latest_snapshot_b64
             _latest_telemetry["zones"] = zones
             _latest_telemetry["mode"] = mode
             _latest_telemetry["motion"] = motion
             if watchdog is not None:
                 _latest_telemetry["watchdog"] = watchdog
+            _frame_condition.notify_all()
 
     def poll_command(self) -> str | None:
         """Non-blocking: returns a command string if one is queued, else None."""
