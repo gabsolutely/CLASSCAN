@@ -239,12 +239,9 @@ def main():
                     # COCO SSD are visual-only and may miss some people.
                     new_detections = detector.detect(frame)
                     if density_detector:
-                        result    = density_detector.predict(frame)
-                        new_count = result["count"]
-                        # Cross-consistency safeguard: if box detector sees 0 people and density
-                        # raw_sum is low (below 0.9), suppress residual background noise so count agrees with visual (0).
-                        if len(new_detections) == 0 and result["raw_sum"] < 0.9:
-                            new_count = 0
+                        result        = density_detector.predict(frame)
+                        density_count = result["count"]
+                        new_count     = max(density_count, len(new_detections)) if new_detections else density_count
                     else:
                         new_count = len(new_detections)
                     new_zone_counts = None
@@ -253,10 +250,9 @@ def main():
                     new_zone_counts = detector.detect_zones(frame, cfg.ZONE_POSITIONS)
                     new_detections  = detector.detect(frame)
                     if density_detector:
-                        result    = density_detector.predict(frame)
-                        new_count = result["count"]
-                        if len(new_detections) == 0 and result["raw_sum"] < 0.9:
-                            new_count = 0
+                        result        = density_detector.predict(frame)
+                        density_count = result["count"]
+                        new_count     = max(density_count, len(new_detections)) if new_detections else density_count
                     else:
                         with _infer_lock:
                             prev_count = _result["count"]
@@ -356,12 +352,9 @@ def main():
                 serial_bridge.send_count(last_count)
                 print(f"[CLASSCAN] Headcount updated -> {last_count}")
 
-            # Visual-count consistency:
-            # If last_count is 0, never show residual or false boxes.
-            # If last_count < len(detections), cap boxes to top-N by confidence.
-            if last_count == 0:
-                detections = []
-            elif detections and last_count < len(detections):
+            # Cap boxes to last_count (top-N by confidence) so visual never shows
+            # more boxes than the reported headcount.
+            if detections and last_count > 0 and len(detections) > last_count:
                 detections = sorted(detections, key=lambda d: d["score"], reverse=True)[:last_count]
 
             # 5a. Watchdog — build health report for dashboard

@@ -245,7 +245,10 @@ class ThreadedCamera:
     without accumulating stale queued frames or blocking on buffer drains.
     """
     def __init__(self, camera_index: int = 0):
+        # On Linux/Pi, cv2.CAP_V4L2 is preferred; fallback to default backend on Windows/macOS
         self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
+        if not self.cap.isOpened():
+            self.cap = cv2.VideoCapture(camera_index)
         if self.cap.isOpened():
             # 1-frame driver buffer so cap.read() always returns the freshest
             # frame; prevents stale frame accumulation during inference pauses.
@@ -258,8 +261,6 @@ class ThreadedCamera:
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             self.cap.set(cv2.CAP_PROP_FPS, 30)  # request 30 FPS; camera negotiates down if needed
-        if not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(camera_index)
         self.lock = threading.Lock()
         self.frame = None
         self.ret = False
@@ -447,20 +448,19 @@ class DensityDetector:
         raw = self.interpreter.get_tensor(self._out_density_idx)  # (1,104,104) or (1,104,104,1)
         density_map = np.squeeze(raw).astype(np.float32)          # → (104, 104)
 
-        # Per-frame noise suppression:
-        # 1. Absolute peak cutoff: A human head produces a density peak >= 0.10.
-        #    If map peak is below 0.08, the scene has no heads (pure diffuse noise).
-        # 2. Relative + absolute floor: Zero out cells below max(0.015, peak * threshold).
+        # Per-frame relative threshold: suppress background density-map noise.
+        # Zero out any cell below (density_threshold × frame peak) before summing.
+        # Adopted with hardneg model (MAE 3.87→3.08); set density_threshold=0.0 to disable.
         if self.density_threshold > 0.0:
-            peak = float(density_map.max())
-            if peak < 0.08:
-                density_map = np.zeros_like(density_map)
-            else:
-                cutoff = max(0.015, peak * self.density_threshold)
-                density_map = np.where(density_map >= cutoff, density_map, np.float32(0))
+            peak = density_map.max()
+            if peak > 0:
+                density_map = np.where(
+                    density_map >= peak * self.density_threshold,
+                    density_map, np.float32(0)
+                )
 
         raw_sum = float(density_map.sum())
-        count   = max(0, round(raw_sum)) if raw_sum >= 0.5 else 0
+        count   = max(0, round(raw_sum))
 
         return {
             "count":       count,
@@ -649,21 +649,19 @@ class EnsembleDensityDetector:
         # Weighted combination
         density_map = self.w_round4 * dm_r4 + self.w_style_aug * dm_sa
 
-        # Per-frame noise suppression on blended map:
-        # 1. Absolute peak cutoff: A human head produces a density peak >= 0.10.
-        #    If blended map peak is below 0.08, the scene has no heads (pure diffuse noise).
-        # 2. Relative + absolute floor: Zero out cells below max(0.015, peak * threshold).
-        # Keeps raw component sums (sum_r4, sum_sa) unmodified for diagnostics.
+        # Per-frame relative threshold: suppress background density-map noise
+        # before integrating. Keeps raw component sums (sum_r4, sum_sa) unmodified
+        # for diagnostics; only the final blended map is thresholded.
         if self.density_threshold > 0.0:
-            peak = float(density_map.max())
-            if peak < 0.08:
-                density_map = np.zeros_like(density_map)
-            else:
-                cutoff = max(0.015, peak * self.density_threshold)
-                density_map = np.where(density_map >= cutoff, density_map, np.float32(0))
+            peak = density_map.max()
+            if peak > 0:
+                density_map = np.where(
+                    density_map >= peak * self.density_threshold,
+                    density_map, np.float32(0)
+                )
 
         raw_sum = float(density_map.sum())
-        count   = max(0, round(raw_sum)) if raw_sum >= 0.5 else 0
+        count   = max(0, round(raw_sum))
 
         return {
             "count":             count,
