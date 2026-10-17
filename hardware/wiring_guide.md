@@ -7,13 +7,14 @@ This document provides full hardware interconnections, circuit schematics, and p
 ## 1. System Interconnection Architecture
 
 ```
-                      [ 2× 18650 Li-ion Cells (7.4V / 3.7V) ]
+                      [ 1× 18650 Li-ion Cell (3.0V – 4.2V) ]
                                       │
                                       ▼
-                      [ TP4056 / 2S Battery Management ]
+                      [ 18650 Battery Protection / Charger ]
                                       │
                                       ▼
-                      [ MT3608 5V / 3A DC-DC Boost Module ]
+                      [ 5V / 2A DC-DC Boost Converter ]
+          (Note: Skip booster if charge board has integrated 5V ≥2A out)
                                       │
               ┌───────────────────────┴───────────────────────┐
               │ +5V Regulated Bus                             │ Common GND Bus
@@ -26,50 +27,56 @@ This document provides full hardware interconnections, circuit schematics, and p
      │  USB Port 2 ────┼─────────────┐               │   GPIO 25 (OUT) ├──┐   │
      └─────────────────┘             │               │   GPIO 18 (PWM) ├┐ │   │
                                      │               │   GPIO 21 (PWM) ├┼┐│   │
-                                     ▼               └─────────────────┘│││   │
-                           [ OV4689 Camera Module ]                     │││   │
+                                     ▼               │   OLED SPI/I2C  ├┼┼┐   │
+                           [ OV4689 Camera Module ]  └─────────────────┘│││   │
                                                                         │││   │
   ┌─────────────────────────────────────────────────────────────────────┘││   │
   │ Pan Servo (MG90S): Signal ── GPIO18, Power ── +5V, Ground ── GND    ││   │
   ├──────────────────────────────────────────────────────────────────────┘│   │
-    │ Tilt Servo (MG90S): Signal ── GPIO21, Power ── +5V, Ground ── GND     │   │
+  │ Tilt Servo (MG90S): Signal ── GPIO21, Power ── +5V, Ground ── GND     │   │
   ├───────────────────────────────────────────────────────────────────────┘   │
-  │ Custom Illumination Module: Gate ── GPIO25, Power ── +5V, Ground ── GND   │
+  │ Illumination Driver (IRLZ44N): Gate ── GPIO25, Strip ── +5V, GND ── GND   │
   └───────────────────────────────────────────────────────────────────────────┘
     LDR Ambient Sensor: Signal ── GPIO34, Power ── 3.3V, Ground ── GND
+
+> [!IMPORTANT]
+> **Boost vs. Buck Regulation:** A single 18650 cell delivers 3.0V to 4.2V nominal. Because this voltage is lower than the 5.0V system rail, a **step-up BOOST converter** is strictly required. Do not use a buck (step-down) converter. Check first whether your 18650 charging/BMS module already includes an integrated 5V ≥2A boost output.
 ```
 
 ---
 
 ## 2. Custom LDR & Illumination Circuit Schematic
 
-The illumination system uses a Light Dependent Resistor (LDR) analog voltage divider and an N-channel MOSFET (or NPN transistor) to drive four ultra-bright white LEDs.
+The illumination system combines an ambient Light Dependent Resistor (LDR) analog voltage divider with an **IRLZ44N logic-level N-channel MOSFET** (or 2N2222 NPN transistor) driving a **5V white LED strip** (or LED array).
 
 ```
-LDR Sensor Divider:                     Auxiliary LED Illumination Array:
--------------------                     ---------------------------------
+LDR Sensor Divider:                     Auxiliary 5V White LED Strip Driver:
+-------------------                     ------------------------------------
 
      +3.3V Rail (ESP32)                              +5.0V Main Power Bus
             │                                                 │
-            │                                                 ├──[ 47Ω ]──(>| LED 1 )──┐
-            ▼                                                 ├──[ 47Ω ]──(>| LED 2 )──┤
-        ┌───────┐                                             ├──[ 47Ω ]──(>| LED 3 )──┤
-        │  LDR  │ (GL5528)                                    └──[ 47Ω ]──(>| LED 4 )──┤
-        └───────┘                                                                      │
-            │                                                                   Drain  │
-            ├────────► To ESP32 GPIO 34 (ADC1_CH6)                       ESP32       ┌───┐
-            │                                                           GPIO 25 ────┤   │ 2N7000 N-MOSFET
-        ┌───────┐                                                      (Gate Pulse) │   │ (or 2N2222 NPN)
-        │  10kΩ │ (1/4W Pull-Down)                                                  └───┘
-        └───────┘                                                                 Source
-            │                                                                        │
-            ▼                                                                        ▼
-       Common GND                                                               Common GND
+            │                                                 ├──[ (+) 5V White LED Strip ]
+            ▼                                                 │            │
+        ┌───────┐                                             │            ▼ (-) Cathode
+        │  LDR  │ (GL5528)                                    │         Drain
+        └───────┘                                             │         ┌───┐
+            │                                                 │   Gate  │   │ IRLZ44N N-MOSFET
+            ├────────► To ESP32 GPIO 34 (ADC1_CH6)     ESP32  ├──[100Ω]─┤   │ (Logic-Level, Vgs ≤ 2V)
+            │                                         GPIO 25 │         └───┘ (or 2N2222 NPN via 1kΩ)
+        ┌───────┐                                     (Signal)│        Source
+        │  10kΩ │ (1/4W Pull-Down)                            │          │
+        └───────┘                                             └─[10kΩ]───┤ (Gate Pulldown)
+            │                                                            │
+            ▼                                                            ▼
+       Common GND                                                   Common GND
 ```
 
-### Circuit Operation:
-1. **Daylight Conditions:** Light falls on LDR $\to$ LDR resistance drops ($< 2\text{k}\Omega$) $\to$ GPIO 34 voltage rises toward 3.3V (ADC count $> 2500$). ESP32 firmware holds GPIO 25 `LOW` (LEDs remain OFF).
-2. **Dark / Dim Conditions:** Ambient light falls $\to$ LDR resistance increases ($> 50\text{k}\Omega$) $\to$ GPIO 34 voltage drops toward 0V (ADC count $< 1500$). ESP32 firmware drives GPIO 25 `HIGH`, turning ON the MOSFET channel and lighting the LED array.
+### Circuit Operation & Component Notes:
+1. **IRLZ44N Logic-Level Threshold:** The IRLZ44N is specifically chosen because its gate threshold ($V_{GS(th)} \le 2.0\text{V}$) enables full channel saturation directly from the ESP32's 3.3V GPIO. Standard MOSFETs (like the IRF540N) require 10V gate drive and will overheat or fail to switch properly under 3.3V logic.
+2. **Gate Pulldown Resistor (10kΩ):** Tied between the MOSFET gate and GND to prevent floating gate states and accidental LED flickering during ESP32 boot/reset.
+3. **Power Budget:** Ensure the 5V white LED strip segment draws $\le 500\text{ mA}$ so the 5V/2A boost converter retains ample headroom ($\ge 1.5\text{ A}$) for the Raspberry Pi 3B, ESP32, and camera module.
+4. **Daylight Conditions:** Light falls on LDR $\to$ resistance drops ($< 2\text{k}\Omega$) $\to$ GPIO 34 voltage rises toward 3.3V (ADC count $> 2500$). ESP32 firmware holds GPIO 25 `LOW` (LEDs remain OFF).
+5. **Dark / Dim Conditions:** Ambient light falls $\to$ resistance increases ($> 50\text{k}\Omega$) $\to$ GPIO 34 voltage drops toward 0V (ADC count $< 1500$). ESP32 firmware drives GPIO 25 `HIGH`, turning ON the MOSFET and illuminating the target area.
 
 ---
 
@@ -105,27 +112,38 @@ ESP32 GPIO 21 (Tilt PWM) ──────────────────�
 
 ---
 
-## 4. SSD1309 OLED Display Connection (2.42", 128×64, I2C)
+## 4. SSD1309 OLED Display Connection (2.42", 128×64)
 
-The headcount is shown on a **2.42" SSD1309 OLED module** — crisp white
-pixels on a pure-black background, clearly legible in daylight and dim
-classroom conditions.
+The headcount is shown on a **2.42" SSD1309 OLED module** — crisp white pixels on a pure-black background, clearly legible in daylight and dim classroom conditions.
 
 > [!NOTE]
-> The SSD1309 is electrically identical to the SSD1306 and works with the
-> **Adafruit SSD1306 library** as-is — no driver change needed.
+> **Hardware Interface Notice:** Most 2.42" SSD1309 breakout boards ship from the factory pre-configured for **7-pin SPI mode**. Converting to I2C requires desoldering and relocating surface-mount 0603 resistors on the back of the PCB. **It is strongly recommended to use SPI mode as shipped** — it provides faster screen refreshes and requires zero soldering.
 
-| SSD1309 Pin | ESP32 Pin    | Wire Color | Description                                      |
-|-------------|:------------:|:----------:|--------------------------------------------------|
-| **VCC**     | `3V3`        | Red        | 3.3 V display power (module has onboard regulator)|
-| **GND**     | `Common GND` | Black      | Ground reference                                 |
-| **SDA**     | `GPIO 16`    | Yellow     | I2C data (Bus 1, 400 kHz)                        |
-| **SCL**     | `GPIO 17`    | Blue       | I2C clock (Bus 1, 400 kHz)                       |
+### Option A: 7-Pin SPI Mode (Factory As-Shipped — Recommended)
+
+| SSD1309 Pin | ESP32 Pin | Wire Color | Function / Description |
+|---|:---:|:---:|---|
+| **GND** | `Common GND` | Black | Ground reference |
+| **VCC** | `3V3` (or `5V`)* | Red | Power input (*verify onboard LDO, 3.3V is standard) |
+| **D0 (SCL / SCK)** | `GPIO 14` | Yellow | SPI Clock (Hardware/Software SPI) |
+| **D1 (SDA / MOSI)** | `GPIO 27` | Green | SPI Data / MOSI |
+| **RES (Reset)** | `GPIO 4` | Orange | Hardware display reset (active low) |
+| **DC (Data/Command)**| `GPIO 2` | White | Data/Command mode select |
+| **CS (Chip Select)** | `GPIO 5` | Blue | SPI Slave Select (active low) |
+
+### Option B: 4-Pin I2C Mode (If Board Configured for I2C)
+
+If you purchased an I2C-specific version or moved the onboard SMD jumpers to I2C:
+
+| SSD1309 Pin | ESP32 Pin | Wire Color | Description |
+|---|:---:|:---:|---|
+| **VCC** | `3V3` | Red | 3.3 V display power |
+| **GND** | `Common GND` | Black | Ground reference |
+| **SCL** | `GPIO 17` | Blue | I2C clock (Bus 1, 400 kHz) |
+| **SDA** | `GPIO 16` | Yellow | I2C data (Bus 1, 400 kHz) |
 
 > [!NOTE]
-> The default I2C address is **0x3C** (`OLED_I2C_ADDR` in `config.h`).
-> If the display stays blank after boot, try **0x3D** — the address is
-> selected by a solder-bridge jumper on the back of most modules.
+> The default I2C address is **0x3C** (`OLED_I2C_ADDR` in `config.h`). If blank, try **0x3D**. For 7-pin modules wired in I2C mode, `DC` and `CS` are tied to `GND`, and `RES` is tied to `3V3` or a reset GPIO.
 
 
 ## 5. Active Cooling Fan Wiring (Raspberry Pi 3B)
@@ -227,3 +245,19 @@ python scripts/camera_verify.py --camera-only --save-raw
 python scripts/camera_verify.py --save
 # Runs live detection and outputs camera_verify_output.jpg with bounding boxes
 ```
+
+---
+
+## 8. Physical Enclosure Assembly & Layout (ABS Junction Box 150×110×70 mm)
+
+The central hardware hub is housed within a **150 × 110 × 70 mm ABS junction box** (waterproof / weatherproof rated), providing mechanical rigidity, dust protection, and airflow for continuous thermal dissipation.
+
+### Component Placement & Airflow Guidelines:
+1. **Pre-Fit Measurement:** Before final drilling or mounting, measure the Raspberry Pi 3B inside its assembled acrylic case. Confirm that the Pi (~90 × 60 × 30 mm including fan and standoff height) fits comfortably with at least 15–20 mm clearance around the sides for cable bends (Micro-USB power and camera USB harness).
+2. **Internal Component Partitioning:**
+   - **Base Floor:** Secure the Raspberry Pi 3B (in its acrylic case) and the ESP32 DevKit to the box floor using M3 nylon standoffs or mounting rails.
+   - **Battery & Boost Converter:** Secure the 18650 battery holder and boost converter board along the opposite wall, isolated from direct heat exhaust.
+   - **Cable Management:** Use short (15–20 cm) USB sync cables between Pi and ESP32. Bundle and secure Dupont jumpers with cable ties to prevent wire snagging.
+3. **Convective Airflow:** Drill four to six 4mm ventilation holes along the lower lateral sides and upper perimeter of the enclosure (or use cable glands) to allow warm air expelled by the Pi's 5V cooling fan to vent naturally.
+4. **Pan/Tilt Head Mounting:** Secure the MG90S pan/tilt bracket platform externally to the enclosure lid or designated mounting flange, routing the servo leads and camera USB cable into the box through a sealed rubber grommet.
+
