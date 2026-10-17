@@ -51,7 +51,7 @@ Adopt a decoupled, dual-tier architecture mirroring industrial robotics:
 │                                                             │
 │   ├── [ServoController] ──► Pan/Tilt Servos (PWM)           │
 │   ├── [LdrIllumination] ──► LDR (ADC) + White LEDs (MOSFET)│
-│   └── [LedMatrix]       ──► Local Count Display (MAX7219)   │
+│   └── [OledDisplay]     ──► Local Count Display (SSD1309)   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
