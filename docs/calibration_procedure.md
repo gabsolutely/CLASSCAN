@@ -185,5 +185,5 @@ v4l2-ctl -d /dev/video0 -c gamma=300
 | **7** | Continuous sweep mode | Turret smoothly sweeps between $0^\circ$ and $180^\circ$ pan | [ ] |
 | **8** | Zone mode step & dwell | Turret cycles through Q1 $\to$ Q2 $\to$ Q3 $\to$ Q4, dwelling 800ms at each | [ ] |
 | **9** | Real-time detection accuracy | Seated test students in Q1–Q4 detected with bounding boxes and HUD count | [ ] |
-| **10** | OLED Display update | SSD1309 2.42" OLED (I2C, GPIO16/17) displays current headcount in large font | [ ] |
+| **10** | OLED Display update | SSD1309 2.42" OLED (SPI: GPIO 14/27/4/2/5, or I2C: GPIO 16/17) displays current headcount in large font | [ ] |
 

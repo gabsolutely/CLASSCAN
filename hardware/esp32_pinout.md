@@ -2,6 +2,8 @@
 
 This document defines the physical GPIO pin assignments and electrical characteristics for the **ESP32-WROOM-32 DevKit V1 (30-Pin)** microcontroller used in CLASSCAN.
 
+All definitions in this document strictly align with `src/esp32/include/config.h` and the modular firmware drivers (`oled_display.h`).
+
 ---
 
 ## 1. GPIO Pin Assignment Table
