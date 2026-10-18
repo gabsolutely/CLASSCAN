@@ -1,6 +1,12 @@
 import time
 import numpy as np
-from ai_edge_litert.interpreter import Interpreter
+try:
+    from ai_edge_litert.interpreter import Interpreter
+except ImportError:
+    try:
+        from tflite_runtime.interpreter import Interpreter
+    except ImportError:
+        from tensorflow.lite.python.interpreter import Interpreter
 
 interpreter = Interpreter(model_path="speed_test_v3large_416.tflite")
 interpreter.allocate_tensors()

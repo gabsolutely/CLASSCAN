@@ -35,7 +35,10 @@ import numpy as np
 try:
     from ai_edge_litert.interpreter import Interpreter
 except ImportError:
-    from tflite_runtime.interpreter import Interpreter  # fallback name
+    try:
+        from tflite_runtime.interpreter import Interpreter  # fallback name
+    except ImportError:
+        from tensorflow.lite.python.interpreter import Interpreter
 
 import cv2
 
