@@ -8,12 +8,13 @@
 #define SERIAL_BAUD        115200
 
 // ── GPIO Pins ──────────────────────────────────────────────────────────
-#define PIN_LDR            34    // Analog input (ADC1_CH6)
-#define PIN_ILLUMINATION   25    // Digital output → MOSFET gate / LED driver
-#define PIN_PAN            18    // PWM output → pan servo signal
-#define PIN_TILT           21    // PWM output → tilt servo signal
+#define PIN_LDR            34    // Analog input (ADC1_CH6) from GL5528 + 10k pull-down divider
+#define PIN_ILLUMINATION   25    // Digital output → IRLZ44N logic-level MOSFET gate (5V white LED strip, <=500mA draw)
+#define PIN_PAN            18    // PWM output → pan servo signal (MG90S metal-gear)
+#define PIN_TILT           21    // PWM output → tilt servo signal (MG90S metal-gear)
 // ── OLED Display (2.42" SSD1309, 128×64) ──────────────────────────────────
-// Factory modules ship pre-configured for 7-pin SPI mode (recommended: no soldering).
+// Title must be SSD1309 (not SSD1306/SH1106) with 7 pins.
+// Factory modules ship pre-configured for 7-pin SPI mode (recommended: no SMD soldering).
 // Set OLED_USE_SPI to 1 for 7-pin SPI mode, or 0 for 4-pin I2C mode.
 #define OLED_USE_SPI        1
 
@@ -34,10 +35,10 @@
 
 // ── LDR Thresholds ─────────────────────────────────────────────────────
 // ADC reads 0–4095; lower = darker. Tune once illumination module is built.
-#define LDR_DIM_THRESHOLD  1500  // Below this → enable illumination
+#define LDR_DIM_THRESHOLD  1500  // Mid-point ambient threshold
 #define LDR_HYSTERESIS      75   // Dead-band on each side — prevents chattering
-                                 // ON  when ldrVal < (LDR_DIM_THRESHOLD + LDR_HYSTERESIS)
-                                 // OFF when ldrVal > (LDR_DIM_THRESHOLD - LDR_HYSTERESIS)
+                                 // Turn ON  when ldrVal < (LDR_DIM_THRESHOLD - LDR_HYSTERESIS)  (darker)
+                                 // Turn OFF when ldrVal > (LDR_DIM_THRESHOLD + LDR_HYSTERESIS)  (brighter)
 
 // How often to send an illumination-state report to the Pi (ms).
 // Set 0 to disable periodic reporting (state changes are always reported).

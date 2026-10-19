@@ -1,14 +1,15 @@
 /*
- * LDR-triggered illumination module driver.
+ * LDR-triggered illumination module driver (IRLZ44N MOSFET + 5V white LED strip).
  *
  * Reads the LDR analog value and drives the illumination output
- * (MOSFET gate or direct LED) high/low based on threshold.
+ * (MOSFET gate on GPIO 25) high/low based on threshold.
+ * Total LED current must stay within boost converter budget (<=500mA).
  *
  * Hysteresis:
  *   A dead-band of LDR_HYSTERESIS counts on either side of LDR_DIM_THRESHOLD
  *   prevents rapid on/off chattering when ambient light hovers at the boundary.
- *   Turn ON  threshold : LDR_DIM_THRESHOLD + LDR_HYSTERESIS  (darker)
- *   Turn OFF threshold : LDR_DIM_THRESHOLD - LDR_HYSTERESIS  (brighter)
+ *   Turn ON  threshold : LDR_DIM_THRESHOLD - LDR_HYSTERESIS  (lower ADC = darker)
+ *   Turn OFF threshold : LDR_DIM_THRESHOLD + LDR_HYSTERESIS  (higher ADC = brighter)
  *
  * Reporting:
  *   getLdrValue() exposes the last ADC reading so main.cpp can forward the
@@ -39,11 +40,11 @@ namespace LdrIllumination {
 
         bool shouldBeOn;
         if (_on) {
-            // Currently ON: stay on until light rises above (threshold - hysteresis)
-            shouldBeOn = (_ldrVal < (LDR_DIM_THRESHOLD - LDR_HYSTERESIS));
+            // Currently ON: stay on until ambient light rises above upper threshold (brighter)
+            shouldBeOn = (_ldrVal <= (LDR_DIM_THRESHOLD + LDR_HYSTERESIS));
         } else {
-            // Currently OFF: turn on only when light drops below (threshold + hysteresis)
-            shouldBeOn = (_ldrVal < (LDR_DIM_THRESHOLD + LDR_HYSTERESIS));
+            // Currently OFF: turn on only when ambient light drops below lower threshold (darker)
+            shouldBeOn = (_ldrVal < (LDR_DIM_THRESHOLD - LDR_HYSTERESIS));
         }
 
         if (shouldBeOn != _on) {

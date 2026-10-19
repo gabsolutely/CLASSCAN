@@ -57,9 +57,19 @@ namespace OledDisplay {
 
     inline void begin() {
 #if OLED_USE_SPI
+        // Explicit hardware reset strobe for 7-pin SSD1309 breakout boards
+        if (PIN_OLED_RES >= 0) {
+            pinMode(PIN_OLED_RES, OUTPUT);
+            digitalWrite(PIN_OLED_RES, HIGH);
+            delay(10);
+            digitalWrite(PIN_OLED_RES, LOW);
+            delay(15);
+            digitalWrite(PIN_OLED_RES, HIGH);
+            delay(20);
+        }
         _spi.begin(PIN_OLED_SCK, -1, PIN_OLED_MOSI, PIN_OLED_CS);
-        if (!_display.begin(SSD1306_SWITCHCAPVCC, 0, false, false)) {
-            Serial.println(F("[OLED] SSD1309 SPI init failed — check wiring / CS"));
+        if (!_display.begin(SSD1306_SWITCHCAPVCC, 0, true, false)) {
+            Serial.println(F("[OLED] SSD1309 SPI init failed — check wiring / CS / RES"));
             return;
         }
 #else

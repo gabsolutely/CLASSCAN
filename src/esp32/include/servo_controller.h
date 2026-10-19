@@ -1,8 +1,10 @@
 /*
- * Timed controller for MG90S 360 continuous-rotation servos.
+ * Timed controller for MG90S metal-gear micro servos (pan/tilt bracket platform).
  *
- * These servos accept a speed/direction command rather than an angle. There
- * is no position feedback, so movement is controlled by calibrated timings.
+ * Designed for authentic TowerPro MG90S metal-gear servos mounted in a dual-axis
+ * camera bracket. These continuous-rotation / modified servos accept speed/direction
+ * commands (90 is stop). Position is governed by calibrated timing intervals.
+ * Note: Counterfeit MG90S servos with nylon gears strip under camera weight.
  */
 
 #pragma once
