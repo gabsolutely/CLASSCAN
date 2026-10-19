@@ -140,8 +140,8 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - Pan/tilt servos, sweep mode, quadrant/zone targeting (servo "radar" mount prototype on ESP32)
 - SSD1309 OLED headcount display driven by ESP32
 - Custom LDR-triggered illumination LED module
-- 3D-printed ceiling-mount dome enclosure
-- 18650 swappable battery power module
+- ABS junction box enclosure (150×110×70 mm) with pan/tilt bracket mount
+- 18650 battery power module + 5V/2A boost converter (steps 3.0V–4.2V to 5V)
 - Full hardware handshake between Pi 3B and ESP32 over serial
 - mAP@50 formal evaluation and annotation quality audit (deferred — trigger only if model underperforms)
 - **Post-PoC model improvements (explicitly deferred, good for writeup citations):** MPCount (CVPR 2024, single-domain-generalization architecture — real ceiling-breaker but multi-day port), backbone swap away from MobileNetV3, TTA (average over original + flipped frame), genuine new Filipino-classroom training data (identified by QA reviewer PeaNat as the real root cause of the domain gap ceiling)
@@ -154,12 +154,13 @@ Prove the core detection pipeline works end-to-end on target hardware:
 |---|---|
 | Raspberry Pi 3B (1GB) | **In hand & running** (Raspberry Pi OS Lite 64-bit Trixie; hardened Wi-Fi + watchdog) |
 | Pi Acrylic Case (clear, enclosed, with active fan) | **✅ Installed & Wired** (GPIO Pin 4/6, ~36°C operating temp) |
-| ESP32 | **In hand** (firmware development underway) |
-| OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure calibration in progress) |
-| Light Sensor (LDR) + Illumination LEDs | **In hand / circuit in development** |
-| Pan/Tilt Servos (MG90S x2) | **In hand** |
-| OLED Display (SSD1309) | **In hand** |
-| Power supply & batteries | **In hand & verified** |
+| ESP32 DevKit V1 | **In hand & active** (firmware operational) |
+| OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure baseline configured) |
+| Light Sensor (LDR) + Illumination LEDs (IRLZ44N) | **In hand / circuit designed** (5V white LED strip, gate pulldown) |
+| Pan/Tilt Servos (MG90S metal-gear x2 + 2 spares) | **Active + Procurement Spec** (dual-axis bracket platform) |
+| OLED Display (SSD1309 2.42" 7-pin SPI) | **Procurement Spec** (factory SPI, zero soldering required) |
+| Power supply & batteries | **In hand & verified** (18650 cell + 5V 2A boost converter) |
+| Enclosure (ABS Junction Box 150×110×70 mm) | **Procurement Spec** (pre-measured fit for Pi acrylic case + fan) |
 
 ---
 

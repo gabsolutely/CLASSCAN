@@ -110,9 +110,9 @@ python scripts/export_to_tflite.py --mode density \
   ```python
   SERIAL_PORT = "/dev/ttyUSB0"   # <- update if different
   ```
-- [ ] Servo mechanism physically attached and free to rotate without obstruction
-- [ ] LDR and illumination LED circuit wired per `hardware/wiring_guide.md`
-- [ ] OLED display (SSD1309) wired and powered
+- [ ] Servo mechanism physically attached to pan/tilt bracket (genuine MG90S metal-gear servos) and free to rotate without obstruction
+- [ ] LDR and illumination LED circuit wired per `hardware/wiring_guide.md` (IRLZ44N logic-level MOSFET, 5V LED strip, 10k pulldown)
+- [ ] OLED display (SSD1309 2.42" 7-pin SPI) wired to ESP32 (GPIO 14, 27, 4, 2, 5) in factory SPI mode (no SMD soldering)
 
 ---
 
@@ -151,12 +151,13 @@ python main.py
 
 ## 6 · Physical Integration Check
 
-- [ ] Camera mounted and pointed at the room area of interest
-- [ ] Pi powered from stable supply (not laptop USB); active fan spinning
-- [ ] ESP32 connected to Pi via USB serial cable
-- [ ] Servo bracket pointing in default center position; free to sweep
-- [ ] OLED displays received headcount
-- [ ] LDR / illumination circuit responds to ambient light changes
+- [ ] **Pre-order enclosure measurement:** Pi measured inside acrylic case (~90×60×30 mm + fan); ABS junction box (≥150×110×70 mm) confirmed to fit Pi, ESP32, and 18650 battery with convective airflow
+- [ ] **Power verification:** 18650 cell connected through 5V/2A boost converter (or charging module with integrated 5V ≥2A output); confirms stable 5.0V bus without undervoltage
+- [ ] **Pan/tilt servos:** Dual-axis bracket platform fitted with verified metal-gear MG90S units (tested under load, 2 spares available)
+- [ ] Camera mounted to pan/tilt bracket and pointed at the classroom area of interest
+- [ ] ESP32 connected to Pi via short USB serial cable; reports `{"type":"state","value":"idle"}`
+- [ ] OLED display (SSD1309 2.42") shows received headcount locally in crisp monochrome text
+- [ ] LDR / illumination circuit responds to ambient light changes (LED strip activates in darkness, total draw ≤500mA)
 
 ---
 

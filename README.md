@@ -140,12 +140,12 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 | OV4689 4MP BSI USB Camera Module (UVC, Type-C/A) | **In hand & connected** — Video feed for detection: back-side-illuminated sensor for improved performance in dim/evening classroom lighting, standard driverless UVC interface |
 | Light Sensor (LDR) | **In hand** — Detects ambient brightness, triggers illumination module |
 | Custom illumination LED module (self-built, LDR-triggered) | **In development** — Brightens scene in dim conditions: built in-house rather than a packaged IR unit, driven by the ESP32 |
-| Pan/Tilt Servos (MG90S x2) | **In hand** — Rotates the turret to sweep or target quadrants |
-| OLED Display (SSD1309) | **In hand** — Shows live headcount locally |
-| 18650 Battery + Charging Module | **In hand** — Swappable, untethered power |
-| 3D-Printed Dome Enclosure | **In design** — Houses all components, ceiling-mounted (Pi running in acrylic case + active fan) |
+| Pan/Tilt Servos (MG90S Metal-Gear x2 active + 2 spares) | **In hand / Procurement** — Rotates the turret to sweep or target quadrants; dual-axis bracket platform for micro servos |
+| OLED Display (SSD1309, 2.42", 7-Pin SPI) | **Procurement Spec** — High-contrast 128×64 local headcount display (factory SPI, zero soldering required) |
+| 18650 Battery + 5V/2A Boost Converter | **In hand / Spec** — Single 18650 cell (3.0V–4.2V) stepped up to regulated 5.0V (or integrated 5V ≥2A charging module) |
+| ABS Junction Box Enclosure (150×110×70 mm) | **Procurement Spec** — Houses Pi 3B (in acrylic case + fan), ESP32, and battery with airflow; pan/tilt bracket mounted |
 
-Full itemized BOM and cost breakdown: see [`docs/bom.md`](docs/bom.md).
+Full itemized BOM, search queries, and pre-purchase verification guide: see [`docs/bom.md`](docs/bom.md).
 
 **Current Progress & Open Items:**
 - [x] **Compute & OS:** Raspberry Pi 3B running headless Raspberry Pi OS Lite (64-bit, Trixie) with all dependencies (`ai-edge-litert`, OpenCV, NumPy, PySerial) in acrylic case with active cooling fan (GPIO Pins 4/6); Wi-Fi hardened (power-save disabled via `wifi-powersave-off.service`, cron watchdog `wifi-watchdog.sh` for auto-recovery).

@@ -38,30 +38,36 @@
 
 ## 3. Pre-Purchase Sourcing & Verification Guide
 
-When purchasing components online (Shopee, Lazada) or through local distributors, use the exact search strings below and verify each critical parameter before completing the order:
+> [!IMPORTANT]
+> **Why No Direct Marketplace Links?**  
+> Direct marketplace links are intentionally not hardcoded: search results often default to overseas retailers (Waveshare, EU, Canadian shops) that incur high shipping overhead and customs delay. Furthermore, Shopee, Lazada, and Facebook Marketplace links frequently break, point to differing variants, or lead to counterfeit items and scams.  
+> Instead, use the exact search strings below and verify every specification on candidate listings before purchasing. Send shortlisted listings to verify their hardware specs against this guide.
 
-| Item | Exact Search String | What to Check Before Buying |
+| Item | Search this | Check before buying |
 |---|---|---|
-| **OLED Display** | `2.42 inch OLED SSD1309 128x64 SPI` | • Listing title MUST explicitly say **SSD1309** (NOT SSD1306 or SH1106).<br>• Module size must be **2.42"** with a **7-pin header** (`GND`, `VCC`, `SCL/D0`, `SDA/D1`, `RES`, `DC`, `CS`).<br>• Many modules ship factory-configured for **SPI**; converting to I2C requires moving surface-mount resistors on the back PCB. Buy as-shipped and wire as SPI (faster refresh rate, zero soldering required).<br>• Verify seller photos confirm the 7-pin header. |
-| **Enclosure Box** | `ABS junction box 150x110x70` *(or `waterproof enclosure box`)* | • Internal dimensions must be **at least ~150 × 110 × 70 mm** so the Raspberry Pi 3B (mounted inside its acrylic case with cooling fan), ESP32, and 18650 battery fit with adequate airflow space.<br>• **Pre-order action:** Measure your Pi in its acrylic case first to confirm enclosure internal clearance.<br>• Can also be sourced directly off the shelf from local hardware stores (e.g., Ace Hardware, Handyman, electrical supply). |
-| **Pan/Tilt Bracket** | `pan tilt bracket MG90S` *(or `pan tilt platform SG90 MG90S`)* | • Listing must explicitly state compatibility with micro servos (**SG90 / MG90S**).<br>• Skip any listings that bundle unknown or non-branded cheap plastic servos; purchase the bracket standalone. |
-| **Spare Servos** | `MG90S servo metal gear` ×2 | • Look for explicit **"metal gear"** specification and inspect customer reviews with disassembly photos showing brass/metal internal gears.<br>• Counterfeit MG90S units with nylon gears are common; avoid unvetted Facebook Marketplace listings unless tested under load. |
-| **Power Regulation** | `18650 boost converter 5V 2A` | • A single 18650 cell outputs **3.0V – 4.2V**, which is below the 5.0V system bus requirement. You need a **BOOST (step-up)** converter, **NOT a buck** (step-down) converter.<br>• **Verification check first:** Check whether your existing 18650 charging / protection module already integrates a regulated 5V ≥2A output. If it does, skip purchasing a separate boost converter. |
-| **Illumination** | `5V white LED strip`, `IRLZ44N MOSFET` *(or `2N2222`)*, assorted resistors | • The **IRLZ44N** is a logic-level N-channel MOSFET that fully saturates at 3.3V/5V logic levels, preventing thermal throttling.<br>• Ensure total LED strip current draw stays well within the boost converter's rated capacity (e.g., ≤ 500mA for LEDs to leave ≥ 1.5A for Pi and ESP32). |
-| **Misc Hardware** | `Dupont jumper wires`, `M3 standoff screw kit`, `cable ties` | • Get assorted 10cm and 20cm Dupont jumpers (M-M and M-F).<br>• Short Micro-USB to USB-A cable for clean Pi ↔ ESP32 communication without excess slack.<br>• Standard M3 nylon/brass standoffs and wood/drywall screws for ceiling mounting. |
+| **OLED** | `2.42 inch OLED SSD1309 128x64 SPI` | Title says **SSD1309** (not SSD1306 or SH1106) and 2.42" with 7 pins. Many of these ship set to SPI, and the I2C version needs resistors moved on the back. Buy it as shipped and wire it as SPI (faster, no soldering). Check the seller photos show a 7-pin header. |
+| **Box** | `ABS junction box 150x110x70` *(or `waterproof enclosure box`)* | At least ~150x110 mm so the Pi (in its acrylic case), ESP32, and battery fit with airflow. A hardware store also sells these. **Pre-order action:** Measure your Pi in its acrylic case first so the box size is right. |
+| **Pan/tilt** | `pan tilt bracket MG90S` *(or `pan tilt platform SG90 MG90S`)* | Listing says it fits micro servos (SG90/MG90S). Skip any that bundle fake servos; source the bracket standalone or with authenticated servos. |
+| **Spare servos** | `MG90S servo metal gear` ×2 | Look for "metal gear" and reviews with photos. Counterfeit MG90S are common, so don't buy from FB Marketplace without testing under load. |
+| **Power** | `18650 boost converter 5V 2A` | Your single 18650 is only 3–4.2V, so you need a **boost** converter, not a buck. First check whether your charging module already has a 5V ≥2A output, and if so skip this. |
+| **Illumination** | `5V white LED strip`, `IRLZ44N MOSFET` *(or `2N2222`)*, assorted resistors | Total current stays within what the boost output can supply (keep LED draw ≤500mA so ≥1.5A remains for Pi 3B and ESP32). |
+| **Misc** | `Dupont jumper wires`, `M3 standoff screw kit`, `cable ties` | Short USB cables for Pi to ESP32, plus ceiling-mount screws and standoffs. |
 
 ---
 
 ## 4. Recommended Philippine Electronics Vendors
 
-For servos and semiconductor components where counterfeits are common on open marketplaces, consider dedicated Philippine hobbyist electronics shops:
+For electronics specifically, **Makerlab Electronics** and **e-Gizmo** are PH shops worth checking:
 
 1. **Makerlab Electronics** (`makerlab-electronics.com` / Shopee Mall / Lazada Mall):
-   - Reliable source for genuine MG90S metal-gear servos, IRLZ44N logic-level MOSFETs, ESP32 DevKits, and MT3608/boost modules.
+   - Proven local stock for authentic MG90S metal-gear servos, IRLZ44N logic-level MOSFETs, ESP32 DevKit V1, and step-up boost converters.
 2. **e-Gizmo Mechatronics Central** (`egizmo.net` / Taft Ave, Manila / Online):
-   - Proven component quality, authenticated ICs, breakout boards, sensors, and hardware hardware accessories.
+   - Dedicated Philippine robotics and mechatronics distributor. Buying servos and discrete ICs from a dedicated electronics shop often beats open Shopee/Lazada listings for authenticity on servos.
 3. **Local Hardware Supply Stores (Ace Hardware, Handyman, Wilcon, Electrical Wholesalers):**
-   - Excellent for sourcing ABS waterproof junction boxes (150×110×70 mm or larger), cable ties, M3 mounting hardware, and ceiling anchors without shipping delays.
+   - Ideal for sourcing ABS waterproof junction boxes (150×110×70 mm or larger), cable ties, M3 mounting hardware, and ceiling anchors locally without waiting on shipping.
+
+> [!TIP]
+> **Pre-Ordering Action:** Before ordering the enclosure, physically measure your Raspberry Pi 3B inside its assembled acrylic case (including standoff height and top-mounted 5V fan) to ensure the junction box provides ample headroom for wiring bends and convective airflow.
 
 ---
 
