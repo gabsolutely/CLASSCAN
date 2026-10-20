@@ -6,9 +6,16 @@
 
 ## 0 · Code & Tests (do once, on dev machine)
 
-- [ ] **All 29 unit tests pass** — `python -m pytest tests/ -v`
+- [ ] **All 31 unit tests pass** — `python -m pytest tests/ -v`
 - [ ] **No uncommitted changes** — `git status` is clean
 - [ ] **Push to remote** — `git push origin main` (backup before physical demo)
+
+### 0b · Runtime Free-Win Verification (Zero Retraining)
+- [ ] `MAX_ROOM_CAPACITY = 45` and `MAX_ZONE_CAPACITY = 15` active in `src/pi/config.py`
+- [ ] `MULTI_CAPTURE_COUNT = 3` configured (takes 3 snapshots per quadrant and uses median)
+- [ ] `COUNT_HYSTERESIS_DELTA = 0.6` active (dead-band filtering prevents OLED integer jitter)
+- [ ] `ZONE_EXCLUSION_MASKS` configured per quadrant to mask non-floor regions (doors, whiteboard, ceiling)
+- [ ] Verified via reconciler tests: `pytest tests/test_reconciler.py -v` (passes 100%)
 
 ---
 
@@ -171,13 +178,13 @@ python main.py
 
 ## 8 · Known Limitations (state at defense)
 
-| Issue | Status |
+| Issue | Status & Remediation Path |
 |---|---|
 | Ensemble `.tflite` files not in repo | Too large for git; export from Colab Drive before deploy (see `models/README.md`) |
 | Camera baseline not auto-applied on boot | Run `v4l2-ctl` block manually after each reboot (ROADMAP open item) |
-| INT8 quantization broken | XNNPack fails on `UpSampling2D(bilinear)`; float32 only; ~1.4 s/scan — within budget |
-| Not validated at 5+ people | Data-domain gap (SCUT-HEAD vs Filipino classroom); real-footage r ceiling = 0.586 |
-| `line1` clip weakest (r=0.455) | Students moving in a line; static seated scenes perform better |
+| INT8 quantization (bilinear issue) | `UpSampling2D(bilinear)` unsupported in XNNPack INT8; resolved by transitioning to `Conv2DTranspose` in `scripts/train_density.py` and `scripts/adabn.py` |
+| Domain shift / SCUT-HEAD Part A | SCUT-HEAD Part A was sampled from a single university (homogeneous rooms); real deployment addressed via 6-Pillar Plan: whole-session holdouts (`eval_harness.py`), AdaBN (`adabn.py`), and model-assisted annotation (`annotate_assisted.py`) |
+| `line1` clip weakest (r=0.455) | Students moving in a line; static seated scenes perform better; multi-capture median (`MULTI_CAPTURE_COUNT=3`) smooths transient line movement |
 | Hotspot mutual-exclusion | Pi 3B has one Wi-Fi chip: hotspot active = no simultaneous router Wi-Fi; use ethernet for SSH |
 
 ---

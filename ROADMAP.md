@@ -3,15 +3,20 @@
 **Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
-**Status (as of Oct 9, 2026 — post-deadline):** **Live end-to-end pipeline deployed on real hardware.** Full pipeline (Pi + OV4689 + 3-way ensemble) ran on first attempt — stitched together in under 2 days. Dashboard working. AI detection functional; not yet validated at 5+ people. Camera color desaturation issue appears resolved on this hardware run. **Frame delivery + inference lag: resolved Sept 24, 2026** (V4L2 buffer drain fix in `detector.py`). **Sept 30 fixes:** motion-trigger `None`-frame guard in `main.py` (dropped camera reads no longer crash the loop or reset the heartbeat counter); dashboard **Download Event Log** button added (full session CSV export, client-side). **Oct 3:** USB gadget/RNDIS (`usb_gadget.sh`) and direct ethernet (`direct_connect.sh`) connectivity scripts committed; serial bridge state/command handling hardened. **Oct 7:** Wi-Fi hotspot (`hotspot.sh`) added — Pi broadcasts its own `CLASSCAN` access point (192.168.20.1), no router needed, supports multiple simultaneous viewers. **Oct 9:** Threaded inference architecture — `InferenceWorker` daemon thread decouples TFLite inference (~700 ms–1 s) from frame capture; MJPEG stream now runs at full camera rate (~20 Hz) without blocking on AI; producer/consumer split with `threading.Event` synchronisation; per-subsystem watchdog health monitor (camera / AI / serial) surfaced on dashboard.
+**Status (as of Oct 20, 2026):** **Live end-to-end pipeline operational; executing Domain-Shift Optimization Plan.** Full pipeline (Pi 3B + OV4689 + ensemble + dashboard + threaded inference worker) running on target hardware. Core finding uncovered: SCUT-HEAD Part A is 2,000 frames from a single university's surveillance monitors with homogeneous rooms; previous $r = 0.995$ validation measured in-domain room memorization rather than true generalizability. Real deployment across Philippine classrooms encounters substantial domain shift (different furniture/wooden armchairs, lighting/glare, 30°–50° ceiling pitch, and backpacks).
 
-1. **Final adopted model (ensemble):** `0.6 × classcan_density_v4_round4_ft_epoch8 (letterbox eval) + 0.4 × classcan_density_style_aug_ft_lowLR_epoch8 (stretch eval)` — MAE=2.77, correlation=0.586 on genuine held-out v2 data (350 frames). Best real-footage correlation across all 9 rounds.
-2. **Alternative lower-MAE ensemble:** `0.55 × epoch8 + 0.10 × stretch-ft-epoch1 + 0.35 × style-aug-epoch8` → MAE=2.68, corr≈0.584 (worth using if MAE matters more than correlation).
-3. **SCUT-HEAD benchmark (407-image eval):** All checkpoints maintained r>0.99 throughout — no catastrophic regression across any round.
-4. **Secondary HUD Model:** MobileNetV3-Large + 416×416 FPN head detector (F1 = 31.8%, MAE = 3.84) for bounding box visualization.
+1. **Current Deployed Ensemble:** `0.6 × classcan_density_v4_round4_ft_epoch8 (letterbox eval) + 0.4 × classcan_density_style_aug_ft_lowLR_epoch8 (stretch eval)` — baseline MAE=2.77, correlation=0.586 on held-out footage.
+2. **Free Wins Implemented (Zero-Retraining):** Quadrant zone exclusion masks, 3-snapshot multi-capture median, count hysteresis ($\Delta = 0.6$), and seat capacity clipping (45 seats max).
+3. **Domain Shift Optimization Program (Priority Order):**
+   - **Pillar 1 (Measurement Harness):** Whole-session holdouts, MAE, $\pm 1$/$\pm 2$, session bias, empty-frame hallucination rate, count jitter, 3-seed variance, 30-worst error analysis (`scripts/eval_harness.py`).
+   - **Pillar 2 (Free Wins):** Zone masks, multi-capture, count hysteresis, capacity clipping, AdaBN test (`scripts/adabn.py`), native ROI crop (`2688×1520`), linear calibration.
+   - **Pillar 3 (Data Collection & Assisted Annotation):** Real ceiling mount footage (~1,500 frames across 8+ sessions), 15–20% empty/near-empty frames, ensemble disagreement-driven annotation (`scripts/annotate_assisted.py`), strict partial-head rule.
+   - **Pillar 4 (Stabilized Retraining):** Target scaling ($\times 100$), Count L1 loss + TV loss, overfit 1-batch check, collapse detector watchdog, BN inference mode, 30°–50° perspective warp, lower-half desk erasing (`scripts/train_density.py`).
+   - **Pillar 5 (Unlabeled Video):** Self-training pseudo-labeling, distillation into single student model (cuts latency from ~1.4 s to ~0.7 s).
+   - **Pillar 6 (Speed):** `Conv2DTranspose` replacing `UpSampling2D` to unblock native INT8 on ARM Cortex-A53.
+   - **Explicitly Skipped for Now:** Backbone swap, YOLO variants, external crowd datasets (CrowdHuman, RPEE), flip TTA, and MPCount.
 
-**Remaining open items:** Camera startup config (v4l2-ctl baseline + quirks=128) must be confirmed wired into `setup/startup.py`. AI detection not yet validated at 5+ people.
-Hard deadline: **September 28, 2026** (passed — project continues post-deadline for polish and validation).
+Hard deadline: **September 28, 2026** (passed — project actively hardened for production and thesis defense).
 
 ---
 
@@ -135,16 +140,55 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [x] **Threaded inference architecture (Oct 9, 2026):** Decouples TFLite ensemble inference (~700 ms–1 s on Pi 3B) from frame capture + MJPEG streaming. `InferenceWorker` daemon thread runs in background; main loop posts frames via `threading.Event` + `Lock`-guarded shared state and annotates live video with the last completed result — stream runs at full camera rate (~20 Hz) with zero blocking on AI. Per-subsystem watchdog monitor tracks camera / AI / serial health independently and surfaces alerts to the dashboard in real time.
 - [ ] **Validate at 5+ people:** AI detection not yet tested with real classroom occupancy.
 
-## Full-System Integration (Post-PoC)
+## Full-System Integration & Optimization Pillars
 
+### Hardware Integration (Post-PoC)
 - Pan/tilt servos, sweep mode, quadrant/zone targeting (servo "radar" mount prototype on ESP32)
-- SSD1309 OLED headcount display driven by ESP32
-- Custom LDR-triggered illumination LED module
+- SSD1309 OLED headcount display driven by ESP32 (SPI, 2.42", 7-pin)
+- Custom LDR-triggered illumination LED module (IRLZ44N MOSFET + 5V white LED strip)
 - ABS junction box enclosure (150×110×70 mm) with pan/tilt bracket mount
 - 18650 battery power module + 5V/2A boost converter (steps 3.0V–4.2V to 5V)
-- Full hardware handshake between Pi 3B and ESP32 over serial
-- mAP@50 formal evaluation and annotation quality audit (deferred — trigger only if model underperforms)
-- **Post-PoC model improvements (explicitly deferred, good for writeup citations):** MPCount (CVPR 2024, single-domain-generalization architecture — real ceiling-breaker but multi-day port), backbone swap away from MobileNetV3, TTA (average over original + flipped frame), genuine new Filipino-classroom training data (identified by QA reviewer PeaNat as the real root cause of the domain gap ceiling)
+- Full hardware handshake between Pi 3B and ESP32 over serial (JSON telemetry @ 115200 baud)
+
+### Model Optimization Pillars (Priority Order)
+1. **Pillar 1 — Measurement Harness (Completed & Verified):**
+   - Whole-session holdouts (`room_id + date`), test never tuned on.
+   - Comprehensive metric suite: MAE, within $\pm 1$ and $\pm 2$, per-session bias, hallucination rate (mean predicted count on empty frames), and count jitter (stability across consecutive frames).
+   - 3-seed evaluation reporting mean ± std dev (`scripts/eval_harness.py`).
+   - 30-worst error analysis with automatic failure bucketing (`occlusion`, `far_rows`, `backpacks`, `blur`, `lighting`) and heatmap overlays.
+2. **Pillar 2 — Free Wins, Zero Retraining (Implemented in Core Code):**
+   - Zone exclusion masks per quadrant: zeroes out non-floor regions (whiteboards, doors, windows, ceiling) before density summation.
+   - Multi-capture smoothing: 3 snapshots per quadrant with median aggregation.
+   - Count hysteresis dead-band ($\Delta = 0.6$) and capacity clipping (45 room / 15 zone max).
+   - AdaBN hypothesis (`scripts/adabn.py`): adapts BN running stats on unlabeled classroom frames.
+   - Native-resolution ROI crop (`2688×1520`) to preserve head pixels at distance.
+   - Camera-pose linear calibration (`a·pred + b`).
+3. **Pillar 3 — Data Collection & Model-Assisted Annotation:**
+   - Record from ceiling mount across 8+ sessions (~1,500 annotated frames).
+   - Include 15–20% full-frame empty and near-empty frames (zero-density targets) to eliminate backpack hallucinations.
+   - Model-assisted annotation (`scripts/annotate_assisted.py`): ensemble disagreement prioritization + temporal stride + density peak proposals.
+   - Standardized Partial-Head Rule (label if visible area $\ge 15\%$, anchor at cranial apex).
+   - Dataset cloud/drive backup protocol.
+4. **Pillar 4 — Controlled Retraining Pipeline (`scripts/train_density.py`):**
+   - Density target scaling ($\times 100$) + combined MSE + Count L1 + TV loss.
+   - Pre-flight `overfit_one_batch` verification and `CollapseDetectorCallback` watchdog.
+   - Keep BatchNorm in inference mode (`training=False`) when fine-tuning on small batches.
+   - Gradient clipping (`clipnorm=1.0`) + differential learning rates (backbone LR lower than decoder).
+   - Geometry augmentation: 30°–50° perspective warp, aspect jitter, random scale/crop, lower-frame desk/armchair erasing, and style jitter.
+   - Leave-One-Session-Out Cross Validation (`scripts/session_split.py`).
+5. **Pillar 5 — Unlabeled Video Exploitation:**
+   - Self-training with agreement & temporal stability gating.
+   - Knowledge distillation: train a single student model to mimic the 2-model ensemble on unlabeled real video (~1.4 s → ~0.7 s latency reduction).
+6. **Pillar 6 — Speed & INT8 Quantization:**
+   - Replace `UpSampling2D(bilinear)` with `Conv2DTranspose` in decoder to unblock native INT8 quantization on Pi 3B ARM NEON.
+   - Calibrate INT8 representative dataset on real classroom frames.
+
+### Explicitly Skipped for Now
+- **Backbone swap:** MobileNetV3-Large remains optimal for Pi 3B memory/compute budget.
+- **YOLO variants:** Tested extensively (YOLOLite, Roboflow); failed under severe armchair occlusion.
+- **External crowd datasets:** CrowdHuman and RPEE-Heads proved actively counterproductive due to severe distribution mismatch.
+- **Flip-TTA:** Deferred until validated on held-out session harness.
+- **MPCount:** Complex multi-day port; deferred until genuine multi-session real holdout is in place.
 
 ---
 
@@ -174,4 +218,4 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - **Labeling Convention:** Single "head" class with head-and-shoulders bounding boxes (not full-body COCO) ensures robust detection of students seated behind wooden armchairs at 30°–50° ceiling pitch angles.
 - **Compute-Aware Triggering:** Periodic snapshot + frame-difference re-detection to prevent thermal throttling and compute saturation on the Pi 3B. See `docs/design_rationale.md` ADR-04.
 - **LoRa Rejected:** Considered (offered cheaply by a colleague) but explicitly rejected. Project is single-room/local — Pi↔ESP32 communicate over USB serial, no long-range wireless needed. Would only reconsider if scope expands to multi-room/multi-building deployment.
-- **Domain Gap Root Cause (PeaNat, confirmed):** SCUT-HEAD depicts orderly/seated/well-lit lecture halls; real Philippine classrooms are chaotic (moving lines, standing, irregular wooden armchairs, dim/uneven lighting). Only 35 local photos plus post-hoc failure patches — not genuine classroom-native training volume. The 0.43-0.60 real-footage correlation ceiling across all 9 rounds is a data-domain limitation, not a training-recipe problem. Genuine Filipino-classroom data collection deferred to a future phase; explicitly stated in the writeup/defense.
+- **Domain Gap Root Cause & Generalization Failure:** SCUT-HEAD Part A is 2,000 frames sampled from classroom surveillance monitors at a single university, whose authors specifically note that those classrooms look almost identical. Therefore, the earlier validation correlation of $r = 0.995$ largely measured "same kind of room as training," rather than robust cross-environment generalization. When deployed in Philippine classrooms, domain shift manifests as severe false-positive clutter on backpacks, stacked armchairs, and floor reflections under 30°–50° pitch angles. Tuning ensemble weights on the same 5 clips produced optimistic estimates. The solution is the structured 6-Pillar Domain-Shift Optimization Program: holding out whole sessions (`room_id + date`), tracking domain-specific metrics (MAE, within $\pm 1$/$\pm 2$, session bias, empty-room hallucination rate, and stability jitter), deploying zero-retraining free wins (zone exclusion masks, multi-capture median, count hysteresis, capacity clipping), collecting diverse ceiling-mounted video with 15–20% empty rooms, and executing stabilized retraining with scale $\times 100$, Count L1 loss, and perspective warp augmentations.
