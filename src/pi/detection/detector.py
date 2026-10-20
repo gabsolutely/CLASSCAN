@@ -339,6 +339,46 @@ def _grab_fresh_frame(cap) -> np.ndarray:
     return frame
 
 
+def _crop_roi(frame: np.ndarray, roi: list[float] | tuple[float, ...] | None) -> np.ndarray:
+    """Crop floor / desk area from native resolution frame before resizing."""
+    if roi is None or len(roi) != 4 or frame is None:
+        return frame
+    h, w = frame.shape[:2]
+    ymin, xmin, ymax, xmax = roi
+    r0, r1 = max(0, int(ymin * h)), min(h, int(ymax * h))
+    c0, c1 = max(0, int(xmin * w)), min(w, int(xmax * w))
+    if r1 > r0 and c1 > c0:
+        return frame[r0:r1, c0:c1]
+    return frame
+
+
+def _apply_exclusion_mask(
+    density_map: np.ndarray,
+    masks: list[list[float]] | dict[str, list[list[float]]] | None,
+    zone_name: str | None = None,
+) -> np.ndarray:
+    """Zero out non-student regions (windows, doors, whiteboard, ceiling) on density map."""
+    if not masks or density_map is None:
+        return density_map
+    zone_boxes = []
+    if isinstance(masks, dict):
+        zone_boxes = masks.get(zone_name or "default", masks.get("default", []))
+    elif isinstance(masks, (list, tuple)):
+        zone_boxes = masks
+    if not zone_boxes:
+        return density_map
+
+    h, w = density_map.shape[:2]
+    masked = density_map.copy()
+    for box in zone_boxes:
+        if len(box) == 4:
+            ymin, xmin, ymax, xmax = box
+            r0, r1 = max(0, int(ymin * h)), min(h, int(ymax * h))
+            c0, c1 = max(0, int(xmin * w)), min(w, int(xmax * w))
+            masked[r0:r1, c0:c1] = 0.0
+    return masked
+
+
 # ─── DensityDetector — primary headcount engine ───────────────────────────────
 
 class DensityDetector:
@@ -356,10 +396,16 @@ class DensityDetector:
 
     Parameters
     ----------
-    model_path    : str   — path to classcan_density_v4.tflite
-    camera_index  : int   — OpenCV camera device index
-    force_mock    : bool  — skip camera open, return synthetic result
-    mock_count    : int   — simulated head count in mock mode
+    model_path          : str   — path to classcan_density_v4.tflite
+    camera_index        : int   — OpenCV camera device index
+    force_mock          : bool  — skip camera open, return synthetic result
+    mock_count          : int   — simulated head count in mock mode
+    density_threshold   : float — relative threshold to zero out background noise
+    exclusion_masks     : dict | list — normalized boxes [ymin, xmin, ymax, xmax] to zero out (windows, doors, whiteboard, ceiling)
+    max_capacity        : int   — maximum physical seats in room / quadrant (clips overcounts)
+    linear_calibration  : tuple | dict — (a, b) calibration where count = a * pred + b
+    native_roi_crop     : list  — [ymin, xmin, ymax, xmax] to crop floor area from high-res feed
+    empty_room_baseline : ndarray — calibrated baseline density map to subtract
     """
 
     def __init__(
@@ -369,9 +415,19 @@ class DensityDetector:
         force_mock: bool = False,
         mock_count: int = 4,
         density_threshold: float = 0.0,
+        exclusion_masks: list[list[float]] | dict[str, list[list[float]]] | None = None,
+        max_capacity: int | None = None,
+        linear_calibration: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
+        native_roi_crop: list[float] | None = None,
+        empty_room_baseline: np.ndarray | None = None,
     ):
-        self.density_threshold = density_threshold
-        self.is_mock = force_mock
+        self.density_threshold   = density_threshold
+        self.exclusion_masks     = exclusion_masks
+        self.max_capacity        = max_capacity
+        self.linear_calibration  = linear_calibration
+        self.native_roi_crop     = native_roi_crop
+        self.empty_room_baseline = empty_room_baseline
+        self.is_mock             = force_mock
 
         # ── Load TFLite model ──────────────────────────────────────────────
         self.interpreter = Interpreter(model_path=model_path)
@@ -414,24 +470,16 @@ class DensityDetector:
 
     def _preprocess(self, frame: np.ndarray) -> np.ndarray:
         """Resize + normalize to [1, H, W, 3] float32 in [0, 1]."""
-        resized = cv2.resize(frame, (self.input_w, self.input_h))
+        cropped = _crop_roi(frame, self.native_roi_crop)
+        resized = cv2.resize(cropped, (self.input_w, self.input_h))
         rgb     = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
         return np.expand_dims(rgb.astype(np.float32) / 255.0, axis=0)
 
     # ── Inference ──────────────────────────────────────────────────────────
 
-    def predict(self, frame: np.ndarray) -> dict:
+    def predict(self, frame: np.ndarray, zone_name: str | None = None) -> dict:
         """
-        Run density-map inference on a BGR frame.
-
-        Returns
-        -------
-        dict with keys:
-            "count"       : int    — rounded headcount estimate
-            "raw_sum"     : float  — unrounded integral of density map
-            "density_map" : ndarray(104, 104) float32 — raw density surface
-
-        In mock mode returns synthetic result without touching the model.
+        Run density-map inference on a BGR frame with optional zone masking & calibration.
         """
         if self.is_mock:
             fake_map = np.zeros((104, 104), dtype=np.float32)
@@ -448,9 +496,14 @@ class DensityDetector:
         raw = self.interpreter.get_tensor(self._out_density_idx)  # (1,104,104) or (1,104,104,1)
         density_map = np.squeeze(raw).astype(np.float32)          # → (104, 104)
 
-        # Per-frame relative threshold: suppress background density-map noise.
-        # Zero out any cell below (density_threshold × frame peak) before summing.
-        # Adopted with hardneg model (MAE 3.87→3.08); set density_threshold=0.0 to disable.
+        # 1. Empty-room baseline subtraction
+        if self.empty_room_baseline is not None:
+            density_map = np.maximum(0.0, density_map - self.empty_room_baseline)
+
+        # 2. Zone exclusion masks (zero out ceiling, whiteboard, windows, doors)
+        density_map = _apply_exclusion_mask(density_map, self.exclusion_masks, zone_name=zone_name)
+
+        # 3. Per-frame relative threshold: suppress background density-map noise
         if self.density_threshold > 0.0:
             peak = density_map.max()
             if peak > 0:
@@ -460,13 +513,38 @@ class DensityDetector:
                 )
 
         raw_sum = float(density_map.sum())
-        count   = max(0, round(raw_sum))
+
+        # 4. Linear calibration: count = a * raw_sum + b
+        calibrated_sum = raw_sum
+        if self.linear_calibration is not None:
+            if isinstance(self.linear_calibration, dict):
+                cal = self.linear_calibration.get(zone_name or "default", (1.0, 0.0))
+            else:
+                cal = self.linear_calibration
+            a, b = cal
+            calibrated_sum = max(0.0, a * raw_sum + b)
+
+        count = max(0, round(calibrated_sum))
+
+        # 5. Seat capacity clipping
+        if self.max_capacity is not None and self.max_capacity > 0:
+            count = min(count, self.max_capacity)
 
         return {
-            "count":       count,
-            "raw_sum":     raw_sum,
-            "density_map": density_map,
+            "count":          count,
+            "raw_sum":        raw_sum,
+            "calibrated_sum": calibrated_sum,
+            "density_map":    density_map,
         }
+
+    def predict_multicapture(self, frames: list[np.ndarray], zone_name: str | None = None) -> dict:
+        """Runs predict on K snapshots and returns the median prediction by raw_sum."""
+        if not frames:
+            raise ValueError("No frames provided for multicapture")
+        results = [self.predict(f, zone_name=zone_name) for f in frames]
+        results.sort(key=lambda r: r["raw_sum"])
+        median_idx = len(results) // 2
+        return results[median_idx]
 
     # ── Cleanup ────────────────────────────────────────────────────────────
 
@@ -495,24 +573,6 @@ class EnsembleDensityDetector:
       - round4_ep8    trained on STRETCH, evaluated with LETTERBOX  → r=0.602
       - style_aug_ep8 trained on STRETCH, evaluated with STRETCH    → r=0.531
       Ensemble: MAE=2.77, r=0.586  (genuine v2 held-out, 350 frames)
-
-    Integration:
-        Drop classcan_density_round4_ep8.tflite and
-             classcan_density_style_aug_ep8.tflite into models/.
-        Config auto-detects them; main.py prefers this class over DensityDetector.
-
-    Interface is identical to DensityDetector — .predict(), .capture_frame(),
-    .release() — so main.py requires no structural changes.
-
-    Parameters
-    ----------
-    round4_ep8_path    : str   — path to classcan_density_round4_ep8.tflite
-    style_aug_ep8_path : str   — path to classcan_density_style_aug_ep8.tflite
-    w_round4           : float — ensemble weight for round4_ep8 (default 0.6)
-    w_style_aug        : float — ensemble weight for style_aug_ep8 (default 0.4)
-    camera_index       : int   — OpenCV camera device index
-    force_mock         : bool  — skip camera open, return synthetic result
-    mock_count         : int   — simulated head count in mock mode
     """
 
     def __init__(
@@ -525,11 +585,21 @@ class EnsembleDensityDetector:
         force_mock: bool = False,
         mock_count: int = 4,
         density_threshold: float = 0.0,
+        exclusion_masks: list[list[float]] | dict[str, list[list[float]]] | None = None,
+        max_capacity: int | None = None,
+        linear_calibration: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
+        native_roi_crop: list[float] | None = None,
+        empty_room_baseline: np.ndarray | None = None,
     ):
-        self.w_round4          = w_round4
-        self.w_style_aug       = w_style_aug
-        self.density_threshold = density_threshold
-        self.is_mock           = force_mock
+        self.w_round4            = w_round4
+        self.w_style_aug         = w_style_aug
+        self.density_threshold   = density_threshold
+        self.exclusion_masks     = exclusion_masks
+        self.max_capacity        = max_capacity
+        self.linear_calibration  = linear_calibration
+        self.native_roi_crop     = native_roi_crop
+        self.empty_room_baseline = empty_room_baseline
+        self.is_mock             = force_mock
 
         # ── Load both TFLite interpreters ─────────────────────────────────
         self._interp_r4 = Interpreter(model_path=round4_ep8_path)
@@ -577,46 +647,30 @@ class EnsembleDensityDetector:
     # ── Preprocessing ─────────────────────────────────────────────────────
 
     def _letterbox(self, frame: np.ndarray) -> np.ndarray:
-        """
-        Letterbox-resize to (target × target): preserve aspect ratio, pad black.
-        Used for round4_ep8 — this preprocessing geometry is what lifted
-        correlation from 0.506 → 0.602 (no retraining needed).
-        """
+        """Letterbox-resize preserving aspect ratio, padding black."""
+        cropped = _crop_roi(frame, self.native_roi_crop)
         target = self._r4_h
-        h, w   = frame.shape[:2]
+        h, w   = cropped.shape[:2]
         scale  = target / max(h, w)
         nh, nw = int(h * scale), int(w * scale)
         canvas = np.zeros((target, target, 3), dtype=np.float32)
-        resized = cv2.resize(frame, (nw, nh))
+        resized = cv2.resize(cropped, (nw, nh))
         rgb     = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
         canvas[:nh, :nw] = rgb.astype(np.float32) / 255.0
         return np.expand_dims(canvas, axis=0)  # → [1, 416, 416, 3]
 
     def _stretch(self, frame: np.ndarray) -> np.ndarray:
-        """
-        Stretch-resize to (target × target): simple cv2.resize, no aspect preservation.
-        Used for style_aug_ep8 — matches its training-time preprocessing.
-        """
-        resized = cv2.resize(frame, (self._sa_w, self._sa_h))
+        """Stretch-resize without aspect preservation."""
+        cropped = _crop_roi(frame, self.native_roi_crop)
+        resized = cv2.resize(cropped, (self._sa_w, self._sa_h))
         rgb     = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
         return np.expand_dims(rgb.astype(np.float32) / 255.0, axis=0)  # → [1, 416, 416, 3]
 
     # ── Inference ──────────────────────────────────────────────────────────
 
-    def predict(self, frame: np.ndarray) -> dict:
+    def predict(self, frame: np.ndarray, zone_name: str | None = None) -> dict:
         """
-        Run ensemble density-map inference on a BGR frame.
-
-        Returns
-        -------
-        dict with keys:
-            "count"            : int    — weighted ensemble headcount (rounded)
-            "raw_sum"          : float  — unrounded weighted sum
-            "density_map"      : ndarray(104, 104) float32 — weighted combined density surface
-            "raw_sum_round4"   : float  — component sum from round4_ep8 (letterbox)
-            "raw_sum_style_aug": float  — component sum from style_aug_ep8 (stretch)
-
-        In mock mode returns synthetic result without running either model.
+        Run ensemble density-map inference on a BGR frame with zone masking & capacity clipping.
         """
         if self.is_mock:
             fake_map = np.zeros((104, 104), dtype=np.float32)
@@ -649,9 +703,14 @@ class EnsembleDensityDetector:
         # Weighted combination
         density_map = self.w_round4 * dm_r4 + self.w_style_aug * dm_sa
 
-        # Per-frame relative threshold: suppress background density-map noise
-        # before integrating. Keeps raw component sums (sum_r4, sum_sa) unmodified
-        # for diagnostics; only the final blended map is thresholded.
+        # 1. Empty-room baseline subtraction
+        if self.empty_room_baseline is not None:
+            density_map = np.maximum(0.0, density_map - self.empty_room_baseline)
+
+        # 2. Zone exclusion masks (zero out ceiling, whiteboard, windows, doors)
+        density_map = _apply_exclusion_mask(density_map, self.exclusion_masks, zone_name=zone_name)
+
+        # 3. Per-frame relative threshold: suppress background density-map noise
         if self.density_threshold > 0.0:
             peak = density_map.max()
             if peak > 0:
@@ -661,15 +720,40 @@ class EnsembleDensityDetector:
                 )
 
         raw_sum = float(density_map.sum())
-        count   = max(0, round(raw_sum))
+
+        # 4. Linear calibration: count = a * raw_sum + b
+        calibrated_sum = raw_sum
+        if self.linear_calibration is not None:
+            if isinstance(self.linear_calibration, dict):
+                cal = self.linear_calibration.get(zone_name or "default", (1.0, 0.0))
+            else:
+                cal = self.linear_calibration
+            a, b = cal
+            calibrated_sum = max(0.0, a * raw_sum + b)
+
+        count = max(0, round(calibrated_sum))
+
+        # 5. Seat capacity clipping
+        if self.max_capacity is not None and self.max_capacity > 0:
+            count = min(count, self.max_capacity)
 
         return {
             "count":             count,
             "raw_sum":           raw_sum,
+            "calibrated_sum":    calibrated_sum,
             "density_map":       density_map,
             "raw_sum_round4":    sum_r4,
             "raw_sum_style_aug": sum_sa,
         }
+
+    def predict_multicapture(self, frames: list[np.ndarray], zone_name: str | None = None) -> dict:
+        """Runs predict on K snapshots and returns the median prediction by raw_sum."""
+        if not frames:
+            raise ValueError("No frames provided for multicapture")
+        results = [self.predict(f, zone_name=zone_name) for f in frames]
+        results.sort(key=lambda r: r["raw_sum"])
+        median_idx = len(results) // 2
+        return results[median_idx]
 
     # ── Cleanup ────────────────────────────────────────────────────────────
 
