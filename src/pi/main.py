@@ -112,6 +112,10 @@ def main():
             force_mock=args.mock,
             mock_count=args.mock_count,
             density_threshold=cfg.DENSITY_THRESHOLD,  # suppress background density-map noise
+            exclusion_masks=getattr(cfg, "ZONE_EXCLUSION_MASKS", None),
+            max_capacity=getattr(cfg, "MAX_ROOM_CAPACITY", None),
+            linear_calibration=getattr(cfg, "LINEAR_CALIBRATION", None),
+            native_roi_crop=getattr(cfg, "NATIVE_ROI_CROP", None),
         )
     elif cfg.DENSITY_MODEL_PATH:
         print("[CLASSCAN] Ensemble files not found - falling back to single density model.")
@@ -123,6 +127,10 @@ def main():
             force_mock=args.mock,
             mock_count=args.mock_count,
             density_threshold=cfg.DENSITY_THRESHOLD,  # suppress background density-map noise
+            exclusion_masks=getattr(cfg, "ZONE_EXCLUSION_MASKS", None),
+            max_capacity=getattr(cfg, "MAX_ROOM_CAPACITY", None),
+            linear_calibration=getattr(cfg, "LINEAR_CALIBRATION", None),
+            native_roi_crop=getattr(cfg, "NATIVE_ROI_CROP", None),
         )
     else:
         print("[CLASSCAN] WARNING: No density model found. Headcount will use box detector count.")
@@ -142,7 +150,12 @@ def main():
         shared_cap=density_detector.cap if density_detector is not None else None,
     )
     trigger    = ChangeTrigger(threshold=cfg.CHANGE_THRESHOLD)
-    reconciler = ZoneReconciler(zone_names=list(cfg.ZONE_POSITIONS.keys()))
+    reconciler = ZoneReconciler(
+        zone_names=list(cfg.ZONE_POSITIONS.keys()),
+        max_room_capacity=getattr(cfg, "MAX_ROOM_CAPACITY", None),
+        max_zone_capacity=getattr(cfg, "MAX_ZONE_CAPACITY", None),
+        hysteresis_delta=getattr(cfg, "COUNT_HYSTERESIS_DELTA", 0.6),
+    )
 
     serial_bridge = SerialBridge(port=cfg.SERIAL_PORT, baud=cfg.SERIAL_BAUD)
     dashboard     = DashboardServer(host=cfg.DASHBOARD_HOST, port=cfg.DASHBOARD_PORT)
@@ -240,10 +253,14 @@ def main():
                     new_detections = detector.detect(frame)
                     if density_detector:
                         result        = density_detector.predict(frame)
-                        density_count = result["count"]
+                        raw_sum       = result.get("calibrated_sum", result["raw_sum"])
+                        with _infer_lock:
+                            prev_count = _result["count"]
+                        density_count = reconciler.apply_hysteresis(raw_sum, prev_count)
+                        density_count = reconciler.clip_capacity(density_count)
                         new_count     = max(density_count, len(new_detections)) if new_detections else density_count
                     else:
-                        new_count = len(new_detections)
+                        new_count = reconciler.clip_capacity(len(new_detections))
                     new_zone_counts = None
 
                 elif cfg.MODE == "ZONE_CHECK":
@@ -251,7 +268,11 @@ def main():
                     new_detections  = detector.detect(frame)
                     if density_detector:
                         result        = density_detector.predict(frame)
-                        density_count = result["count"]
+                        raw_sum       = result.get("calibrated_sum", result["raw_sum"])
+                        with _infer_lock:
+                            prev_count = _result["count"]
+                        density_count = reconciler.apply_hysteresis(raw_sum, prev_count)
+                        density_count = reconciler.clip_capacity(density_count)
                         new_count     = max(density_count, len(new_detections)) if new_detections else density_count
                     else:
                         with _infer_lock:

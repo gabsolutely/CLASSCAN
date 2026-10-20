@@ -87,3 +87,38 @@ class Config:
         "Q3": (180, 30),
         "Q4": (270, 30),
     }
+
+    # ── Free Wins: Deployment Constraints & Filtering (No Retraining) ──────
+    # 1. Physical Capacity Clipping: clamp hallucinations to actual room seats
+    MAX_ROOM_CAPACITY = 45
+    MAX_ZONE_CAPACITY = {"Q1": 15, "Q2": 15, "Q3": 15, "Q4": 15}
+
+    # 2. Multi-Capture Smoothing: number of frames per quadrant/scan to take median
+    MULTI_CAPTURE_COUNT = 3
+
+    # 3. Count Hysteresis: dead-band to prevent 1-count flickering at rounding borders
+    COUNT_HYSTERESIS_DELTA = 0.6  # Change must exceed 0.6 float difference to flip int count
+
+    # 4. Zone Exclusion Masks: zero out windows, doors, whiteboard, ceiling before summing
+    # Format per zone: list of normalized boxes [ymin, xmin, ymax, xmax] (0.0 - 1.0)
+    ZONE_EXCLUSION_MASKS: dict[str, list[list[float]]] = {
+        "Q1": [[0.0, 0.0, 0.25, 1.0]],  # example: top 25% ceiling/whiteboard
+        "Q2": [[0.0, 0.0, 0.20, 1.0]],
+        "Q3": [[0.0, 0.0, 0.20, 1.0]],
+        "Q4": [[0.0, 0.0, 0.25, 1.0]],
+    }
+
+    # 5. Linear Calibration: (a, b) scaling where calibrated = a * pred + b per pose
+    # Default (1.0, 0.0) is uncalibrated identity
+    LINEAR_CALIBRATION: dict[str, tuple[float, float]] = {
+        "default": (1.0, 0.0),
+        "Q1": (1.0, 0.0),
+        "Q2": (1.0, 0.0),
+        "Q3": (1.0, 0.0),
+        "Q4": (1.0, 0.0),
+    }
+
+    # 6. Native Resolution ROI Crop: [ymin, xmin, ymax, xmax] normalized
+    # When enabled, crops floor area from 2688x1520 native frame before downscaling
+    NATIVE_ROI_CROP: list[float] | None = None
+
