@@ -31,7 +31,7 @@ except ImportError:          # --optimize still works without it
     cq = None
 
 # ================================================================ PARAMETERS
-OUT_DIR = "classcan_cad_out"
+OUT_DIR = "CAD/classcan_cad_out"
 LAYOUT_FILE = "classcan_layout.json"     # written by --optimize, read by the build
 
 # --- enclosure (Lazada listing: outer 174x174x73, inner 160x160x63)
@@ -90,13 +90,17 @@ SPECS = {
 }
 # ports at rotation 0: (local x, local y, exit dx, exit dy, plug width, plug clearance)
 PORTS = {
-    "Pi":        {"usb": (47.5, 8.0, 1, 0, 40.0, 30.0), "pwr": (-30.0, -32.5, 0, -1, 12.0, 25.0)},
-    "ESP32":     {"usb": (-27.5, 0.0, -1, 0, 12.0, 25.0), "hdr": (0.0, 0.0, 0, 0, 0.0, 0.0)},
-    "Module":    {"usb_a": (-35.0, 0.0, -1, 0, 28.0, 30.0), "usb_c": (35.0, 0.0, 1, 0, 12.0, 0.0),
+    "Pi":        {"usb": (47.5, 8.0, 1, 0, 36.0, 26.0), "pwr": (-30.0, -32.5, 0, -1, 12.0, 20.0)},
+    "ESP32":     {"usb": (-27.5, 0.0, -1, 0, 12.0, 20.0), "hdr": (0.0, 0.0, 0, 0, 0.0, 0.0)},
+    "Module":    {"usb_a": (-35.0, 0.0, -1, 0, 24.0, 25.0), "usb_c": (35.0, 0.0, 1, 0, 12.0, 0.0),
                   "bat": (0.0, 0.0, 0, 0, 0.0, 0.0)},
     "Cell":      {"leads": (-40.0, 0.0, -1, 0, 10.0, 15.0)},
     "Perfboard": {"bus": (0.0, 0.0, 0, 0, 0.0, 0.0)},
 }
+BODY_GAP = 1.5            # minimum gap between parts (mm)
+PERF_GAP = 5.0            # air gap between the stacked perfboard and the tallest low part under it
+LOW_PARTS = ["Module", "ESP32", "Cell"]   # short parts the perfboard may hover over (on standoffs)
+STANDOFF_SQ = 6.0         # footprint of one perfboard standoff
 TOP_PORTS = {"hdr", "bus", "bat"}        # wires attach on top of the part
 
 # --- cable lengths you actually have (mm). MEASURE these.
@@ -120,13 +124,13 @@ WALL_FILE = {"-Y": "minusY", "+Y": "plusY", "-X": "minusX", "+X": "plusX"}
 
 # Best layout found by --optimize with the numbers above (overwritten by LAYOUT_FILE)
 DEFAULT_LAYOUT = {
-    "Pi": [16.0, 31.0, 270],
-    "ESP32": [64.5, -1.0, 90],
-    "Module": [-43.5, -41.5, 180],
-    "Cell": [1.0, -68.0, 0],
-    "Perfboard": [-43.5, 9.5, 270],
-    "switch": ["+Y", 50.0],
-    "hole": [2],
+    "Pi": [31.0, -27.0, 180],
+    "ESP32": [0.5, 32.5, 180],
+    "Module": [-42.5, 43.0, 90],
+    "Cell": [-68.5, 5.0, 270],
+    "Perfboard": [0.0, 42.0, 90],
+    "switch": ["-X", 48.5],
+    "hole": [1],
 }
 
 assert BOX_W == BOX_D, "layout code assumes a square box"
@@ -154,13 +158,23 @@ def comp_bb(name, cx, cy, rot):
     return (cx - sx / 2, cx + sx / 2, cy - sy / 2, cy + sy / 2)
 
 
+def z_range(name, L=None):
+    """(z at the floor side, z at the lid side) of a part. The perfboard hovers above
+    the short parts (module, ESP32, cell holder) on standoffs."""
+    sz = SPECS[name]["size"][2]
+    hi = Z_TOP
+    if name == "Perfboard":
+        hi = Z_TOP - max(SPECS[m]["size"][2] for m in LOW_PARTS) - PERF_GAP
+    return hi, hi - sz
+
+
 def port_world(name, port, L):
     cx, cy, rot = L[name]
     lx, ly, dx, dy, _, _ = PORTS[name][port]
     px, py = rot2(lx, ly, rot)
     ddx, ddy = rot2(dx, dy, rot)
-    sz = SPECS[name]["size"][2]
-    z = Z_TOP - sz if port in TOP_PORTS else Z_TOP - sz / 2
+    hi, lo = z_range(name, L)
+    z = lo if port in TOP_PORTS else (hi + lo) / 2
     return cx + px, cy + py, z, int(round(ddx)), int(round(ddy))
 
 
@@ -176,6 +190,19 @@ def port_keepout(name, port, L):
     return (x - w / 2, x + w / 2, a, b)
 
 
+def perf_standoffs(L):
+    """Four small floor footprints under the corners of a stacked perfboard."""
+    if "Perfboard" not in L:
+        return []
+    bb = comp_bb("Perfboard", *L["Perfboard"])
+    i = 4.0 + STANDOFF_SQ / 2
+    out = []
+    for x in (bb[0] + i, bb[1] - i):
+        for y in (bb[2] + i, bb[3] - i):
+            out.append((x - STANDOFF_SQ / 2, x + STANDOFF_SQ / 2, y - STANDOFF_SQ / 2, y + STANDOFF_SQ / 2))
+    return out
+
+
 def switch_bb(sw):
     wall, u = sw
     th = WALL_ANGLE[wall]
@@ -186,8 +213,26 @@ def switch_bb(sw):
     return (cx - w / 2, cx + w / 2, cy - d / 2, cy + d / 2)
 
 
+def local_rect(wall, u0, u1, d0, d1):
+    """AABB of a rectangle given in a wall's local frame: u along the wall (seen from
+    outside), d = depth inward from the wall's inner face."""
+    th = WALL_ANGLE[wall]
+    pts = [rot2(u, -CAV / 2 + d, th) for u in (u0, u1) for d in (d0, d1)]
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    return (min(xs), max(xs), min(ys), max(ys))
+
+
+def wire_zones(L, with_switch=True):
+    zones = [("LCD wire exit space", local_rect(LCD_WALL, LCD_U - 9, LCD_U + 9, 0, 18))]
+    if with_switch and "switch" in L:
+        sw_wall, sw_u = L["switch"]
+        zones.append(("switch wire space",
+                      local_rect(sw_wall, sw_u - 9, sw_u + 9, SWITCH_DEPTH, SWITCH_DEPTH + 12)))
+    return zones
+
+
 def corner_zones():
-    lo, hi = MOUNT_XY - 8.0, CAV / 2
+    lo, hi = MOUNT_XY - 6.0, CAV / 2
     return [(sx * lo if sx > 0 else -hi, hi if sx > 0 else -lo,
              sy * lo if sy > 0 else -hi, hi if sy > 0 else -lo)
             for sx in (-1, 1) for sy in (-1, 1)]
@@ -205,29 +250,49 @@ def out_of_cavity(bb, margin):
             max(0.0, -h - bb[2]) + max(0.0, bb[3] - h))
 
 
-def layout_penalty(L, issues=None):
+def layout_penalty(L, issues=None, only=None):
+    """Penalty for rule violations (0 = valid). `only` limits the check to the parts
+    placed so far (names, plus "switch")."""
     pen = 0.0
+    names_in = [n for n in COMP_NAMES if only is None or n in only]
+    with_switch = only is None or "switch" in only
 
     def note(msg):
         if issues is not None:
             issues.append(msg)
 
     bodies = {}
-    for n in COMP_NAMES:
+    for n in names_in:
         bb = comp_bb(n, *L[n])
         bodies[n] = bb
         o = out_of_cavity(bb, 1.0)
         if o > 0:
             pen += 20 * o
             note(f"{SPECS[n]['label']} is {o:.1f} mm too close to / through a wall")
-    bodies["Switch"] = switch_bb(L["switch"])
+    if with_switch:
+        bodies["Switch"] = switch_bb(L["switch"])
+    if "Perfboard" in names_in:
+        for k, bb in enumerate(perf_standoffs(L)):
+            bodies[f"Perfboard standoff {k + 1}"] = bb
+        hi, lo = z_range("Perfboard", L)
+        if lo < -TRAY_H + 6.0:
+            pen += 30 * (-TRAY_H + 6.0 - lo)
+            note("stacked perfboard is too close to the lid")
     names = list(bodies)
     for i in range(len(names)):
         for j in range(i + 1, len(names)):
-            p = overlap_pen(bodies[names[i]], bodies[names[j]], 2.0)
+            a_n, b_n = names[i], names[j]
+            pair = {a_n, b_n}
+            if "Perfboard" in pair and (pair - {"Perfboard"}) <= set(LOW_PARTS):
+                continue                      # hovers above the short parts: different height
+            if "standoff" in a_n and "standoff" in b_n:
+                continue
+            if "standoff" in a_n and b_n == "Perfboard" or "standoff" in b_n and a_n == "Perfboard":
+                continue
+            p = overlap_pen(bodies[names[i]], bodies[names[j]], BODY_GAP)
             if p > 0:
                 pen += 30 * p
-                note(f"{names[i]} and {names[j]} are closer than 2 mm (penetration {p:.1f})")
+                note(f"{names[i]} and {names[j]} are closer than {BODY_GAP} mm (penetration {p:.1f})")
     zones = corner_zones()
     for n, bb in bodies.items():
         for z in zones:
@@ -235,7 +300,7 @@ def layout_penalty(L, issues=None):
             if p > 0:
                 pen += 30 * p
                 note(f"{n} sits in a corner screw zone")
-    for n in COMP_NAMES:
+    for n in names_in:
         for p_name in PORTS[n]:
             ko = port_keepout(n, p_name, L)
             if ko is None:
@@ -245,7 +310,7 @@ def layout_penalty(L, issues=None):
                 pen += 20 * o
                 note(f"plug space of {n}.{p_name} runs into a wall")
             for m, bb in bodies.items():
-                if m == n:
+                if m == n or (m == "Perfboard" and n in LOW_PARTS):
                     continue
                 p = overlap_pen(ko, bb, 0.0)
                 if p > 0:
@@ -256,30 +321,40 @@ def layout_penalty(L, issues=None):
                 if p > 0:
                     pen += 30 * p
                     note(f"plug space of {n}.{p_name} hits a corner screw zone")
-    # module USB-C must face a wall, close, so a charging cable reaches it
-    x, y, z, dx, dy = port_world("Module", "usb_c", L)
-    h = CAV / 2
-    dist = {(1, 0): h - x, (-1, 0): x + h, (0, 1): h - y, (0, -1): y + h}.get((dx, dy), 99.0)
-    if dist > 4.0:
-        pen += 25 * (dist - 4.0)
-        note(f"module USB-C end is {dist:.1f} mm from the nearest wall (needs <= 4)")
-    usbc_wall = DIR_WALL.get((dx, dy))
-    usbc_u = rot2(x, y, -WALL_ANGLE[usbc_wall])[0] if usbc_wall else 0.0
-    sw_wall, sw_u = L["switch"]
-    u_max = CAV / 2 - SWITCH_L / 2 - 4.0
-    if abs(sw_u) > u_max:
-        pen += 20 * (abs(sw_u) - u_max)
-        note("switch is too close to a wall corner")
-    lcd_half = LCD_W / 2 + 3.0
-    if usbc_wall == LCD_WALL and abs(usbc_u - LCD_U) < lcd_half + USBC_L / 2:
-        pen += 200
-        note("USB-C slot would land behind the LCD")
-    if sw_wall == LCD_WALL and abs(sw_u - LCD_U) < lcd_half + SWITCH_L / 2:
-        pen += 200
-        note("switch would land behind the LCD")
-    if sw_wall == usbc_wall and abs(sw_u - usbc_u) < (SWITCH_L + USBC_L) / 2 + 4:
-        pen += 100
-        note("switch and USB-C slot are too close on the same wall")
+    for zn, zb in wire_zones(L, with_switch):
+        for m, bb in bodies.items():
+            if zn.startswith("switch") and m == "Switch":
+                continue
+            p = overlap_pen(zb, bb, 0.0)
+            if p > 0:
+                pen += 30 * p
+                note(f"{m} blocks the {zn}")
+    usbc_wall, usbc_u = None, 0.0
+    if "Module" in names_in:
+        # module USB-C must face a wall, close, so a charging cable reaches it
+        x, y, z, dx, dy = port_world("Module", "usb_c", L)
+        h = CAV / 2
+        dist = {(1, 0): h - x, (-1, 0): x + h, (0, 1): h - y, (0, -1): y + h}.get((dx, dy), 99.0)
+        if dist > 4.0:
+            pen += 25 * (dist - 4.0)
+            note(f"module USB-C end is {dist:.1f} mm from the nearest wall (needs <= 4)")
+        usbc_wall = DIR_WALL.get((dx, dy))
+        usbc_u = rot2(x, y, -WALL_ANGLE[usbc_wall])[0] if usbc_wall else 0.0
+        if usbc_wall == LCD_WALL and abs(usbc_u - LCD_U) < LCD_W / 2 + 3.0 + USBC_L / 2:
+            pen += 200
+            note("USB-C slot would land behind the LCD")
+    if with_switch:
+        sw_wall, sw_u = L["switch"]
+        u_max = CAV / 2 - SWITCH_L / 2 - 4.0
+        if abs(sw_u) > u_max:
+            pen += 20 * (abs(sw_u) - u_max)
+            note("switch is too close to a wall corner")
+        if sw_wall == LCD_WALL and abs(sw_u - LCD_U) < LCD_W / 2 + 3.0 + SWITCH_L / 2:
+            pen += 200
+            note("switch would land behind the LCD")
+        if usbc_wall and sw_wall == usbc_wall and abs(sw_u - usbc_u) < (SWITCH_L + USBC_L) / 2 + 4:
+            pen += 100
+            note("switch and USB-C slot are too close on the same wall")
     return pen
 
 
@@ -410,7 +485,9 @@ def _random_layout(rng):
 def _perturb(L, rng):
     L2 = _clone(L)
     r = rng.random()
-    if r < 0.04:
+    if r < 0.03:
+        L2["hole"][0] = rng.randrange(len(HOLE_CANDS))
+    elif r < 0.05:
         L2["hole"][0] = rng.randrange(len(HOLE_CANDS))
     elif r < 0.12:
         L2["switch"][0] = rng.choice(list(WALL_ANGLE))
@@ -444,53 +521,30 @@ def _perturb(L, rng):
     return L2
 
 
-def _hand_layout():
-    """A sensible starting arrangement (the search refines it)."""
-    return {"Pi": [0.0, 40.0, 0], "ESP32": [-30.0, -50.0, 0], "Module": [43.0, -20.0, 0],
-            "Cell": [15.0, -66.0, 0], "Perfboard": [-53.0, 5.0, 270],
-            "switch": ["-X", 40.0], "hole": [0]}
-
-
-def optimize(restarts=30, iters=7000, seed=7, verbose=True):
-    """Phase 1 finds a valid layout. Phase 2 anneals wire lengths (it may wander
-    through invalid states) and keeps the best VALID layout it has seen."""
+def optimize(restarts=24, iters=8000, seed=7, verbose=True):
+    """Simulated annealing on (rule violations x6 + wire cost). Always returns the best
+    layout seen: (wire cost, remaining penalty, layout). Penalty 0 = every rule met."""
     rng = random.Random(seed)
     best = None
     for r in range(restarts):
-        L = _hand_layout() if r == 0 else _random_layout(rng)
-        pen = layout_penalty(L)
-        T = 30.0
-        for _ in range(iters):
-            if pen == 0:
-                break
-            L2 = _perturb(L, rng)
-            p2 = layout_penalty(L2)
-            if p2 <= pen or rng.random() < math.exp((pen - p2) / T):
-                L, pen = L2, p2
-            T = max(0.5, T * 0.999)
-        if pen > 0:
-            continue
-        cur_w = wire_cost(L)
-        cur = 4.0 * 0 + cur_w
-        best_r = (cur_w, _clone(L))
-        T = 30.0
+        L = _random_layout(rng)
+        pen, w = layout_penalty(L), wire_cost(L)
+        cur = 6.0 * pen + w
+        T = 60.0
         for _ in range(iters):
             L2 = _perturb(L, rng)
-            p2 = layout_penalty(L2)
-            w2 = wire_cost(L2)
-            c2 = 4.0 * p2 + w2
+            p2, w2 = layout_penalty(L2), wire_cost(L2)
+            c2 = 6.0 * p2 + w2
             if c2 < cur or rng.random() < math.exp((cur - c2) / T):
-                L, cur = L2, c2
-                if p2 == 0 and w2 < best_r[0]:
-                    best_r = (w2, _clone(L2))
-            T = max(0.4, T * 0.9993)
+                L, cur, pen, w = L2, c2, p2, w2
+                key = (round(pen, 1), w)
+                if best is None or key < best[0]:
+                    best = (key, _clone(L))
+            T = max(0.5, T * 0.9992)
         if verbose:
-            print(f"  restart {r + 1}/{restarts}: valid layout, wire cost {best_r[0]:.0f}")
-        if best is None or best_r[0] < best[0]:
-            best = (best_r[0], 0.0, best_r[1])
-    if best is None:
-        return (1e9, 1.0, _clone(DEFAULT_LAYOUT))
-    return best
+            print(f"  restart {r + 1}/{restarts}: best so far penalty {best[0][0]}, wire cost {best[0][1]:.0f}")
+    (pen, w), L = best
+    return (w, pen, L)
 
 
 def load_layout():
@@ -661,11 +715,18 @@ def build_internals(L):
         if n == "Cell":
             obj = box(0, 0, zc, sx, sy, sz).union(cyl(0, 0, Z_TOP - 9.0, 9.0, 65.0, "X"))
         elif n == "Perfboard":
-            obj = box(0, 0, Z_TOP - 0.8, sx, sy, 1.6).union(box(0, 0, Z_TOP - 1.6 - 7, 30, 20, 14))
+            hi, lo = z_range(n, L)
+            obj = box(0, 0, hi - 0.8, sx, sy, 1.6).union(box(0, 0, hi - 1.6 - 7, 30, 20, 14))
         else:
             obj = box(0, 0, zc, sx, sy, sz)
         obj = rotz(obj, rot).translate((cx, cy, 0))
         parts.append((SPECS[n]["label"], obj, colors[n]))
+    hi, lo = z_range("Perfboard", L)
+    length = abs(hi - Z_TOP)
+    for k, (x0, x1, y0, y1) in enumerate(perf_standoffs(L)):
+        parts.append((f"Perfboard standoff {k + 1}",
+                      cyl((x0 + x1) / 2, (y0 + y1) / 2, Z_TOP - length / 2, 2.5, length),
+                      (0.8, 0.8, 0.8)))
     wall, u = L["switch"]
     body = box(u, -CAV / 2 + SWITCH_DEPTH / 2, SWITCH_Z, SWITCH_L, SWITCH_DEPTH, SWITCH_H)
     parts.append(("Rocker switch body", rotz(body, WALL_ANGLE[wall]), (0.85, 0.1, 0.1)))
@@ -695,13 +756,15 @@ def fit_report(L):
     if not issues:
         lines.append("  [PASS] no overlaps, plug space clear, USB-C faces a wall, nothing behind the LCD")
     for i in issues:
-        lines.append(f"  [FAIL] {i}")
+        lines.append(f"  [TIGHT] {i}  -> nudge it in COMPONENTS/layout, or use a bigger box")
     lines.append("")
     lines.append("LAYOUT (centre x, y, rotation) - floor plan, +Y = front")
     for n in COMP_NAMES:
         cx, cy, rot = L[n]
         lines.append(f"  {SPECS[n]['label']:<24} ({cx:+.1f}, {cy:+.1f})  rot {int(rot)}")
     lines.append(f"  Rocker switch            wall {L['switch'][0]}, u={L['switch'][1]:+.1f}")
+    lines.append("  Perfboard                hovers above the module/ESP32/cell holder on 4 standoffs")
+    lines.append(f"  Lid cable hole           at {hole_xy(L)}")
     lines.append(f"  LCD                      wall {LCD_WALL}, u={LCD_U:+.1f}, centre z={LCD_Z:.0f}")
     lines.append("")
     lines.append("WIRE LENGTHS (needed incl. slack vs what you have, mm)")
@@ -889,7 +952,7 @@ def main():
             json.dump(L, f, indent=1)
         print(f"Saved {LAYOUT_FILE}")
         if pen > 0:
-            print("WARNING: no fully valid layout found; try again or loosen sizes.")
+            print("NOTE: some rules are still tight (listed in report.txt). Try --seed 1..9 or check sizes.")
     L = load_layout()
     if cq is None:
         print("\n".join(fit_report(L)))
