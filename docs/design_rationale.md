@@ -308,3 +308,73 @@ Applied to all three detector classes: `DensityDetector.capture_frame()`, `Ensem
 - **Background capture thread with a `queue.Queue(maxsize=1)`:** Frames are decoded in a dedicated thread; the main loop always reads the most recent decoded frame from a 1-item queue (drop-if-full). Provides true parallel capture/inference but adds threading complexity, GIL interaction with NumPy array handoff, and thread lifecycle management — overkill for a PoC-deadline system.
 - **`cv2.CAP_PROP_BUFFERSIZE = 1`:** OpenCV exposes a property to set the V4L2 buffer size. However, on many kernel/driver versions this property is ignored or silently clamped; it cannot be relied upon across Pi OS releases. The grab-loop approach works unconditionally.
 - **Reducing `LOOP_SLEEP` or restructuring the main loop:** These address symptoms (throughput) rather than the root cause (buffer staleness).
+
+---
+
+## ADR-10: Domain Shift & Whole-Session Evaluation Protocol
+
+**Date:** Oct 20, 2026
+
+### Context
+Previous validation of the density-map models on SCUT-HEAD Part A showed an apparent correlation ceiling of $r = 0.995$. However, subsequent testing on real Philippine classroom footage revealed significant domain drop (MAE degraded to 9.46, correlation dropped to 0.373).
+Deep analysis of SCUT-HEAD Part A revealed its true composition: 2,000 frames sampled from classroom monitor videos at a single university, whose authors noted that all rooms look virtually identical. The $r = 0.995$ figure was measuring room memorization, not genuine out-of-domain generalization. Furthermore, tuning ensemble weights across 5 short clips produced optimistic metric estimates.
+
+### Decision
+Establish a strict Whole-Session Holdout Evaluation Harness (`scripts/eval_harness.py`):
+1. **Whole-Session Holdouts:** Split data strictly by session (`room_id + date`). Test sessions are sequestered and never tuned on.
+2. **Definitive Metric Suite:** Replace raw Pearson correlation with:
+   - MAE (Mean Absolute Error)
+   - Within $\pm 1$ and Within $\pm 2$ accuracy percentages
+   - Per-session signed bias ($\mu_{\text{error}}$)
+   - Empty-room hallucination rate (mean predicted count on verified $N=0$ frames)
+   - Stability/jitter (standard deviation across constant ground-truth frames)
+3. **Multi-Seed Robustness:** Report mean $\pm$ standard deviation across 3 random seeds (42, 1337, 2026).
+4. **Automated 30-Worst Error Analysis:** Automatically bucket the 30 worst frame failures into `occlusion`, `far_rows`, `backpacks`, `blur`, and `lighting`.
+
+### Rationale
+- Prevents data leakage between temporally adjacent video frames.
+- Replaces brittle correlation metrics with actionable operational performance statistics.
+- Directs engineering effort directly to the highest failure bucket before attempting model retraining.
+
+---
+
+## ADR-11: Edge Runtime Free-Win Enhancements (Zero Retraining)
+
+**Date:** Oct 20, 2026
+
+### Context
+While model retraining requires substantial compute and annotated datasets, real-time edge deployment on the Pi 3B suffers from predictable peripheral noise, camera servo vibration, and physical constraint violations (e.g. predictions exceeding physical room capacity).
+
+### Decision
+Implement four zero-retraining runtime filters in `src/pi/config.py`, `src/pi/detection/detector.py`, and `src/pi/detection/zone_reconciler.py`:
+1. **Zone Exclusion Masks:** Zero out non-floor regions (whiteboards, open doors, windows, ceiling lighting fixtures) before summing the density map.
+2. **Multi-Capture Median Smoothing (`MULTI_CAPTURE_COUNT = 3`):** Capture 3 successive frames per quadrant and select the median density sum, filtering out transient motion blurs and servo vibration.
+3. **Dead-Band Count Hysteresis (`COUNT_HYSTERESIS_DELTA = 0.6`):** Prevent integer display flicker on the OLED screen by only updating displayed counts when moving beyond a $\pm 0.6$ person threshold.
+4. **Physical Capacity Clipping (`MAX_ROOM_CAPACITY = 45`, `MAX_ZONE_CAPACITY = 15`):** Hard-clip aggregated counts to the physical number of seats installed in the room.
+
+### Rationale
+- Zero training cost or regression risk.
+- Directly eliminates edge hallucinations on non-seating structures.
+- Provides rock-solid temporal stability on the local ESP32 OLED display and web dashboard.
+
+---
+
+## ADR-12: Training Dynamics Stabilization & INT8 Quantization Path
+
+**Date:** Oct 20, 2026
+
+### Context
+Previous attempts to train density regression models from scratch collapsed to trivial all-zero outputs within 2 to 5 epochs across all loss functions (MSE, Huber). Furthermore, the existing `UpSampling2D(bilinear)` decoder layer caused XNNPack to fail during INT8 quantization, locking deployment to float32 (~700 ms per model on ARM Cortex-A53).
+
+### Decision
+Standardize the retraining pipeline in `scripts/train_density.py`:
+1. **Target Scaling ($\times 100$) + Count L1 Loss:** Scale Gaussian density maps by 100 to prevent vanishing gradients, and add a composite Count L1 loss ($\lambda=0.5$) and Total Variation loss ($\lambda=0.01$).
+2. **Pre-Flight Overfit Check & Collapse Watchdog:** Execute `overfit_one_batch()` before training, and monitor variance with `CollapseDetectorCallback` to abort non-viable runs at epoch 2 instead of epoch 10.
+3. **Frozen BatchNorm Mode:** Set `BatchNormalization` layers to `training=False` during small-batch fine-tuning to prevent batch-statistic drift.
+4. **Geometry & Occlusion Augmentation:** Enforce 30°–50° perspective warp, aspect jitter, random crop, lower-frame armchair erasing, and style jitter.
+5. **Transposed Convolutions (`Conv2DTranspose`):** Offer a `Conv2DTranspose` decoder replacement to enable hardware-accelerated INT8 quantization via TFLite.
+
+### Rationale
+- Completely eliminates training collapse dynamics.
+- Enforces geometry and lighting invariance directly during backpropagation.
+- Establishes a verified path to ~350 ms INT8 inference on the Raspberry Pi 3B.
