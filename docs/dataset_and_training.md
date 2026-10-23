@@ -26,18 +26,20 @@ Standard object detection models (such as COCO-pretrained MobileNet-SSD or YOLO 
 
 ---
 
-## 2. Dataset Composition
+## 2. Dataset Composition & Domain Shift Analysis
 
-The training and evaluation corpus combines a large-scale academic benchmark with a localized classroom dataset:
+The training corpus combines an academic benchmark with localized classroom video. However, rigorous domain-gap analysis uncovered critical distribution constraints:
 
-| Dataset | Image Count | Resolution | Annotation Format | Description & Purpose | License / Source |
+| Dataset | Image Count | Resolution | Annotation Format | Description & Role | License / Source |
 |---|:---:|:---:|:---:|---|---|
-| **SCUT-HEAD (Part A)** | 2,000 | 1024×576 to 1920×1080 | Pascal VOC / YOLO TXT | Dense classroom and indoor surveillance scenes with high student density and overlapping heads. Provides broad feature diversity across seating patterns. | Academic Research License (SCUT) |
-| **Local Classroom Dataset** | 35 | 3840×2160 (4K) | YOLO TXT (Roboflow) | High-resolution photographs captured inside Philippine Christian University – Dasmariñas (PCU-D) classrooms at realistic ceiling pitch angles ($30^\circ$–$50^\circ$), capturing local wooden armchairs, uniforms, and fluorescent/ambient sunlight variations. | Proprietary / In-House |
+| **SCUT-HEAD (Part A)** | 2,000 | 1024×576 to 1920×1080 | Pascal VOC / YOLO TXT | Sampled from classroom monitor videos at a **single university**. Authors note those classrooms look identical. *Core finding:* the high validation correlation ($r = 0.995$) measured in-domain room memorization rather than generalization. Useful only as pre-training / backbone initialization. | Academic Research License (SCUT) |
+| **SCUT-HEAD (Part B)** | 2,405 | Varied | Pascal VOC | Internet images (crowds, outdoor events, street scenes). *Policy:* **Do NOT adopt without pre-committed holdout verification.** External crowd data (CrowdHuman, RPEE) has hurt classroom accuracy in every trial. | Academic Research License (SCUT) |
+| **Real Ceiling-Mount Dataset (Local)** | Target: ~1,500 frames | 2688×1520 & 1920×1080 | JSON point / density annotations | Real video captured from the physical ceiling mount across 8+ sessions (varied rooms, lighting conditions, and desk configurations at PCU-D). Strict whole-session holdouts. | Proprietary / In-House |
+| **Empty-Room Clutter Set** | 15–20% of dataset | 2688×1520 | Zero-density target ($N=0$) | Full-frame empty and near-empty classrooms featuring backpacks on desks, stacked armchairs, whiteboards, and glare. Teaches the network that "backpack $\neq$ head" without cropped negative bias. | Proprietary / In-House |
 
 ---
 
-## 3. Annotation & Labeling Standard
+## 3. Annotation Standard & The Partial-Head Rule
 
 All annotations are normalized to a single class:
 
@@ -46,7 +48,18 @@ Class Index: 0
 Class Name:  "head"
 ```
 
-### Bounding Box Boundary Rules:
+### Point Density Annotations (Density Regression):
+- **Anchor Point:** The cranial apex (top center of the skull).
+- **Target Kernel:** Normalized 2D Gaussian ($\sigma = 4.0\text{ px}$) scaled by 100 for numerical stability during gradient backpropagation.
+
+### The Standardized Partial-Head Rule:
+To prevent labeler noise and preserve boundary consistency:
+1. **Inclusion Threshold:** A head is labeled if and only if **at least 15% of the cranial volume / hairline** is visible beyond the occluding obstruction (e.g. front armchair backrest, partition, or neighbor's shoulder).
+2. **Exclusion Rule:** Heads occluded by $> 85\%$ (e.g. only 2–3 pixels of hair visible behind a tall wooden backrest) are **strictly excluded** from ground truth.
+3. **Anchor Placement:** For partial heads, the center annotation point is placed at the highest visible contour of the skull, never on the occluding furniture.
+4. **Consistency Enforcement:** This rule is baked into `scripts/annotate_assisted.py` to ensure unified labeling across all sessions.
+
+### Bounding Box Boundary Rules (HUD Detector Only):
 1. **Top Boundary:** Apex of the head/hairline.
 2. **Bottom Boundary:** The clavicle / lower shoulder line (the top contour of the chest where the neck joins the shoulders).
 3. **Lateral Boundaries:** Outermost lateral span of the shoulders or hair.
@@ -55,22 +68,86 @@ Class Name:  "head"
 
 ---
 
-## 4. Data Augmentation Strategy (Roboflow Pipeline)
+## 4. Data Augmentation Strategy (Geometry & Style Invariance)
 
-To ensure model resilience against ambient lighting changes, camera lens distortions, and varied classroom layouts, the following augmentations are applied:
+Previous experiments proved that model behavior diverged sharply between letterbox and stretch preprocessing: the network was not geometry-invariant. Furthermore, style augmentation was the *only* training run that completed 10 epochs without loss collapse.
+
+To enforce both geometry and appearance invariance, `scripts/train_density.py` incorporates a comprehensive pipeline:
 
 ```
-Raw Images (SCUT-HEAD + Local)
+Raw Frames (Local Real Video + SCUT-HEAD Stream)
         │
-        ├── 1. Exposure / Brightness Shifts (±25%)    --> Simulates morning sun vs. evening darkness
-        ├── 2. Contrast Adjustments (±20%)            --> Simulates harsh fluorescent classroom lamps
-        ├── 3. Horizontal Flip (50% probability)      --> Doubles perspective variation
-        ├── 4. Perspective Warping (±10° pitch/yaw)   --> Simulates varied ceiling mounting angles
-        ├── 5. Mild Gaussian Blur (up to 1.5 px)      --> Simulates slight camera vibration during sweep
+        ├── 1. Aspect Jitter & Random Scale/Crop (0.85× to 1.15×)
+        │      --> Prevents letterbox vs stretch geometry sensitivity
+        │
+        ├── 2. Realistic 30°–50° Perspective Warp
+        │      --> Mimics physical camera pitch angles relative to ceiling and floor
+        │
+        ├── 3. Lower-Frame Random Erasing / Occlusion
+        │      --> Erases random patches in lower 50% of the frame to simulate
+        │          severe desk, chair, and armchair obstruction
+        │
+        ├── 4. Style Augmentation (AugMix-Inspired)
+        │      --> Color temperature shifts, brightness/contrast jitter, saturation,
+        │          and mild Gaussian blur (simulates glare and uneven classroom lighting)
+        │
+        ├── 5. Sensor Noise & JPEG Compression Artifacts
+        │      --> Simulates UVC sensor noise and 640×480 MJPEG stream quantization
         │
         ▼
-Augmented Training Dataset (~5,500 total images)
+Stabilized Augmented Training Batch
 ```
+
+---
+
+## 4b. Whole-Session Evaluation Protocol & Domain-Shift Metrics
+
+Evaluating models by randomly shuffling frames across video clips leaks temporal context and exaggerates correlation ($r = 0.995$ on homogeneous rooms). CLASSCAN strictly enforces the following evaluation protocol in `scripts/eval_harness.py`:
+
+### 1. Whole-Session Holdouts (`room_id + date`):
+- **Never tune on test sessions:** Entire sessions (e.g. `room_302_day1`) are sequestered as pure out-of-domain test sets.
+- **Ensemble weights and hyperparameter tuning** are performed exclusively on distinct validation sessions.
+- **Leave-One-Session-Out Cross Validation (LOSO-CV):** Generated via `scripts/session_split.py` for small-sample validation.
+
+### 2. Definitive Metric Suite (Replacing Raw Correlation):
+Naively computing Pearson's $r$ over a handful of low-variance clips is a weak statistic. The evaluation harness tracks:
+- **MAE (Mean Absolute Error):** Primary accuracy indicator ($\frac{1}{N}\sum |y - \hat{y}|$).
+- **Within $\pm 1$ and Within $\pm 2$ Accuracy (%):** Operational reliability metrics reflecting acceptable error margins in classroom management.
+- **Per-Session Bias ($\mu_{\text{error}}$):** Mean signed deviation ($y - \hat{y}$) measuring whether the model systematically overcounts or undercounts in a specific room.
+- **Hallucination Rate (Empty Frames):** Mean predicted headcount on verified zero-occupancy frames ($N=0$). Measures false-positive resistance against backpacks, desks, and floor reflections.
+- **Stability / Count Jitter:** Standard deviation of predicted headcount across consecutive frames of identical occupancy ($\Delta y = 0$). High jitter destabilizes the physical OLED display.
+
+### 3. Multi-Seed Reporting (3 Seeds):
+All benchmark runs are repeated across 3 fixed random seeds (`42`, `1337`, `2026`). Differences smaller than seed standard deviation are rejected as statistical noise.
+
+### 4. Automated 30-Worst Error Analysis:
+The harness identifies the 30 frames with highest absolute error and renders overlay heatmaps. Errors are automatically categorized into 5 actionable buckets:
+- `occlusion`: Heads heavily obstructed by armchairs or adjacent students.
+- `far_rows`: Small heads ($\le 14\text{ px}$) in distant quadrant corners.
+- `backpacks`: False-positive density localized on empty chairs or bags.
+- `blur`: Motion blur from servo sweep or student movement.
+- `lighting`: Contrast blowout from fluorescent lights or window solar glare.
+
+---
+
+## 4c. Retraining Stabilization & Anti-Collapse Recipe
+
+Earlier from-scratch training attempts collapsed to all-zero outputs within 2 to 5 epochs even when using standard Mean Squared Error (MSE). The stabilized retraining recipe in `scripts/train_density.py` resolves this via:
+
+1. **Target Scaling ($\times 100$):**
+   - Unscaled Gaussian density kernels yield peak pixel values around $0.005$–$0.02$. Gradients under standard float precision vanish or fall into trivial all-zero minima.
+   - Scaling density targets by 100 boosts gradient magnitude, while an added **Count L1 loss** ($\lambda_{\text{count}} = 0.5$) and **Total Variation (TV) loss** ($\lambda_{\text{tv}} = 0.01$) directly penalize global headcount mismatch and high-frequency noise.
+2. **Pre-Flight Overfit-One-Batch Check:**
+   - Before launching multi-hour training, the harness executes `overfit_one_batch()`. The model must drive loss down by $\ge 80\%$ on a single 4-image batch within 30 steps. If it fails, execution halts immediately.
+3. **`CollapseDetectorCallback` Watchdog:**
+   - Evaluates a fixed sanity batch after every epoch. If predicted headcount variance falls below $0.05$ or mean predicted count collapses to zero, training terminates immediately with a diagnostic dump.
+4. **Frozen/Inference BatchNorm Mode:**
+   - During fine-tuning on small batch sizes ($B=8$ or $16$), batch statistics drift wildly. All `BatchNormalization` layers are held in inference mode (`training=False`) or updated using Adaptive Batch Normalization (`scripts/adabn.py`).
+5. **Gradient Clipping & Differential Learning Rates:**
+   - `clipnorm=1.0` prevents explosive weight updates.
+   - Backbone layers use a conservative learning rate ($1\times 10^{-5}$), while decoder upsampling heads use $1\times 10^{-4}$.
+6. **Architecture Upgrade to `Conv2DTranspose`:**
+   - Bilinear `UpSampling2D` prevents native INT8 quantization in LiteRT / XNNPack. Replacing it with transposed convolutions unlocks hardware INT8 deployment.
 
 ---
 
@@ -361,16 +438,22 @@ The AI/model engineering phase has concluded after 9 rounds of real-footage fine
    - **Locked-in Inference Pipeline:** 2×2 grid tiled inference (0.2 overlap), dual thresholding (`full_obj=0.35`, `tile_obj=0.65`), Soft-NMS (σ=0.5, thresh=0.3).
    - **Validation Metrics:** P=31.3%, R=32.4%, **F1=31.8%**, **MAE=3.84**, **r=0.986**.
 
-### 10b. Operational Deployment Strategy
+### 10b. Operational Deployment Strategy & Free Runtime Enhancements
 - **Turret Scanning Context:** A 40-student classroom divided across 4 pan/tilt servo quadrants means each camera snapshot evaluates only ~10 students. The model's true deployment regime is the low-density bucket where accuracy is highest (SCUT-HEAD 0–20 bucket MAE=0.93).
-- **Ensemble Inference:** Run both TFLite models on each captured frame; headcount = 0.6 × sum(epoch8_density_map_letterbox) + 0.4 × sum(style_aug_density_map_stretch). No additional threshold needed (bias is already near-neutral at +1.58).
-- **Deployment Status (Sept 23, 2026):** Both ensemble checkpoints exported to float32 TFLite and deployed on Pi. Full pipeline (Pi + OV4689 + ensemble) confirmed working end-to-end on real hardware. Dashboard functional. Camera color desaturation appears resolved. Remaining open items: frame delivery inconsistency, inference lag, camera startup config wiring (`set_camera_config.sh` + `quirks=128` must be confirmed in `setup/startup.py`), and 5+ people validation.
+- **Ensemble Inference:** Run both TFLite models on each captured frame; headcount = 0.6 × sum(epoch8_density_map_letterbox) + 0.4 × sum(style_aug_density_map_stretch).
+- **Free Wins Active in Core Runtime:**
+  1. *Zone Exclusion Masks (`ZONE_EXCLUSION_MASKS`):* Zeros out non-floor regions (whiteboards, doors, windows, ceiling) before density map summation to eliminate peripheral false positives.
+  2. *Multi-Capture Smoothing (`MULTI_CAPTURE_COUNT = 3`):* Takes 3 snapshots per quadrant and computes the median count to filter transient student movements and sensor noise.
+  3. *Dead-Band Count Hysteresis (`COUNT_HYSTERESIS_DELTA = 0.6`):* Rejects fractional frame-to-frame jitters unless the trend moves by $> 0.6$ people.
+  4. *Seat Capacity Clipping (`MAX_ROOM_CAPACITY = 45`, `MAX_ZONE_CAPACITY = 15`):* Enforces physical reality by capping headcount at physical room seating limits.
 
-### 10c. Long-Term / Post-PoC Research Avenues
-1. **Genuine Filipino-classroom training data:** Per PeaNat's original recommendation — the real root cause of the 0.43–0.60 real-footage correlation ceiling. Deferred to future phase, stated plainly in writeup/defense.
-2. **MPCount (CVPR 2024):** Single-domain-generalization architecture. Researched and cited; multi-day port, out of scope for PoC.
-3. **TTA (Test-Time Augmentation):** Average predictions over original + horizontally-flipped frame. No retraining; cheap to add post-deployment.
-4. **Per-clip adaptive correction for line1:** Persistent weak point (corr 0.455) in every ensemble variant. Root cause not yet identified.
-5. **sit2 root cause investigation:** This clip degraded correlation in rounds 1–3 but recovered with letterbox (0.217→0.595); now at 0.519 in the final ensemble. No longer the clear drag but still worth examining.
-6. **RPEE-Heads dataset:** Confirmed negative result (MAE=10.79). Not pursued further.
+### 10c. Domain-Shift Optimization Program & Roadmap
+1. **Unlabeled Real-Video Adaptation (AdaBN):** Recompute BatchNorm moving statistics on hundreds of unlabeled PCU-D classroom frames via `scripts/adabn.py`. Zero annotation cost; directly aligns feature normalization with the target domain.
+2. **Model Distillation:** Train a single compact MobileNetV3 student model to mimic the 2-model ensemble's outputs across unlabeled frames, halving Pi 3B inference latency (~1.4 s → ~0.7 s).
+3. **INT8 Quantization via `Conv2DTranspose`:** Transitioning decoder architecture from bilinear upsampling to transposed convolutions unblocks native INT8 execution on ARM NEON.
+4. **Targeted Data Collection:** Expand real ceiling-mount dataset to ~1,500 frames across 8+ sessions with 15–20% empty classrooms using model-assisted annotation (`scripts/annotate_assisted.py`).
+5. **Explicitly Deferred / Skipped:**
+   - *Backbone Swap & YOLO:* Ruled out due to Pi 3B thermal constraints and failure on furniture occlusion.
+   - *External Crowd Datasets:* Proved actively detrimental in empirical benchmarks.
+   - *Flip-TTA & MPCount:* Held until full-session real holdout data is established.
 
