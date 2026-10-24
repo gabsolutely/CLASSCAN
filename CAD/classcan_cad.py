@@ -31,7 +31,7 @@ except ImportError:          # --optimize still works without it
     cq = None
 
 # ================================================================ PARAMETERS
-OUT_DIR = "CAD/classcan_cad_out"
+OUT_DIR = "classcan_cad_out"
 LAYOUT_FILE = "classcan_layout.json"     # written by --optimize, read by the build
 
 # --- enclosure (Lazada listing: outer 174x174x73, inner 160x160x63)
@@ -584,6 +584,88 @@ def build_features(L):
     return F
 
 
+# ================================================================ REAL 3D MODELS (optional)
+MODELS_DIR = "models"
+# file name expected in ./models/ for each part. Missing file = the script draws a simple block instead.
+MODEL_FILES = {
+    "Pi": "pi3b.step",            # bare Raspberry Pi 3B board (drawn inside your acrylic case)
+    "ESP32": "esp32_devkit.step",
+    "Module": "charge_module.step",
+    "Cell": "18650_holder.step",  # holder (with a cell if the model has one)
+    "Perfboard": "perfboard_5x7.step",
+    "servo": "mg90s.step",
+    "lcd": "lcd2004_i2c.step",
+    "camera": "ov4689_camera.step",
+}
+# per-model fixes after auto-orientation: "spin" = extra rotation about Z (degrees),
+# "flip" = turn it upside down. Change these if a connector faces the wrong way.
+MODEL_OPTS = {k: {"spin": 0, "flip": False} for k in MODEL_FILES}
+PI_BOARD = (85.0, 56.0, 17.0)         # bare Pi 3B board incl. connectors (approx)
+LOADED_MODELS, MODEL_WARNINGS = [], []
+
+_PERMS = {
+    (0, 1, 2): [], (1, 0, 2): [("Z", 90)], (0, 2, 1): [("X", 90)], (2, 1, 0): [("Y", 90)],
+    (1, 2, 0): [("Z", 90), ("X", 90)], (2, 0, 1): [("X", 90), ("Z", 90)],
+}
+
+
+def fit_rotations(dims, target):
+    """Pick the 90-degree rotation that makes a model's bounding box best match the
+    part's expected size. Returns (rotation steps, resulting dims, mismatch)."""
+    best = None
+    for perm, seq in _PERMS.items():
+        d = tuple(dims[i] for i in perm)
+        err = sum(abs(d[k] - target[k]) / max(target[k], 1e-6) for k in range(3))
+        if best is None or err < best[0]:
+            best = (err, seq, d)
+    return best[1], best[2], best[0]
+
+
+def load_model(key, target):
+    """Load models/<file> if present: centre it at the origin, rotate it to match
+    `target` (x, y, z), and warn if its size is off by more than 12%. None if absent."""
+    fn = MODEL_FILES.get(key)
+    path = os.path.join(MODELS_DIR, fn) if fn else None
+    if not path or not os.path.exists(path):
+        return None
+    obj = cq.importers.importStep(path)
+    bb = obj.val().BoundingBox()
+    obj = obj.translate((-(bb.xmin + bb.xmax) / 2, -(bb.ymin + bb.ymax) / 2, -(bb.zmin + bb.zmax) / 2))
+    seq, dims, err = fit_rotations((bb.xlen, bb.ylen, bb.zlen), target)
+    for ax, ang in seq:
+        obj = obj.rotate((0, 0, 0), {"X": (1, 0, 0), "Y": (0, 1, 0), "Z": (0, 0, 1)}[ax], ang)
+    opts = MODEL_OPTS.get(key, {})
+    if opts.get("flip"):
+        obj = obj.rotate((0, 0, 0), (1, 0, 0), 180)
+    if opts.get("spin"):
+        obj = obj.rotate((0, 0, 0), (0, 0, 1), opts["spin"])
+    LOADED_MODELS.append(f"{key}: {fn}  ({dims[0]:.1f} x {dims[1]:.1f} x {dims[2]:.1f} mm)")
+    if max(abs(dims[k] - target[k]) / target[k] for k in range(3)) > 0.12:
+        MODEL_WARNINGS.append(f"{key}: model is {dims[0]:.1f}x{dims[1]:.1f}x{dims[2]:.1f} mm but the layout "
+                              f"assumes {target[0]:.0f}x{target[1]:.0f}x{target[2]:.0f}. Check the model "
+                              f"or edit the size in SPECS / HEAD_SERVO / CAM, then run --optimize.")
+    return obj
+
+
+def write_models_readme():
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    path = os.path.join(MODELS_DIR, "README.txt")
+    if os.path.exists(path):
+        return
+    lines = ["Put STEP files here with these exact names. Missing ones are drawn as simple blocks.",
+             "Check each model's licence and measure the real part with calipers: community models can be off.", ""]
+    lines += [f"  {v:<22} <- {k}" for k, v in MODEL_FILES.items()]
+    lines += ["", "Where to look:",
+              "  Pi 3B     GrabCAD 'Raspberry Pi 3 model B single-board computer' (use the Simplified STEP, ~2.5 MB)",
+              "  ESP32     GrabCAD 'ESP32-DevKitC V4' (38-pin) or 'ESP32 38 Pines ESP WROOM 32'",
+              "  MG90S, 18650 holder, LCD2004 I2C, TP5100-style charge board, OV4689 board, 4x6/5x7 perfboard:",
+              "            search GrabCAD / Printables / Thingiverse / SnapMagic for the exact name; KiCad's packages3D",
+              "            library also has pin headers, screw terminals and displays.",
+              "After the first run open the STEP and check connector directions; fix with MODEL_OPTS (spin/flip)."]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
 # ================================================================ CAD HELPERS
 def _need_cq():
     if cq is None:
@@ -671,11 +753,16 @@ def build_lid(L):
 def build_lcd():
     yo = -BOX_D / 2
     th = WALL_ANGLE[LCD_WALL]
-    pcb = box(LCD_U, yo - LCD_SO - 0.8, LCD_Z, LCD_W, 1.6, LCD_H)
-    glass = box(LCD_U, yo - LCD_SO - 1.6 - 3.5, LCD_Z, 90, 7, 55)
-    backpack = box(LCD_U, yo - LCD_SO + 2.5, LCD_Z + 22, 42, 5, 16)
-    body = pcb.union(glass).union(backpack)
-    window = box(LCD_U, yo - LCD_SO - 1.6 - 7 - 0.25, LCD_Z, 76, 0.5, 25)
+    lm = load_model("lcd", (LCD_W, 14.0, LCD_H))
+    if lm is not None:
+        body = lm.translate((LCD_U, yo - LCD_SO - 7.0, LCD_Z))      # backpack side toward the wall
+        window = box(LCD_U, yo - LCD_SO - 14.2, LCD_Z, 0.5, 0.2, 0.5)
+    else:
+        pcb = box(LCD_U, yo - LCD_SO - 0.8, LCD_Z, LCD_W, 1.6, LCD_H)
+        glass = box(LCD_U, yo - LCD_SO - 1.6 - 3.5, LCD_Z, 90, 7, 55)
+        backpack = box(LCD_U, yo - LCD_SO + 2.5, LCD_Z + 22, 42, 5, 16)
+        body = pcb.union(glass).union(backpack)
+        window = box(LCD_U, yo - LCD_SO - 1.6 - 7 - 0.25, LCD_Z, 76, 0.5, 25)
     stand = None
     for sx in (-1, 1):
         for sz in (-1, 1):
@@ -688,13 +775,16 @@ def build_head():
     hd = _HD
     sx, sy, sz = HEAD_SERVO
     base = box(0, HEAD_Y, hd["z0"] - 1.5, 35, 35, 3)
-    pan_servo = box(0, HEAD_Y, hd["pan_z"], sx, sy, sz)
+    sm = load_model("servo", HEAD_SERVO)
+    pan_servo = sm.translate((0, HEAD_Y, hd["pan_z"])) if sm is not None else box(0, HEAD_Y, hd["pan_z"], sx, sy, sz)
     bracket = box(0, HEAD_Y, hd["z_pan_bot"] - 1, 30, 30, 2)
-    tilt_servo = box(0, HEAD_Y, hd["tilt_z"], sx, sy, sz)
+    tilt_servo = sm.translate((0, HEAD_Y, hd["tilt_z"])) if sm is not None else box(0, HEAD_Y, hd["tilt_z"], sx, sy, sz)
     plat_back = hd["plat_y"] - PLAT[1] / 2
     arm = box(0, (hd["servo_front"] + plat_back) / 2, hd["tilt_z"], 8, plat_back - hd["servo_front"], 8)
     platform = box(0, hd["plat_y"], hd["tilt_z"], *PLAT)
-    camera = box(0, hd["plat_front"] + CAM[1] / 2, hd["tilt_z"], *CAM)
+    cm = load_model("camera", CAM)
+    camera = cm.translate((0, hd["plat_front"] + CAM[1] / 2, hd["tilt_z"])) if cm is not None else \
+        box(0, hd["plat_front"] + CAM[1] / 2, hd["tilt_z"], *CAM)
     led = box(0, hd["led_y"], hd["led_z"], *LED_BAR)
     return {
         "base": base, "pan_servo": pan_servo, "bracket": bracket, "tilt_servo": tilt_servo,
@@ -712,13 +802,26 @@ def build_internals(L):
         cx, cy, rot = L[n]
         sx, sy, sz = SPECS[n]["size"]
         zc = Z_TOP - sz / 2
-        if n == "Cell":
-            obj = box(0, 0, zc, sx, sy, sz).union(cyl(0, 0, Z_TOP - 9.0, 9.0, 65.0, "X"))
+        if n == "Pi":
+            case = box(0, 0, zc, sx, sy, sz)
+            m = load_model("Pi", PI_BOARD)
+            if m is not None:
+                parts.append(("Pi acrylic case", rotz(case, rot).translate((cx, cy, 0)), (0.7, 0.85, 0.95), 0.18))
+                obj = m.translate((0, 0, Z_TOP - 4.0 - PI_BOARD[2] / 2))
+            else:
+                obj = case
+        elif n == "Cell":
+            m = load_model("Cell", (sx, sy, sz))
+            obj = m.translate((0, 0, zc)) if m is not None else \
+                box(0, 0, zc, sx, sy, sz).union(cyl(0, 0, Z_TOP - 9.0, 9.0, 65.0, "X"))
         elif n == "Perfboard":
             hi, lo = z_range(n, L)
-            obj = box(0, 0, hi - 0.8, sx, sy, 1.6).union(box(0, 0, hi - 1.6 - 7, 30, 20, 14))
+            m = load_model("Perfboard", (sx, sy, 1.6))
+            plate = m.translate((0, 0, hi - 0.8)) if m is not None else box(0, 0, hi - 0.8, sx, sy, 1.6)
+            obj = plate.union(box(0, 0, hi - 1.6 - 7, 30, 20, 14))
         else:
-            obj = box(0, 0, zc, sx, sy, sz)
+            m = load_model(n, (sx, sy, sz))
+            obj = m.translate((0, 0, zc)) if m is not None else box(0, 0, zc, sx, sy, sz)
         obj = rotz(obj, rot).translate((cx, cy, 0))
         parts.append((SPECS[n]["label"], obj, colors[n]))
     hi, lo = z_range("Perfboard", L)
@@ -884,6 +987,7 @@ def build_all(L, run_sweep):
     _need_cq()
     os.makedirs(OUT_DIR, exist_ok=True)
     F = build_features(L)
+    write_models_readme()
     print("Building enclosure, LCD, head...")
     tray, lid = build_tray(F), build_lid(L)
     lcd_body, lcd_window, lcd_stand = build_lcd()
@@ -906,8 +1010,8 @@ def build_all(L, run_sweep):
     add("tilt_arm_platform", head["arm_platform"], (0.15, 0.15, 0.15))
     add("camera", head["camera"], (0.02, 0.02, 0.02))
     add("led_bar", head["led"], (1.0, 0.9, 0.4))
-    for name, obj, rgb in build_internals(L):
-        add(name, obj, rgb)
+    for item in build_internals(L):
+        add(item[0], item[1], item[2], item[3] if len(item) > 3 else 1.0)
     print("Adding wires...")
     for i, (name, need, supplied, _, pts, color, radius) in enumerate(wire_needs(L)):
         tag = name.replace(" ", "_").replace("+", "plus").replace("-", "")
@@ -929,6 +1033,9 @@ def build_all(L, run_sweep):
             print(f"(skipped {ext}: {e})")
     write_templates(OUT_DIR, L)
     report = fit_report(L)
+    report += ["", "3D MODELS"]
+    report += [f"  [loaded]  {m}" for m in LOADED_MODELS] or ["  none found in ./models/ (simple blocks used; see models/README.txt)"]
+    report += [f"  [CHECK]   {w}" for w in MODEL_WARNINGS]
     if run_sweep:
         print("Running camera sweep (can take a minute)...")
         report += sweep_report(head, lid)
