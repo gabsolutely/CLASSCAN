@@ -84,7 +84,7 @@ EOF
         bash "$(dirname "$(realpath "$0")")/classcan-boot.sh"
 
         echo ""
-        echo "  Hotspot mode ON. Devices can connect to: CLASSCAN (classcan2024)"
+        echo "  Hotspot mode ON. Devices can connect to: CLASSCAN (default pw: classcan2024)"
         echo "  Dashboard: http://192.168.20.1:8080"
         echo ""
         ;;

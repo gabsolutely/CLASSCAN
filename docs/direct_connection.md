@@ -123,15 +123,15 @@ sudo bash src/pi/setup/hotspot.sh --stop
 sudo bash src/pi/setup/hotspot.sh --status
 ```
 
-Default credentials (edit the top of `hotspot.sh` to change):
+Default credentials (edit `PASSPHRASE` at the top of `hotspot.sh` to change):
 - **SSID**: `CLASSCAN`
-- **Password**: `classcan2024`
+- **Password**: *(set in `hotspot.sh` — change before deployment)*
 - **Pi IP**: `192.168.20.1`
 
 ### On your device (any OS)
 
 1. Go to Wi-Fi settings and connect to **`CLASSCAN`**
-2. Enter password **`classcan2024`**
+2. Enter the passphrase configured in `hotspot.sh`
 3. Open browser → `http://192.168.20.1:8080`
    - Or try the mDNS alias: `http://classcan.local:8080`
 

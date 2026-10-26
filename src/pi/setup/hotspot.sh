@@ -26,7 +26,7 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 SSID="CLASSCAN"
-PASSPHRASE="classcan2024"      # WPA2, min 8 chars — change before demo if wanted
+PASSPHRASE="classcan2024"      # WPA2, min 8 chars — CHANGE THIS BEFORE DEPLOYMENT
 CHANNEL="6"                   # 2.4 GHz ch6 — works on all devices, avoids ch1/11 crowding
 IFACE="wlan0"
 PI_IP="192.168.20.1"

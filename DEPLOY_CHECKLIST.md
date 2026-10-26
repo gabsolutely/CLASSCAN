@@ -53,7 +53,7 @@ python scripts/export_to_tflite.py --mode density \
   - **Option A — same Wi-Fi router:** Pi and laptop on the same network; Pi IP via `hostname -I`
   - **Option B — direct ethernet cable:** run `sudo bash src/pi/setup/direct_connect.sh`; Pi IP `192.168.10.1`; set laptop to `192.168.10.2 / 255.255.255.0`
   - **Option C — USB gadget (RNDIS):** run `sudo bash src/pi/setup/usb_gadget.sh` + reboot; Pi IP `192.168.7.1`
-  - **Option D — Wi-Fi Hotspot (no cables):** run `sudo bash src/pi/setup/hotspot.sh`; connect laptop to SSID `CLASSCAN` (pw: `classcan2024`); Pi IP `192.168.20.1`
+  - **Option D — Wi-Fi Hotspot (no cables):** run `sudo bash src/pi/setup/hotspot.sh`; connect laptop to SSID `CLASSCAN` (pw: `<your-passphrase>` — set in `hotspot.sh`); Pi IP `192.168.20.1`
 - [ ] Pi IP address is known (write it here: `_____________`)
 - [ ] SSH access confirmed — `ssh pi@<ip>` responds
 

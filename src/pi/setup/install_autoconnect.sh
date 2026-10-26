@@ -112,6 +112,7 @@ macaddr_acl=0
 auth_algs=1
 ignore_broadcast_ssid=0
 wpa=2
+# Default passphrase (change before field deployment in /etc/hostapd/hostapd.conf)
 wpa_passphrase=classcan2024
 wpa_key_mgmt=WPA-PSK
 wpa_pairwise=TKIP
@@ -211,7 +212,7 @@ echo ""
 echo "  After reboot, reach the Pi via:"
 echo ""
 echo "  [Wi-Fi Hotspot]"
-echo "    Connect to:  CLASSCAN  (password: classcan2024)"
+echo "    Connect to:  CLASSCAN  (default password: classcan2024 — change before deployment)"
 echo "    SSH:         ssh pi@192.168.20.1"
 echo "    Dashboard:   http://192.168.20.1:8080"
 echo "    Also try:    http://classcan.local:8080"

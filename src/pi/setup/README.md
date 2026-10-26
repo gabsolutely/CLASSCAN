@@ -17,7 +17,7 @@ After reboot, reach the Pi via **any** of these — no prior setup needed:
 
 | Method | How to connect | SSH | Dashboard |
 |---|---|---|---|
-| **Wi-Fi hotspot** | Join `CLASSCAN` (pw: `classcan2024`) | `ssh pi@192.168.20.1` | `http://192.168.20.1:8080` |
+| **Wi-Fi hotspot** | Join `CLASSCAN` (pw: `<your-passphrase>` — set in `hotspot.sh`) | `ssh pi@192.168.20.1` | `http://192.168.20.1:8080` |
 | **USB data cable** | Plug micro-USB → laptop | `ssh pi@192.168.7.1` | `http://192.168.7.1:8080` |
 | **Ethernet (recovery)** | Plug cable into any router | Check router for Pi's IP | `http://<ip>:8080` |
 
