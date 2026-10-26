@@ -3,10 +3,11 @@
 **Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
-**Status (as of Oct 20, 2026):** **Live end-to-end pipeline operational; executing Domain-Shift Optimization Plan.** Full pipeline (Pi 3B + OV4689 + ensemble + dashboard + threaded inference worker) running on target hardware. Core finding uncovered: SCUT-HEAD Part A is 2,000 frames from a single university's surveillance monitors with homogeneous rooms; previous $r = 0.995$ validation measured in-domain room memorization rather than true generalizability. Real deployment across Philippine classrooms encounters substantial domain shift (different furniture/wooden armchairs, lighting/glare, 30°–50° ceiling pitch, and backpacks).
+**Status (as of Oct 26, 2026):** **PoC delivered and presented. Now in Phase 2 (hardware integration).** PoC presentation (Oct 2026) went well; demo video submitted beforehand since live prototype wasn't working during the presentation. Full pipeline (Pi 3B + OV4689 + ensemble + dashboard + threaded inference worker) confirmed running on target hardware. **v5 retraining complete (Oct 2026, no new data):** `classcan_v5_final.tflite` — fixed training recipe (double-scaling bug, frozen BN, Count L1, EMA, real-frame augmentation) — leave-one-clip-out **MAE=1.47, Pearson r=0.86, within±2=72%** (beats old ensemble on all 5 clips). Remaining AI gates: Pi output validation, empty-room false-positive test, Pi speed/heat. Core domain-gap finding still holds: SCUT-HEAD Part A measured in-domain room memorization; real Philippine classroom deployment encounters substantial domain shift (furniture, lighting, ceiling pitch, backpacks).
 
-1. **Current Deployed Ensemble:** `0.6 × classcan_density_v4_round4_ft_epoch8 (letterbox eval) + 0.4 × classcan_density_style_aug_ft_lowLR_epoch8 (stretch eval)` — baseline MAE=2.77, correlation=0.586 on held-out footage.
-2. **Free Wins Implemented (Zero-Retraining):** Quadrant zone exclusion masks, 3-snapshot multi-capture median, count hysteresis ($\Delta = 0.6$), and seat capacity clipping (45 seats max).
+1. **Current Deployed Model:** `classcan_v5_final.tflite` — MAE=1.47, corr=0.86 on 5-clip leave-one-out holdout (356 frames). Input: 0–255 pixels, letterbox 416×416 with gray-114 padding, sum 104×104 output map.
+2. **Retired Ensemble (superseded):** `0.6 × classcan_density_v4_round4_ft_epoch8 (letterbox eval) + 0.4 × classcan_density_style_aug_ft_lowLR_epoch8 (stretch eval)` — baseline MAE=2.77, correlation=0.586 on held-out footage.
+3. **Free Wins Implemented (Zero-Retraining):** Quadrant zone exclusion masks, 3-snapshot multi-capture median, count hysteresis ($\Delta = 0.6$), and seat capacity clipping (45 seats max).
 3. **Domain Shift Optimization Program (Priority Order):**
    - **Pillar 1 (Measurement Harness):** Whole-session holdouts, MAE, $\pm 1$/$\pm 2$, session bias, empty-frame hallucination rate, count jitter, 3-seed variance, 30-worst error analysis (`scripts/eval_harness.py`).
    - **Pillar 2 (Free Wins):** Zone masks, multi-capture, count hysteresis, capacity clipping, AdaBN test (`scripts/adabn.py`), native ROI crop (`2688×1520`), linear calibration.
@@ -130,14 +131,18 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [x] `annotate_missed_heads.py` (matplotlib click-annotation tool, runs locally) committed to `/scripts`
 - [x] `hardpos_annotations.json` (490 missed-head points, 115/117 frames) committed to `/scripts`
 - [x] `hardpos_annotations_v2.json` (350-frame holdout set, annotated post round-4-epoch-8) committed to `/scripts`
-- [x] **Deploy adopted ensemble:** Weighted 3-way ensemble (0.6×round4_epoch8_letterbox + 0.4×style_aug_epoch8_stretch) wired into main app and running on Pi. App no longer falls back to COCO SSD.
-- [x] **Live end-to-end camera test:** OV4689 → TFLite density ensemble → headcount on Pi confirmed working. Dashboard functional. **(COMPLETED Sept 23, 2026)**
+- [x] **Deploy adopted ensemble:** Weighted 3-way ensemble wired into main app. App no longer falls back to COCO SSD.
+- [x] **v5 Retraining (Oct 2026, no new data):** `classcan_v5_final.tflite`. Fixed double-scaling bug (MobileNetV3 built-in `Rescaling` + old /255 input), near-zero output init, frozen BN, Count L1 + EMA, real-frame augmentation, random stretch/letterbox. Leave-one-clip-out: MAE=1.47, r=0.86, within±2=72%. Beats old ensemble on all 5 clips. v5 undercounts ~0.8 avg (~1.5 on line2/sit2).
+- [x] **Live end-to-end camera test:** OV4689 → TFLite density inference → headcount on Pi confirmed working. Dashboard functional. **(COMPLETED Sept 23, 2026)**
+- [x] **PoC Presentation (Oct 2026):** Delivered. Demo video submitted beforehand (live prototype wasn't working during it). Team moved to Phase 2.
 - [x] **Camera color/desaturation:** Appears resolved on the deployed hardware run. Known-good baseline (`set_camera_config.sh`) in place.
 - [x] **Headless connectivity (Oct 3, 2026):** USB gadget mode (RNDIS via micro-USB, `usb_gadget.sh`) and direct ethernet link (`direct_connect.sh`) both implemented and documented in `docs/direct_connection.md`.
-- [x] **Wi-Fi Hotspot (Oct 7, 2026):** `hotspot.sh` turns Pi wlan0 into a standalone AP (SSID `CLASSCAN`, Pi IP `192.168.20.1`, WPA2). One-shot and persistent (boot service) modes. No router or cables required; supports multiple simultaneous viewers. Documented in `docs/direct_connection.md` Option C.
-- [ ] **Camera startup config wiring:** Confirm `set_camera_config.sh` baseline (auto_exposure=1, exposure=500, gain=192, brightness=64, gamma=300, saturation=100, wb_auto=0, wb_temp~4600) and `quirks=128` (`/etc/modprobe.d/uvcvideo.conf`) are applied on every boot via `setup/startup.py`.
-- [x] **Frame delivery + lag (FIXED Sept 24, 2026):** Root cause identified: OpenCV/V4L2 internal frame buffer queues stale frames during slow TFLite inference; `cap.read()` returned oldest buffered frame. Fix: `_grab_fresh_frame()` in `detector.py` drains buffer via `cap.grab()` loop (no pixel decode), then `cap.retrieve()` for only the freshest frame. Applied to `DensityDetector`, `EnsembleDensityDetector`, and `Detector`.
-- [x] **Threaded inference architecture (Oct 9, 2026):** Decouples TFLite ensemble inference (~700 ms–1 s on Pi 3B) from frame capture + MJPEG streaming. `InferenceWorker` daemon thread runs in background; main loop posts frames via `threading.Event` + `Lock`-guarded shared state and annotates live video with the last completed result — stream runs at full camera rate (~20 Hz) with zero blocking on AI. Per-subsystem watchdog monitor tracks camera / AI / serial health independently and surfaces alerts to the dashboard in real time.
+- [x] **Wi-Fi Hotspot (Oct 7, 2026):** `hotspot.sh` turns Pi wlan0 into a standalone AP (SSID `CLASSCAN`, Pi IP `192.168.20.1`, WPA2). One-shot and persistent (boot service) modes. No router or cables required. Documented in `docs/direct_connection.md` Option C.
+- [ ] **Camera startup config wiring:** Confirm `set_camera_config.sh` baseline and `quirks=128` (`/etc/modprobe.d/uvcvideo.conf`) are applied on every boot via `setup/startup.py`.
+- [x] **Frame delivery + lag (FIXED Sept 24, 2026):** Root cause identified: OpenCV/V4L2 internal frame buffer queues stale frames during slow TFLite inference. Fix: `_grab_fresh_frame()` in `detector.py` drains buffer via `cap.grab()` loop then `cap.retrieve()` for only the freshest frame.
+- [x] **Threaded inference architecture (Oct 9, 2026):** Decouples TFLite ensemble inference from frame capture + MJPEG streaming. `InferenceWorker` daemon thread; per-subsystem watchdog monitor.
+- [ ] **Pi v5 output validation:** Confirm `classcan_v5_final.tflite` counts on Pi match Colab counts.
+- [ ] **Empty-room false-positive test:** Hard-negative crops (595 items) missing from Drive — locate and re-run. v5 not yet tested on empty/clutter-only frames.
 - [ ] **Validate at 5+ people:** AI detection not yet tested with real classroom occupancy.
 
 ## Full-System Integration & Optimization Pillars
@@ -199,12 +204,12 @@ Prove the core detection pipeline works end-to-end on target hardware:
 | Raspberry Pi 3B (1GB) | **In hand & running** (Raspberry Pi OS Lite 64-bit Trixie; hardened Wi-Fi + watchdog) |
 | Pi Acrylic Case (clear, enclosed, with active fan) | **✅ Installed & Wired** (GPIO Pin 4/6, ~36°C operating temp) |
 | ESP32 DevKit V1 | **In hand & active** (firmware operational) |
-| OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure baseline configured) |
-| Light Sensor (LDR) + Illumination LEDs (IRLZ44N) | **In hand / circuit designed** (5V white LED strip, gate pulldown) |
-| Pan/Tilt Servos (MG90S metal-gear x2 + 2 spares) | **Active + Procurement Spec** (dual-axis bracket platform) |
-| OLED Display (SSD1309 2.42" 7-pin SPI) | **Procurement Spec** (factory SPI, zero soldering required) |
-| Power supply & batteries | **In hand & verified** (18650 cell + 5V 2A boost converter) |
-| Enclosure (ABS Junction Box 150×110×70 mm) | **Procurement Spec** (pre-measured fit for Pi acrylic case + fan) |
+| OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure baseline configured; board ~2×2 cm footprint, ~3 cm tall) |
+| Light Sensor (LDR) + Illumination (2W COB LED + IRLZ44N) | **In hand / circuit designed** (5V COB LED bar, IRLZ44N gate pulldown, MOSFET driver) |
+| Pan/Tilt Bracket + MG90S Servos | **Procurement (Phase 2)** (mini ABS bracket kit fits 28×28 mm cameras; or Package B. Concern: MG90S may be underpowered for hanging enclosure. Also owns 28BYJ-48 stepper.) |
+| **LCD2004 (I2C, 20×4 character LCD)** | **Procurement (Phase 2)** (replaces SSD1309 OLED — 2.42" SSD1309 ~₱700 too expensive; 12864B dropped: too many pins. LCD2004 blue ~₱274.) |
+| Power: 18650 cells + charge/boost module | **Procurement (Phase 2)** (LG HG2 cells + dual-USB 5V 2.4A charge/boost with display; swappable. USB power banks ruled out as too expensive.) |
+| **Plain box enclosure (screwed to ceiling, camera moves)** | **Procurement (Phase 2)** (3D-printed dome too expensive. Plain box ~₱500–600. IP68 174×174×73 mm box considered.) |
 
 ---
 
