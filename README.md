@@ -5,7 +5,7 @@ A ceiling-mounted smart camera turret that automatically detects and counts peop
 
 ### __WORK IN PROGRESS, ACTIVELY CHANGING__
 
-**Status (Oct 8, 2026):** **Live end-to-end pipeline deployed on real hardware.** Full pipeline (Pi + OV4689 + 3-way weighted ensemble) operational. Dashboard functional. Camera color desaturation resolved. AI detection functional; not yet validated at 5+ people in a real classroom. Final adopted model: **3-way weighted ensemble** (`0.6 × classcan_density_v4_round4_ft_epoch8` letterbox + `0.4 × classcan_density_style_aug_ft_lowLR_epoch8` stretch) — **MAE=2.77, corr=0.586** on 350-frame genuine held-out real classroom footage. SCUT-HEAD benchmark: MAE=2.13, $r=0.9951$; quadrant operational regime MAE=0.93. Secondary HUD model: MobileNetV3-Large @ 416×416 (F1=31.8%, MAE=3.84). Connectivity: USB gadget mode (RNDIS), direct ethernet, and **Wi-Fi hotspot** (`hotspot.sh`) all implemented (`src/pi/setup/`). Recent fixes: motion-trigger `None`-frame guard in `main.py`; dashboard **Download Event Log** button; ESP32 serial bridge state/command handling hardened. Open items: camera startup config wiring, 5+ people validation.
+**Status (Oct 26, 2026):** **PoC delivered and presented. Now in Phase 2 (hardware integration).** PoC presentation went well (Oct 2026); demo video submitted beforehand since live prototype wasn't working during the presentation. Full pipeline (Pi + OV4689 + ensemble + dashboard + threaded inference worker) confirmed running on hardware. **Final AI model: `classcan_v5_final.tflite`** (MobileNetV3-Large density-map, no new data — fixed training recipe only) — **MAE=1.47, Pearson r=0.86, within ±2=72%** on 5-clip leave-one-out holdout (356 frames). Beats old 3-way ensemble on all 5 clips. Pi inference speed, empty-room false-positive test, and new-classroom generalization not yet confirmed on hardware. Phase 2 underway: ESP32 integration, pan/tilt, display (LCD2004), illumination, enclosure. Connectivity: USB gadget mode (RNDIS), direct ethernet, and **Wi-Fi hotspot** (`hotspot.sh`) all operational. Open items: camera startup config wiring, Pi v5 output validation, 5+ people real-classroom test, ESP32 serial integration.
 
 ---
 
@@ -47,7 +47,7 @@ Most schools still rely on manual headcount and attendance checking — slow, er
                                                     │
                                                     ├──► Servo PWM (sweep or quadrant-targeted positioning)
                                                     ├──► LDR read → custom illumination LED module
-                                                    └──► OLED Display (SSD1309) (local headcount)
+                                                    └──► LCD2004 Display (I2C 20×4 character LCD) (local headcount)
 ```
 
 Commands from the dashboard (e.g. "switch to zone-check mode", "check quadrant 2") travel laptop → Pi 3B over Wi-Fi, and the Pi 3B translates/forwards them to the ESP32 over USB serial. The ESP32 never connects to the network directly — it only receives serial commands from the Pi 3B, keeping physical control fully isolated from networking. Before commanding a servo move or illumination change, the Pi 3B expects an ESP32 state acknowledgment (idle/moving) so the change-detection trigger doesn't mistake the turret's own motion or lighting for a person entering/leaving.
@@ -96,14 +96,21 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 
 ### Validated Production Models
 
-#### 1. Primary Headcount Engine: `classcan_density_v4` (Density-Map Regression)
-- **Architecture:** MobileNetV3-Large backbone with lightweight progressive upsampling decoder, outputting a 104×104 single-channel continuous density map (3.6M total parameters). Uses **Softplus** output activation.
-- **Accuracy Metrics (407 validation images):**
-  - **Overall:** MAE = **2.13 people**, Correlation $r = \mathbf{0.9951}$, MAPE = 16.1%, Within $\pm 2$ heads = 66.1%.
-  - **Operational Quadrant Regime (0–20 students):** **MAE = 0.93 people** (< 1 student error).
-- **Justification:** Avoids rigid bounding-box aspect ratio assumptions and eliminates NMS suppression failures in dense seating rows. Directly optimizes for the capstone's core objective: headcount accuracy.
+#### 1. Primary Headcount Engine: `classcan_v5_final.tflite` (Density-Map Regression — **Current Final Model**)
+- **Architecture:** MobileNetV3-Large backbone + progressive upsampling decoder, outputting a 104×104 single-channel density map. Softplus activation. **Input: 0–255 pixels (no /255 scaling).** Letterbox to 416×416 with gray-114 padding; sum the 104×104 output map for headcount.
+- **Key training fix (v5):** Fixed a double-scaling bug (MobileNetV3 has a built-in `Rescaling` layer; old pipeline /255'd inputs again). Also applied: near-zero output init, frozen BatchNorm, Count L1 loss + EMA, real-frame augmentation, random stretch/letterbox. **No new data, no backbone swap.**
+- **Accuracy Metrics — 5-clip leave-one-out holdout (356 real classroom frames):**
+  - **MAE = 1.47 people**, Pearson $r = \mathbf{0.86}$, Within $\pm 2$ = 72%.
+  - Beats old 3-way ensemble (MAE=2.77, corr=0.586) on all 5 clips.
+  - Slight systematic undercount (~0.8 average; ~1.5 on line2/sit2).
+- **Real-footage progression:** MAE=9.46/corr=0.37 (first domain-gap test) → 3.23/0.60 (hard-negative+ensemble rounds) → **1.47/0.86 (v5)**.
+- **Remaining gates before calling AI final:** Pi output matches Colab, empty-room false-positive test, Pi speed/heat check.
 
-#### 2. Secondary HUD Engine: MobileNetV3-Large @ 416×416 FPN Head Detector
+#### 2. Retired Ensemble (superseded by v5): `classcan_density_v4` 3-way weighted ensemble
+- `0.6 × classcan_density_v4_round4_ft_epoch8` (letterbox eval) + `0.4 × classcan_density_style_aug_ft_lowLR_epoch8` (stretch eval).
+- Real-footage MAE=2.77, corr=0.586 on 350-frame held-out footage. SCUT-HEAD MAE=2.13, $r=0.9951$.
+
+#### 3. Secondary HUD Engine: MobileNetV3-Large @ 416×416 FPN Head Detector
 - **Architecture:** 3-scale feature pyramid (52×52, 26×26, 13×13 grids for 416-px input), predicting objectness + 4 normalized box coordinates per cell with occupancy-based overflow routing.
 - **Inference Pipeline:** 2×2 grid tiled inference (0.2 overlap) with dual thresholding (`full_obj=0.35`, `tile_obj=0.65`) and Soft-NMS merging ($\sigma=0.5, \text{thresh}=0.3$).
 - **Accuracy Metrics:** Precision = 31.3%, Recall = 32.4%, **F1 = 31.8%**, **MAE = 3.84 people**, Correlation $r = 0.986$.
@@ -123,7 +130,7 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 
 ## Known Limitations & Open Items
 
-- **AI/Model Side Status:** Functionally complete. Final model is a 3-way weighted ensemble (MAE=2.77, corr=0.586 on genuine held-out real footage). Model development is frozen.
+- **AI/Model Side Status:** `classcan_v5_final.tflite` is the current final model (MAE=1.47, corr=0.86, leave-one-out on 356 real frames). Remaining gates before calling AI final: Pi output matches Colab counts, empty-room false-positive test (hard-negative crops missing from Drive — need to be located), Pi speed/heat check.
 - **Camera:** OV4689 live at `/dev/video0`. Known-good baseline: `auto_exposure=1, exposure=500, gain=192, brightness=64, gamma=300, saturation=100, white_balance_automatic=0, white_balance_temperature~4600`. Color desaturation issue appears resolved on deployed hardware. Camera startup config (`set_camera_config.sh` + `quirks=128` via `/etc/modprobe.d/uvcvideo.conf`) must be confirmed wired into `setup/startup.py` for every boot.
 - **Frame delivery + inference lag:** **Resolved (Sept 24, 2026).** Root cause: OpenCV/V4L2 internal ring buffer queues frames during slow TFLite inference; `cap.read()` returned the oldest buffered (stale) frame rather than the latest live frame. Fix: `_grab_fresh_frame()` in `detector.py` drains the buffer via repeated `cap.grab()` calls (cheap — no pixel decode) then does a single `cap.retrieve()` to get only the newest frame.
 - **5+ people validation:** AI detection not yet tested with real classroom occupancy (5+ people).
@@ -136,14 +143,14 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 | Component | Status / Purpose |
 |---|---|
 | Raspberry Pi 3B (1GB RAM) | **In hand & running** — Main compute: Raspberry Pi OS Lite (64-bit) + TFLite inference; onboard Wi-Fi + Bluetooth |
-| ESP32 | **In hand** — Physical I/O controller: servos, LDR, illumination, OLED display (SSD1309), USB serial link to Pi 3B |
-| OV4689 4MP BSI USB Camera Module (UVC, Type-C/A) | **In hand & connected** — Video feed for detection: back-side-illuminated sensor for improved performance in dim/evening classroom lighting, standard driverless UVC interface |
+| ESP32 | **In hand** — Physical I/O controller: servos, LDR, illumination, character LCD display, USB serial link to Pi 3B |
+| OV4689 4MP BSI USB Camera Module (UVC, Type-C/A) | **In hand & connected** — Video feed for detection; ~2×2 cm footprint, ~3 cm tall |
 | Light Sensor (LDR) | **In hand** — Detects ambient brightness, triggers illumination module |
-| Custom illumination LED module (self-built, LDR-triggered) | **In development** — Brightens scene in dim conditions: built in-house rather than a packaged IR unit, driven by the ESP32 |
-| Pan/Tilt Servos (MG90S Metal-Gear x2 active + 2 spares) | **In hand / Procurement** — Rotates the turret to sweep or target quadrants; dual-axis bracket platform for micro servos |
-| OLED Display (SSD1309, 2.42", 7-Pin SPI) | **Procurement Spec** — High-contrast 128×64 local headcount display (factory SPI, zero soldering required) |
-| 18650 Battery + 5V/2A Boost Converter | **In hand / Spec** — Single 18650 cell (3.0V–4.2V) stepped up to regulated 5.0V (or integrated 5V ≥2A charging module) |
-| ABS Junction Box Enclosure (150×110×70 mm) | **Procurement Spec** — Houses Pi 3B (in acrylic case + fan), ESP32, and battery with airflow; pan/tilt bracket mounted |
+| Custom illumination LED module (self-built, LDR-triggered) | **Procurement** — 2W 5V USB COB LED bar + IRLZ44N MOSFET driver, driven by ESP32 |
+| Pan/Tilt Bracket + MG90S Servos | **Procurement (Phase 2)** — Mini ABS pan/tilt bracket kit with MG90S servos (fits 28×28 mm cameras); or Package B set. Concern: MG90S may be underpowered for a hanging enclosure. User also owns a 28BYJ-48 stepper motor. |
+| **LCD2004 (I2C, 20×4 character LCD, blue backlight)** | **Procurement (Phase 2)** — Replaces originally planned SSD1309 OLED (2.42" SSD1309 ~₱700 too expensive; 12864B dropped: too many pins). 4-pin I2C connection, no soldering needed for logic. |
+| 18650 Li-ion Cells + Charge/Boost Module | **Procurement (Phase 2)** — LG HG2 18650 cells + dual-USB 5V 2.4A charge/boost module with display (swappable rechargeable power; USB power banks were ruled out as too expensive). |
+| **Plain box enclosure screwed to ceiling** | **Procurement (Phase 2)** — Only camera moves (pan/tilt). Box estimated ₱500–600. IP68 174×174×73 mm box (inner 160×160×63 mm, no cutouts) considered (~₱573). 3D-printed dome ruled out (too expensive). |
 
 Full itemized BOM, search queries, and pre-purchase verification guide: see [`docs/bom.md`](docs/bom.md).
 
@@ -153,21 +160,26 @@ Full itemized BOM, search queries, and pre-purchase verification guide: see [`do
 - [x] **Logic & Communications:** `ChangeTrigger`, `ZoneReconciler`, `DashboardServer`, and serial bridge modules implemented and unit tested.
 - [x] **Motion-trigger `None`-frame guard (Sept 30, 2026):** `trigger.check()` and `frame.copy()` in `main.py` are now guarded against `None` frames — a missed camera read no longer throws an exception mid-loop or resets the heartbeat counter.
 - [x] **Custom Model Training (Box):** Keras MobileNetV3-Large + 416×416 FPN head detector trained to epoch 60; locked in with 2×2 tiled inference + Soft-NMS (F1=31.8%, MAE=3.84, $r=0.986$).
-- [x] **Custom Model Training (Density):** Density-map regression v2 (`classcan_density_v4`) trained to epoch 41; confirmed best model overall (MAE=2.13, $r=0.9951$, quadrant MAE=0.93).
+- [x] **Custom Model Training (Density v4):** Density-map regression `classcan_density_v4` trained; 3-way ensemble reached MAE=2.77, corr=0.586 on real footage.
+- [x] **v5 Retraining (Oct 2026, no new data):** `classcan_v5_final.tflite` — fixed double-scaling bug (MobileNetV3 built-in `Rescaling` layer + old /255 input), near-zero output init, frozen BN, Count L1 + EMA, real-frame augmentation. Leave-one-clip-out: **MAE=1.47, r=0.86, within±2=72%**. Beats old ensemble on all 5 clips.
 - [x] **Physical Camera Integration:** OV4689 detected at `/dev/video0` (MJPG up to 2688×1520@30fps); 11-shot and 225-shot (4-variable) exposure sweeps completed on Pi.
 - [x] **Camera Baseline Calibration:** Gamma root cause identified (`gamma=110` → `gamma=300`). Known-good baseline: `auto_exposure=1, exposure=500, gain=192, brightness=64, gamma=300, saturation=100, wb_auto=0, wb_temp~4600`.
-- [x] **TFLite Model Export:** Both ensemble checkpoints → float32 TFLite (13.77 MB each, ~702 ms/frame on Pi 3B via `ai_edge_litert`). Int8 deferred (XNNPack bilinear incompatibility).
+- [x] **TFLite Model Export:** v4 ensemble checkpoints → float32 TFLite (~702 ms/frame on Pi 3B). v5 exported as `classcan_v5_final.tflite`. Int8 deferred (XNNPack bilinear incompatibility).
 - [x] **Camera Color:** Color desaturation issue appears resolved on deployed hardware. `set_camera_config.sh` baseline script in place.
-- [x] **Live End-to-End Camera Test:** OV4689 → 3-way ensemble TFLite inference → headcount on Pi confirmed working. Dashboard functional. **(COMPLETED Sept 23, 2026)**
+- [x] **Live End-to-End Camera Test:** OV4689 → ensemble TFLite inference → headcount on Pi confirmed working. Dashboard functional. **(COMPLETED Sept 23, 2026)**
+- [x] **PoC Presentation (Oct 2026):** Delivered successfully. Demo video submitted beforehand (live prototype wasn't working during the presentation). Team moved to Phase 2.
 - [ ] **Camera Startup Config Wiring:** Confirm `set_camera_config.sh` and `quirks=128` (`/etc/modprobe.d/uvcvideo.conf`) are applied every boot via `setup/startup.py`.
-- [x] **Frame Delivery + Lag (FIXED Sept 24, 2026):** Root cause: OpenCV/V4L2 internal frame buffer queued stale frames during slow TFLite inference; `cap.read()` returned the oldest buffered frame. Fix: `_grab_fresh_frame()` in `detector.py` — drains buffer via `cap.grab()` loop (no pixel decode), then `cap.retrieve()` for only the freshest frame. Applied to all three detector classes.
-- [x] **Dashboard Event Log Download (Sept 30, 2026):** "⬇ Download Log" button added to the Event Log card. Exports full in-session log (all entries, uncapped) as a timestamped `classcan_eventlog_<datetime>.csv` — client-side only, no server endpoint required.
-- [x] **Headless Connectivity (Oct 3, 2026):** USB gadget mode (RNDIS via micro-USB, Pi IP `192.168.7.1`) and direct ethernet (static IP, Pi IP `192.168.10.1`) both implemented and documented in `docs/direct_connection.md`. Dashboard accessible without a router.
-- [x] **Wi-Fi Hotspot (Oct 7, 2026):** `hotspot.sh` turns the Pi's built-in wlan0 into a standalone access point (SSID `CLASSCAN`, Pi IP `192.168.20.1`). No router or cables needed; multiple devices can connect simultaneously. Supports one-shot and persistent (boot-service) modes. Documented in `docs/direct_connection.md` Option C.
+- [x] **Frame Delivery + Lag (FIXED Sept 24, 2026):** Root cause: OpenCV/V4L2 internal frame buffer queued stale frames during slow TFLite inference. Fix: `_grab_fresh_frame()` in `detector.py` drains buffer via `cap.grab()` loop, then `cap.retrieve()` for freshest frame.
+- [x] **Dashboard Event Log Download (Sept 30, 2026):** "⬇ Download Log" button. Exports full in-session log as timestamped CSV — client-side only.
+- [x] **Headless Connectivity (Oct 3, 2026):** USB gadget mode (RNDIS, Pi IP `192.168.7.1`) and direct ethernet (Pi IP `192.168.10.1`). Documented in `docs/direct_connection.md`.
+- [x] **Wi-Fi Hotspot (Oct 7, 2026):** `hotspot.sh` turns Pi wlan0 into standalone AP (SSID `CLASSCAN`, Pi IP `192.168.20.1`). One-shot and persistent modes. Documented in `docs/direct_connection.md` Option C.
+- [ ] **Pi v5 Output Validation:** Confirm `classcan_v5_final.tflite` counts on Pi match Colab counts.
+- [ ] **Empty-Room False-Positive Test:** Hard-negative crops (595 items) missing from Drive — locate and re-run. v5 not yet tested on empty/clutter-only frames.
 - [ ] **5+ People Validation:** AI detection not yet tested with real classroom occupancy.
-- [ ] **Illumination Module:** Finalize circuit design (LED array, driver transistor, LDR threshold) and wire to ESP32 ADC/GPIO.
-- [ ] **Turret & Quadrant Calibration:** Calibrate pan/tilt servo angles for Quadrants 1–4 once mounted in dome enclosure.
-- [ ] **Full-System Benchmarking:** Record end-to-end latency, temperature, and detection accuracy under live classroom lighting.
+- [ ] **ESP32 Serial Integration (Phase 2):** Wire headcount output to LCD2004 display via ESP32; integrate servo pan/tilt commands.
+- [ ] **Illumination Module (Phase 2):** 2W COB LED bar + IRLZ44N MOSFET + LDR circuit, wired to ESP32 ADC/GPIO.
+- [ ] **Turret & Quadrant Calibration (Phase 2):** Calibrate pan/tilt servo angles for Quadrants 1–4 once mounted in ceiling box.
+- [ ] **Full-System Benchmarking:** Record end-to-end latency, temperature, and detection accuracy under live classroom conditions.
 
 ---
 
