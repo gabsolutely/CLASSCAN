@@ -201,7 +201,7 @@ This repurposes multi-scale to solve **dense-crowd cell collisions** rather than
 | **Batch Size** | 8 (`drop_remainder=True` to prevent ragged batch retracing) |
 | **Dataset Cache** | Disk-backed cache (`/content/train_cache`) to prevent Colab system RAM exhaustion |
 | **Spike Guard** | Automated safeguard: skips checkpoint save if `val_loss` jumps $>20\times$ vs. last known-good epoch |
-| **Checkpoint Dir** | `/content/drive/MyDrive/models/` (secondary Google account) |
+| **Checkpoint Dir** | `/content/drive/MyDrive/models/` |
 
 ### Training Evolution & Checkpoints
 
@@ -232,10 +232,10 @@ This repurposes multi-scale to solve **dense-crowd cell collisions** rather than
   - `classcan_density_style_aug_ft_lowLR_epoch8.weights.h5` (style-aug epoch 8) — evaluated with **stretch** preprocessing at inference
   - **Ensemble weights: 0.6 × epoch8(letterbox) + 0.4 × style-aug-epoch8(stretch)**
   - Real-footage (v2 held-out): MAE=2.77, r=0.586. SCUT-HEAD: r>0.99.
-- All checkpoints on Colab Drive at `/content/drive/MyDrive/models/` (secondary Google account).
+- Checkpoints archived at `/content/drive/MyDrive/models/`.
 
 ### Density-Map Regression Pipeline (`classcan_density_v4`)
-Following external QA review (PeaNat), a density-map regression model was constructed to target MAE $\le 2.0$ and eliminate NMS bounding-box quantization errors:
+Following technical peer review, a density-map regression model was constructed to target MAE $\le 2.0$ and eliminate NMS bounding-box quantization errors:
 - **Target Density Maps:** Sourced head annotations converted to continuous Gaussian density surfaces ($\sigma = 3.0$) normalized so the 2D surface integral equals exact ground-truth head count.
 - **Decoder Architecture:** Progressive convolutional upsampling decoder attached to MobileNetV3-Large feature stages, outputting a 104×104 single-channel spatial density tensor (3.6M parameters).
 - **Activation & Schedule:** Softplus output activation (prevents dying-ReLU collapse); warmup ($10^{-6} \to 5 \times 10^{-5}$) followed by scheduled decay (0.94/epoch to $2 \times 10^{-6}$) and instantaneous best-checkpoint persistence.
@@ -431,7 +431,7 @@ The AI/model engineering phase has concluded after 9 rounds of real-footage fine
    - **Real-footage (v2 held-out, 350 frames, genuine out-of-sample):** MAE=2.77, corr=0.586 (best across all 9 rounds). Per-clip best: line3=0.759; persistent weak point: line1=0.455.
    - **SCUT-HEAD validation (407 images):** r>0.99 maintained throughout all rounds — no catastrophic regression.
    - **Preprocessing asymmetry:** epoch8 evaluated with letterbox at inference (correlation boost 0.506→0.602 as standalone vs stretch eval); style-aug-epoch8 evaluated with stretch. Training from scratch with letterbox collapsed in all 5 attempts.
-   - **Alternative lower-MAE configuration:** (0.55, 0.10, 0.35) → MAE=2.68, corr≈0.584 — use if MAE matters more than correlation for the writeup.
+   - **Alternative lower-MAE configuration:** (0.55, 0.10, 0.35) → MAE=2.68, corr≈0.584 — use if absolute count error is prioritized over correlation.
    - **Deployment status (Sept 23, 2026):** Both ensemble checkpoints exported to float32 TFLite and deployed on Pi. Full pipeline confirmed working end-to-end on real hardware.
 
 2. **Secondary / Box Detector (MobileNetV3-Large @ 416×416)** — HUD bounding box visualization only.

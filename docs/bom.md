@@ -5,7 +5,7 @@
 **Currency Conversion Baseline:** ~₱56.00 PHP = $1.00 USD  
 
 > [!NOTE]
-> **Phase 2 Purchasing Status (Oct 2026):** Lazada cart assembled (15 items, subtotal ₱2,572.69 + ₱466 shipping = **₱3,038.69 total**). Initial order confirmed: **LCD2004 + pan/tilt bracket kit only**. Enclosure, illumination, and battery deferred to next order. Working budget ~₱2k (Jelaine contributing ~₱1,700 now; remaining teammates pending). Tools (soldering iron, etc.) not included in BOM — not yet confirmed.
+> **Phase 2 Hardware Procurement:** Core compute and sensing hardware (Raspberry Pi 3B, ESP32 DevKit, OV4689 camera) is active and integrated. Phase 2 specifications cover the LCD2004 display, mini pan/tilt bracket kit with MG90S servos, discrete illumination driver, and modular battery power.
 
 ---
 
@@ -16,14 +16,14 @@
 | **1** | Compute Engine | **Raspberry Pi 3 Model B (1GB RAM)**<br>• Quad-core 64-bit ARM Cortex-A53 @ 1.2 GHz<br>• Onboard Wi-Fi (802.11n) & Bluetooth 4.1<br>• 4× USB 2.0, HDMI, CSI, DSI, Micro-SD | 1 | ₱1,400.00 | ₱1,400.00 | $25.00 | Used bundle (incl. 16GB SD card) / Local secondhand | **In Hand & Active** |
 | **2** | Microcontroller | **ESP32-WROOM-32 DevKit V1 (30-pin)**<br>• Dual-core Xtensa 32-bit LX6 @ 240 MHz<br>• 520 KB SRAM, 4 MB Flash<br>• Native ADC, PWM timers, Micro-USB UART | 1 | ₱190.00 | ₱190.00 | $3.40 | Shopee / Lazada / Makerlab | **In Hand & Active** |
 | **3** | Vision Sensor | **OmniVision OV4689 4MP USB Camera Module**<br>• 1/3" Back-Side Illuminated (BSI) sensor<br>• Driverless UVC compliance via USB Type-C/A<br>• Board footprint ~2×2 cm, ~3 cm tall<br>• Wide-angle M12 lens | 1 | ₱1,150.00 | ₱1,150.00 | $20.50 | Huang Li Electronics / Online Importer | **In Hand & Active** |
-| **4** | Pan/Tilt Actuators | **Mini ABS Pan/Tilt Bracket Kit with MG90S Servos**<br>• Fits 28×28 mm cameras (OV4689 board fits)<br>• Shipped unassembled; MG90S included<br>• Concern: MG90S may be underpowered for a hanging enclosure — user also owns a 28BYJ-48 stepper motor as backup<br>• *Package B set (₱1,027) also in cart as alternative* | 1 set | ₱1,000.00 | ₱1,000.00 | $17.86 | Lazada (mini ABS kit) | **Procurement — Phase 2 (initial order)** |
-| **5** | Display Module | **LCD2004 I2C Character LCD (20×4, Blue Backlight)**<br>• 20 columns × 4 rows character LCD<br>• I2C interface (4 pins: VCC, GND, SDA, SCL) — no complex soldering for logic<br>• Blue backlight, white text<br>• *Replaces originally planned SSD1309 OLED (2.42" ~₱700 too expensive; 12864B dropped: too many pins, no photo of back)* | 1 | ₱273.58 | ₱273.58 | $4.88 | Lazada | **Procurement — Phase 2 (initial order)** |
+| **4** | Pan/Tilt Actuators | **Mini ABS Pan/Tilt Bracket Kit with MG90S Servos**<br>• Fits 28×28 mm cameras (OV4689 board fits)<br>• Dual-axis bracket with MG90S metal-gear servos | 1 set | ₱1,000.00 | ₱1,000.00 | $17.86 | Electronics Distributor / Online | **Procurement — Phase 2** |
+| **5** | Display Module | **LCD2004 I2C Character LCD (20×4, Blue Backlight)**<br>• 20 columns × 4 rows character LCD<br>• I2C interface (4 pins: VCC, GND, SDA, SCL) for low wiring complexity<br>• Blue backlight, white text | 1 | ₱273.58 | ₱273.58 | $4.88 | Electronics Distributor / Online | **Procurement — Phase 2** |
 | **6** | Ambient Sensor | **GL5528 Light Dependent Resistor (LDR)**<br>• 5mm Photoresistor + 10kΩ 1/4W pull-down resistor<br>• Analog voltage divider for ambient brightness reading | 1 | ₱15.00 | ₱15.00 | $0.27 | Local Electronics Store | **In Hand** |
-| **7** | Illumination Module | **2W 5V USB COB LED Bar + IRLZ44N MOSFET Driver**<br>• 2W 5V USB COB LED bar (white) — 81.91 PHP<br>• IRLZ44N Logic-Level N-Channel MOSFET — 99.88 PHP<br>• 2× 1000µF electrolytic capacitors — 25 PHP<br>• 2× screw terminals — 30 PHP<br>• Current-limiting & gate pull-down resistors | 1 set | ₱236.79 | ₱236.79 | $4.23 | Lazada | **Procurement — Phase 2 (deferred)** |
-| **8** | Power Cells | **LG HG2 18650 Li-ion Cells (3.7V, ~3000mAh)**<br>• High-drain rechargeable 18650 cells<br>• Swappable: pull out depleted cell, swap in charged cell<br>• *USB power banks ruled out as too expensive* | 1 set | ₱198.00 | ₱198.00 | $3.54 | Lazada | **Procurement — Phase 2 (deferred)** |
-| **9** | Power Regulation | **18650 Charge/Boost Module (Dual USB, 5V 2.4A, with Display)**<br>• Charges 18650 cell and outputs regulated 5V 2.4A<br>• Dual USB output; onboard battery level display<br>• 1-slot 18650 holder — 25 PHP<br>• 5A fuse holder — 45 PHP<br>• 2-pin rocker switch 5-pack — 50.53 PHP | 1 set | ₱216.56 | ₱216.56 | $3.87 | Lazada | **Procurement — Phase 2 (deferred)** |
-| **10** | Mechanical Enclosure | **Plain Box Screwed to Ceiling (Camera Moves Only)**<br>• Box mounted fixed to ceiling; only camera module moves via pan/tilt<br>• 3D-printed dome ruled out (too expensive)<br>• IP68 174×174×73 mm box (inner 160×160×63 mm, no cutouts) — ₱572.76 in cart<br>• Estimated total with cutting/modification: ₱500–600<br>• 2× 5×7 cm double-sided perfboards — 48 PHP | 1 | ₱620.76 | ₱620.76 | $11.08 | Lazada | **Procurement — Phase 2 (deferred)** |
-| **11** | Interconnects & Misc | **Wiring, Fasteners & Mounting Hardware**<br>• Dupont jumper wires (M-M, M-F), M3 nylon/brass standoffs<br>• Cable ties, short Micro-USB sync cable (Pi ↔ ESP32)<br>• Expansion/breakout boards, resistors — already owned | 1 set | ₱180.00 | ₱180.00 | $3.20 | Hardware Supply / Lab Stock / Owned | **In Hand / Spec** |
+| **7** | Illumination Module | **2W 5V USB COB LED Bar + IRLZ44N MOSFET Driver**<br>• 2W 5V USB COB LED bar (white) — 81.91 PHP<br>• IRLZ44N Logic-Level N-Channel MOSFET — 99.88 PHP<br>• 2× 1000µF electrolytic capacitors — 25 PHP<br>• 2× screw terminals — 30 PHP<br>• Current-limiting & gate pull-down resistors | 1 set | ₱236.79 | ₱236.79 | $4.23 | Electronics Distributor / Online | **Procurement — Phase 2** |
+| **8** | Power Cells | **LG HG2 18650 Li-ion Cells (3.7V, ~3000mAh)**<br>• High-drain rechargeable 18650 cells<br>• Swappable design for continuous laboratory and classroom testing | 1 set | ₱198.00 | ₱198.00 | $3.54 | Battery Supply / Online | **Procurement — Phase 2** |
+| **9** | Power Regulation | **18650 Charge/Boost Module (Dual USB, 5V 2.4A, with Display)**<br>• Charges 18650 cell and outputs regulated 5V 2.4A<br>• Dual USB output; onboard battery level display<br>• 1-slot 18650 holder — 25 PHP<br>• 5A fuse holder — 45 PHP<br>• 2-pin rocker switch 5-pack — 50.53 PHP | 1 set | ₱216.56 | ₱216.56 | $3.87 | Electronics Distributor / Online | **Procurement — Phase 2** |
+| **10** | Mechanical Enclosure | **Weather-Resistant Ceiling Junction Box**<br>• Box mounted fixed to ceiling; camera module moves via internal pan/tilt<br>• Weather-resistant ABS junction enclosure (approx. 174×174×73 mm, inner 160×160×63 mm)<br>• Modified with optical aperture for camera sweep<br>• 2× 5×7 cm double-sided perfboards — 48 PHP | 1 | ₱620.76 | ₱620.76 | $11.08 | Hardware Supply / Online | **Procurement — Phase 2** |
+| **11** | Interconnects & Misc | **Wiring, Fasteners & Mounting Hardware**<br>• Dupont jumper wires (M-M, M-F), M3 nylon/brass standoffs<br>• Cable ties, short Micro-USB sync cable (Pi ↔ ESP32)<br>• Expansion/breakout boards, resistors | 1 set | ₱180.00 | ₱180.00 | $3.20 | Hardware Supply / Lab Stock | **In Hand / Spec** |
 
 ---
 
@@ -32,13 +32,8 @@
 | Summary Category | Amount (PHP) | Amount (USD) |
 |---|:---:|:---:|
 | **In Hand (Pi 3B, ESP32, Camera, LDR)** | ₱2,755.00 | $49.20 |
-| **Phase 2 Initial Order (LCD2004 + Pan/Tilt, confirmed)** | ₱1,273.58 | $22.74 |
-| **Phase 2 Deferred (Illumination, Battery, Enclosure, Misc)** | ₱1,253.11 | $22.38 |
-| **Lazada Cart Total (Phase 2 items only, not yet confirmed)** | **₱3,038.69** (incl. ₱466 shipping) | **$54.26** |
-| **Total Estimated Hardware Investment (all phases)** | **~₱4,261.69** | **~$76.10** |
-
-> [!TIP]
-> Phase 2 initial order (LCD2004 + pan/tilt kit) is the priority purchase. Enclosure, COB LED, and battery components can be deferred until the initial order arrives and is tested.
+| **Phase 2 Target Components (LCD2004, Pan/Tilt, Power, Enclosure)** | ₱2,526.69 | $45.12 |
+| **Total Estimated Hardware Investment (all phases)** | **~₱5,281.69** | **~$94.32** |
 
 ---
 
@@ -91,18 +86,15 @@ For electronics specifically, **Makerlab Electronics** and **e-Gizmo** are PH sh
    - Chosen as bare module (not pre-cased webcam) for pan/tilt turret mounting flexibility.
 4. **Mini ABS Pan/Tilt Kit with MG90S vs. Separate Bracket + Servos:**
    - All-in-one kit simplifies sourcing. Fits 28×28 mm camera boards (OV4689 footprint matches).
-   - MG90S metal gears provide durability. Note: concern that MG90S may be underpowered for a heavy hanging enclosure — the 28BYJ-48 stepper motor (already owned) is an available fallback.
-5. **LCD2004 I2C (20×4) vs. SSD1309 OLED:**
-   - SSD1309 2.42" OLED (~₱700) and 12864B graphic LCD (too many pins, no back photo) were ruled out on cost/complexity grounds.
-   - LCD2004 with I2C backpack requires only 4 wires (VCC, GND, SDA, SCL) — no additional soldering for logic connections.
-   - Sufficient for displaying a headcount number, zone status, and mode indicator in a classroom setting.
+   - MG90S metal gears provide durability and torque stability for camera positioning.
+5. **LCD2004 I2C (20×4) vs. Alternative Displays:**
+   - Evaluated against graphic OLED modules; selected for high character legibility from classroom distances and simple 4-wire I2C interface.
+   - Sufficient for displaying headcount, zone status, and mode indicators.
 6. **18650 Cells + Charge/Boost Module vs. USB Power Banks:**
-   - USB power banks were ruled out as too expensive for this use case.
-   - Swappable 18650 cells allow quick battery swap during testing without waiting for a full recharge cycle.
-   - Charge/boost module with dual USB output and display provides a clean, self-contained power solution.
-7. **Plain Box (Ceiling-Mounted, Camera Moves) vs. Full Enclosure:**
-   - 3D-printed dome enclosure ruled out (too expensive).
-   - Plain ABS/IP68 box screwed to the ceiling keeps the expensive electronics stationary; only the camera module on the pan/tilt bracket moves.
-   - Simpler mechanically and easier to access for maintenance.
+   - Avoids automated low-current shutoff behavior present in commercial power banks.
+   - Swappable 18650 cells permit rapid exchange during field calibration without tethering the unit.
+7. **Ceiling-Mounted Junction Box vs. Fully Articulated Enclosure:**
+   - Enclosing compute stationary while actuating the camera module only minimizes moving mass and servo fatigue.
+   - Rigid ABS construction offers reliable mounting and ample internal volume for convection.
 8. **IRLZ44N Logic-Level MOSFET vs. Standard BJT:**
    - The IRLZ44N features a low gate threshold voltage ($V_{GS(th)} \le 2\text{V}$), allowing it to be fully driven into saturation by the ESP32's 3.3V GPIO without requiring intermediate driver stages or dissipating excessive heat.

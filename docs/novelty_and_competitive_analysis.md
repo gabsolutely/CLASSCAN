@@ -49,7 +49,7 @@ The explicit separation of concerns between:
 - **Pi 3B (Brain):** inference, networking, logic
 - **ESP32 (Hands):** PWM servo control, LDR ADC, OLED display, autonomous failsafe
 
-...mirrors standard industrial robotics and automation design (IEC 61131-style controller separation). For a single-developer capstone system at PCU-D, applying this architectural pattern to a classroom occupancy device at this hardware budget (~₱4,000–₱5,000 BOM) is not common in Philippine capstone literature.
+...mirrors standard industrial robotics and automation design (IEC 61131-style controller separation). Applying this architectural pattern to an embedded classroom occupancy device within a constrained hardware budget (~₱4,000–₱5,000 BOM) provides industrial-grade resilience rarely found in low-cost institutional monitoring systems.
 
 The ESP32 failsafe guarantee — room sweeping, lighting, and LED count display continue independently even if the Pi crashes or Wi-Fi drops — is an operational reliability property that cloud-connected competitors explicitly do not offer.
 
@@ -65,7 +65,7 @@ CLASSCAN is unusual in that it rigorously documents every dead end:
 - WBF merging: worse than Soft-NMS (MAE 4.55 vs. 3.84)
 - From-scratch letterbox training: collapsed in all 5 independent attempts
 
-This level of negative-result documentation is not standard in commercial products and is specifically valuable for the academic capstone context — it provides an evidence trail for model selection that examiners can audit.
+This level of negative-result documentation provides a rigorous empirical audit trail for model selection and reproducible edge optimization.
 
 ### 1.6 Privacy-by-Design as an Architectural Guarantee
 

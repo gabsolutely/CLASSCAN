@@ -1,6 +1,6 @@
 # CLASSCAN — System Documentation
 **Classroom Occupancy Sensing Turret**  
-PCU-D Capstone Project · Sept 2026 · Programmer: gabsolutely
+PCU-D Capstone Project · Sept 2026
 
 ---
 
@@ -152,7 +152,7 @@ Per-clip correlation: `line3=0.759`, `sit2=0.519`, `sit1=0.538`, `line2=0.555`, 
 - **Round 9 / style-aug:** brightness/contrast/color/sharpness jitter on SCUT-HEAD stream; LR=5e-6; only run to complete 10 epochs without collapse; epoch 8 → r=0.531
 - **3-way ensemble grid search:** weights (0.6, 0.0, 0.4) for [round4_ep8, stretch-ft-ep1, style-aug-ep8] → **MAE=2.77, r=0.586** — best across all rounds
 
-**Domain-gap root cause (confirmed by QA reviewer PeaNat):** SCUT-HEAD depicts orderly/seated/well-lit lecture halls; real Philippine classrooms have moving lines, irregular wooden armchairs, dim/uneven lighting. The 0.43–0.60 real-footage correlation ceiling is a data-domain limitation. Only genuine Filipino-classroom training data would meaningfully break it.
+**Domain-gap root cause:** SCUT-HEAD depicts orderly/seated/well-lit lecture halls; real Philippine classrooms have moving lines, irregular wooden armchairs, dim/uneven lighting. The 0.43–0.60 real-footage correlation ceiling is a data-domain limitation. Only genuine Filipino-classroom training data would meaningfully break it.
 
 ---
 

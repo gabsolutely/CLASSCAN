@@ -106,7 +106,7 @@ Hypothesized that small/distant heads lacked resolution at 300px and MobileNetV2
 Discovered that threshold tuning for box F1 (obj=0.30) caused an overcounting bias (+12%) in crowd counting. Swept thresholds explicitly for headcount MAE: `obj_thresh = 0.35` dropped MAE to **3.57 people** ($r = 0.987$) with near-zero count bias (-3.4%). Evaluated tiled inference (2×2 grid, 0.2 overlap, dual threshold: full pass at 0.35, tile passes at 0.65, soft-NMS) to recover small heads: achieved **F1 = 31.8%, MAE = 3.84, $r = 0.986$**. WBF and flip-TTA were tested and ruled out.
 
 **Stage 6 — Density-Map Regression Paradigm Shift (`classcan_density_v4`):**
-Following external QA peer review (PeaNat) challenging box-level assumptions in chaotic classroom environments, a continuous **density-map regression** model was designed:
+Following technical peer review challenging box-level assumptions in chaotic classroom environments, a continuous **density-map regression** model was designed:
 - Bounding boxes artificially penalize partially occluded heads and introduce NMS suppression errors in dense seating rows.
 - Converted head annotations into continuous 2D Gaussian density maps.
 - Replaced the detection heads with a progressive upsampling decoder yielding a 104×104 density map with **Softplus** activation (eliminating dying-ReLU failures).
@@ -224,7 +224,7 @@ LoRa was explicitly **rejected** for the current project scope.
 ### Rationale
 1. **Single-Room Deployment:** CLASSCAN is designed as a single-room system. Pi and ESP32 are co-mounted in the same ceiling unit, communicating over USB serial at 115200 baud. There is no range problem to solve.
 2. **Unnecessary Complexity:** Adding LoRa introduces an additional radio stack, additional firmware on the ESP32, and additional failure modes (signal, antenna placement, duty-cycle limits) with zero benefit for the current use case.
-3. **Scope Discipline:** The Sept 28, 2026 PoC deadline does not leave room for scope expansion. Adding wireless protocols is explicitly deferred.
+3. **Scope Discipline:** Adding external wireless long-range protocols introduces unnecessary complexity for single-room deployments and is explicitly deferred.
 
 ### Revisit Condition
 LoRa (or equivalent LPWAN) would be worth considering if the project scope expands to multi-room or multi-building deployments where each classroom has its own CLASSCAN unit and counts need to aggregate over a building-wide network.
@@ -305,7 +305,7 @@ def _grab_fresh_frame(cap) -> np.ndarray:
 Applied to all three detector classes: `DensityDetector.capture_frame()`, `EnsembleDensityDetector.capture_frame()`, and `Detector.capture_frame()`.
 
 ### Alternatives Considered
-- **Background capture thread with a `queue.Queue(maxsize=1)`:** Frames are decoded in a dedicated thread; the main loop always reads the most recent decoded frame from a 1-item queue (drop-if-full). Provides true parallel capture/inference but adds threading complexity, GIL interaction with NumPy array handoff, and thread lifecycle management — overkill for a PoC-deadline system.
+- **Background capture thread with a `queue.Queue(maxsize=1)`:** Frames are decoded in a dedicated thread; the main loop always reads the most recent decoded frame from a 1-item queue (drop-if-full). Provides true parallel capture/inference but adds threading complexity, GIL interaction with NumPy array handoff, and thread lifecycle management — unnecessary overhead for an embedded single-board computer.
 - **`cv2.CAP_PROP_BUFFERSIZE = 1`:** OpenCV exposes a property to set the V4L2 buffer size. However, on many kernel/driver versions this property is ignored or silently clamped; it cannot be relied upon across Pi OS releases. The grab-loop approach works unconditionally.
 - **Reducing `LOOP_SLEEP` or restructuring the main loop:** These address symptoms (throughput) rather than the root cause (buffer staleness).
 

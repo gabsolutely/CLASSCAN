@@ -405,7 +405,7 @@ The breakthrough was applying **dual-threshold gating**:
 
 ## 15. External QA Review & Strategic Re-Alignment
 
-A technical peer review by external QA (PeaNat) produced key recommendations:
+A technical peer review produced key recommendations:
 1. **Target Operational Metric:** Drive MAE toward $\le 2.0$ people while holding count correlation $r > 0.98$. Box-level IoU F1 should be deprioritized relative to headcount fidelity.
 2. **Classroom Behavioral Domain Gap:** Sourced academic datasets (SCUT-HEAD) depict pristine, orderly, seated lecture halls with uniform lighting. Real Philippine public school classrooms exhibit movement, standing, irregular wooden armchair arrangements, and cluster crowding.
 3. **Architectural Alternative:** For headcount tasks under dense occlusion, point-based **density-map regression** avoids artificial bounding-box aspect ratio assumptions and eliminates NMS thresholding artifacts.
@@ -550,7 +550,7 @@ Threshold=0.30 looked promising on the 10-frame sample (MAE 13.67 → 3.14).
 | line2 correlation | 0.033 | -0.129 | ↑ went negative |
 | sit2 correlation | 0.572 | 0.280 | ↑ worse |
 
-**Conclusion: Rejected.** The threshold improved MAE and flattened bias (roughly uniform suppression), but correlation got worse and two clips' correlations collapsed. This is a bias-correction hack, not a real improvement — it suppresses uniformly rather than teaching the model to discriminate specific clutter. The real fix requires retraining.
+**Conclusion: Rejected.** The threshold improved MAE and flattened bias (roughly uniform suppression), but correlation degraded and two clips' correlations collapsed. This acts as an empirical bias offset rather than a learned representation improvement — it suppresses uniformly rather than teaching the model to discriminate specific clutter. A robust resolution requires retraining.
 
 ---
 
@@ -751,7 +751,7 @@ Two attempts to fine-tune from epoch 8 toward letterboxed geometry:
 
 **Sanity checks:** 15 raw letterboxed SCUT-HEAD samples had valid non-zero targets; hard-neg 100% zero-target; hard-pos 100% non-zero; 40-sample combined set had 0 zero-targets, healthy 1-81 range. Confirmed NOT a data pipeline bug — genuine training-dynamics collapse.
 
-**Conclusion:** Bridging a stretch-trained checkpoint to letterboxed geometry via continued fine-tuning does not work at any LR tried. Would require training from scratch with letterbox from the start — out of scope before the deadline. The letterbox eval asymmetry is exploited at inference time only.
+**Conclusion:** Bridging a stretch-trained checkpoint to letterboxed geometry via continued fine-tuning destabilizes convergence across all tested learning rates. Adapting to letterboxed input requires training from scratch with letterboxing from initialization; the letterbox eval asymmetry is exploited at inference time only.
 
 ---
 
@@ -829,7 +829,7 @@ Step-0.05 sweep around the (0.6, 0.0, 0.4) best:
 
 ### Alternative Lower-MAE Configuration
 
-If MAE matters more than correlation for the writeup/defense:
+If absolute count error (MAE) is prioritized over trend correlation:
 - Weights (0.55, 0.10, 0.35) → MAE=2.68, corr≈0.584
 - Reintroduces stretch-ft-epoch1 at 10% weight; nearly identical correlation
 
@@ -849,18 +849,18 @@ If MAE matters more than correlation for the writeup/defense:
 
 Ranked by estimated impact:
 
-1. **Genuine Filipino-classroom training data** — identified by PeaNat as the actual root cause of the domain gap ceiling. Only 35 local photos were ever used. Most impactful, most expensive.
-2. **MPCount (CVPR 2024)** — single-domain-generalization architecture, researched and cited during round 7-9 session. Real architectural ceiling-breaker but a multi-day port. Explicitly deferred.
-3. **TTA (Test-Time Augmentation)** — average predictions over original frame + horizontally-flipped version. No retraining needed. Cheap to add once deployment pipeline exists.
+1. **Expanded local classroom training data:** Sourcing diverse local classroom footage directly addresses domain shift (furniture geometry, ambient lighting, ceiling pitch angles).
+2. **MPCount (CVPR 2024)** — single-domain-generalization architecture, researched during evaluation. A candidate for cross-domain generalization.
+3. **TTA (Test-Time Augmentation)** — average predictions over original frame + horizontally-flipped version. No retraining needed.
 4. **Style-aug variant from stretch-ft-epoch1 base** — untried combination; style aug proved complementary in ensemble, starting from a different base might yield a third unique signal.
-5. **Per-clip adaptive correction targeting line1** — the clear weak point at corr=0.455-0.475 in every ensemble variant tried.
-6. **Backbone swap** — outside "pros" flagged MobileNetV3 as dated for this task. Out of scope for PoC.
+5. **Per-clip adaptive correction targeting line1** — addressing the specific moving-student failure mode.
+6. **Backbone exploration:** Evaluating lightweight modern vision backbones for future platform iterations.
 
 ---
 
-## 30. Literature Context & Defense Material
+## 30. Literature Context & Academic References
 
-- **MPCount (CVPR 2024):** Single-domain-generalization architecture for crowd counting. Not implemented (multi-day port), but confirms this is a known hard problem in the literature. Citable for defense/writeup as "future work".
+- **MPCount (CVPR 2024):** Single-domain-generalization architecture for crowd counting. Confirms this is an open challenge in current literature; relevant reference for future generalization research.
 - **AugMix / Style-randomization:** The style-augmentation approach (brightness/contrast/color/sharpness jitter) used in rounds 7-9 is motivated by this literature. Confirmed not a dud — the style-aug checkpoint was the only run in rounds 7-9 to complete 10 epochs without collapse, and it contributes genuinely complementary ensemble signal (weight 0.40 in the final model).
 - **Domain transfer gap quantification:** Object detectors trained in-domain drop from 88–91% mAP to 56.7% when transferred to uncalibrated real-world surveillance domains without domain adaptation. Matches CLASSCAN's empirical experience (MAE 2.13 → 9.46 pre-fine-tune on real footage).
 
