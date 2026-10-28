@@ -51,9 +51,8 @@ NaN Recovery Protocol (banked lesson)
 Checkpoint Safety
 -----------------
   save_checkpoint_verified() asserts the Drive file actually exists and
-  matches byte size before trusting it. This was added after the 63-epoch
-  checkpoint loss disaster (silent Drive save failures due to account/session
-  mismatch across notebook tabs).
+  matches byte size before trusting it. This guards against unverified
+  checkpoint writes and silent session disconnections.
 
 Usage
 -----
@@ -63,9 +62,9 @@ Usage
 
 Training History (for reference)
 ---------------------------------
-  Run 1 (original account, lost):
-    63 epochs, checkpoint save silently failed → weights lost on runtime disconnect.
-  Run 2 (brother's laptop/account, hardened script):
+  Run 1:
+    63 epochs: aborted due to unverified checkpoint disconnect.
+  Run 2 (verified checkpointing):
     50 epochs: smooth monotonic decrease, val plateau reached at ~epoch 47-50.
     Checkpoints epochs 5/10/15/20/25/30/35/40/45/50 verified (18922768 bytes each).
     Epoch 50 inference+NMS: 13/13 exact count match on val image.
@@ -453,10 +452,8 @@ def save_checkpoint_verified(model, epoch: int) -> str:
     Save model weights to Drive and verify the file actually exists and
     has the expected byte count before returning.
 
-    This was added after the 63-epoch checkpoint loss disaster: Drive saves
-    silently failed (folder never existed on the actual account checked,
-    likely account/session mismatch across notebook tabs). Without this
-    guard, a runtime disconnect after silent-fail = total training loss.
+    This guards against silent Drive save failures or unmounted directories
+    so that runtime disconnects do not result in lost training weights.
 
     Raises RuntimeError if the file is not found or is suspiciously small.
     """

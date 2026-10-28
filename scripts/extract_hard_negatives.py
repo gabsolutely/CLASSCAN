@@ -195,7 +195,7 @@ def main():
     print()
     print("NEXT STEPS:")
     print("1. scp the whole folder to your laptop:")
-    print(f"   scp -r gabsolutely@<pi-ip>:~/CLASSCAN/{args.out_dir} .")
+    print(f"   scp -r pi@<pi-ip>:~/CLASSCAN/{args.out_dir} .")
     print("2. Open each crop image, check if it's genuinely NOT a head (bag/chair/clutter)")
     print("   vs. actually a real head the peak-counting heuristic mislabeled.")
     print("3. Fill in confirmed_not_a_head = yes/no per row in the manifest CSV.")

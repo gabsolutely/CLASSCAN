@@ -17,7 +17,7 @@ USAGE:
 STEP 0 — get the files onto the Pi from Drive:
   On your laptop (with the Drive folder synced, or after downloading manually):
     scp clip_line.mp4 clip_sitting.mp4 classcan_density_v4.tflite \
-        gabsolutely@<pi-ip>:~/footage_test/
+        pi@<pi-ip>:~/footage_test/
 
   Or, if you'd rather pull straight from Drive to the Pi without going through
   the laptop: install gdown on the Pi (`pip install gdown`) and use
