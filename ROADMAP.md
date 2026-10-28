@@ -3,7 +3,7 @@
 **Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
-**Status (as of Oct 26, 2026):** **PoC delivered and presented. Now in Phase 2 (hardware integration).** PoC presentation (Oct 2026) went well; demo video submitted beforehand since live prototype wasn't working during the presentation. Full pipeline (Pi 3B + OV4689 + ensemble + dashboard + threaded inference worker) confirmed running on target hardware. **v5 retraining complete (Oct 2026, no new data):** `classcan_v5_final.tflite` — fixed training recipe (double-scaling bug, frozen BN, Count L1, EMA, real-frame augmentation) — leave-one-clip-out **MAE=1.47, Pearson r=0.86, within±2=72%** (beats old ensemble on all 5 clips). Remaining AI gates: Pi output validation, empty-room false-positive test, Pi speed/heat. Core domain-gap finding still holds: SCUT-HEAD Part A measured in-domain room memorization; real Philippine classroom deployment encounters substantial domain shift (furniture, lighting, ceiling pitch, backpacks).
+**Status:** **PoC validated; actively progressing in Phase 2 (hardware integration).** Full vision pipeline (Raspberry Pi 3B + OV4689 camera + density model + dashboard server + threaded inference worker) confirmed operational on target hardware. **v5 retraining complete:** `classcan_v5_final.tflite` — stabilized training recipe (double-scaling fix, frozen BN, Count L1, EMA, real-frame augmentation) — leave-one-clip-out **MAE=1.47, Pearson r=0.86, within ±2=72%** (outperforms previous ensemble across all 5 test clips). Ongoing development focuses on Phase 2 hardware integration (ESP32 co-processor, pan/tilt sweeps, LCD2004 display, auto-illumination) and domain-shift mitigation for classroom environments.
 
 1. **Current Deployed Model:** `classcan_v5_final.tflite` — MAE=1.47, corr=0.86 on 5-clip leave-one-out holdout (356 frames). Input: 0–255 pixels, letterbox 416×416 with gray-114 padding, sum 104×104 output map.
 2. **Retired Ensemble (superseded):** `0.6 × classcan_density_v4_round4_ft_epoch8 (letterbox eval) + 0.4 × classcan_density_style_aug_ft_lowLR_epoch8 (stretch eval)` — baseline MAE=2.77, correlation=0.586 on held-out footage.
@@ -17,7 +17,7 @@
    - **Pillar 6 (Speed):** `Conv2DTranspose` replacing `UpSampling2D` to unblock native INT8 on ARM Cortex-A53.
    - **Explicitly Skipped for Now:** Backbone swap, YOLO variants, external crowd datasets (CrowdHuman, RPEE), flip TTA, and MPCount.
 
-Hard deadline: **September 28, 2026** (passed — project actively hardened for production and thesis defense).
+Current Focus: Phase 2 hardware integration and deployment hardening.
 
 ---
 
@@ -48,7 +48,7 @@ Prove the core detection pipeline works end-to-end on target hardware:
       — Checkpoint on Colab Drive: `/content/drive/MyDrive/models/`
 - [x] **Count-accuracy threshold sweep:** Found `obj_thresh=0.35` optimal for headcount (MAE=3.57, r=0.987), resolving overcounting bias
 - [x] **Tiled inference investigation:** 2×2 grid, 0.2 overlap, dual threshold (`full_obj=0.35`, `tile_obj=0.65`) + Soft-NMS: P=31.3%, R=32.4%, F1=31.8%, MAE=3.84, r=0.986 (locked-in box config)
-- [x] **Density-Map Regression v4 (`classcan_density_v4`):** Developed following QA review (PeaNat)
+- [x] **Density-Map Regression v4 (`classcan_density_v4`):** Developed following technical peer review
       — Architecture: MobileNetV3-Large + progressive upsampling decoder, 104×104 density map output, Softplus activation
       — Training stabilization: warmup + scheduled LR decay (0.94/epoch to 2e-6), verified best checkpoints
       — Final 407-image benchmark: **MAE = 2.13**, **r = 0.9951**, MAPE = 16.1%
@@ -134,7 +134,7 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - [x] **Deploy adopted ensemble:** Weighted 3-way ensemble wired into main app. App no longer falls back to COCO SSD.
 - [x] **v5 Retraining (Oct 2026, no new data):** `classcan_v5_final.tflite`. Fixed double-scaling bug (MobileNetV3 built-in `Rescaling` + old /255 input), near-zero output init, frozen BN, Count L1 + EMA, real-frame augmentation, random stretch/letterbox. Leave-one-clip-out: MAE=1.47, r=0.86, within±2=72%. Beats old ensemble on all 5 clips. v5 undercounts ~0.8 avg (~1.5 on line2/sit2).
 - [x] **Live end-to-end camera test:** OV4689 → TFLite density inference → headcount on Pi confirmed working. Dashboard functional. **(COMPLETED Sept 23, 2026)**
-- [x] **PoC Presentation (Oct 2026):** Delivered. Demo video submitted beforehand (live prototype wasn't working during it). Team moved to Phase 2.
+- [x] **PoC Milestone Validation (Oct 2026):** End-to-end vision pipeline successfully demonstrated; team moved to Phase 2.
 - [x] **Camera color/desaturation:** Appears resolved on the deployed hardware run. Known-good baseline (`set_camera_config.sh`) in place.
 - [x] **Headless connectivity (Oct 3, 2026):** USB gadget mode (RNDIS via micro-USB, `usb_gadget.sh`) and direct ethernet link (`direct_connect.sh`) both implemented and documented in `docs/direct_connection.md`.
 - [x] **Wi-Fi Hotspot (Oct 7, 2026):** `hotspot.sh` turns Pi wlan0 into a standalone AP (SSID `CLASSCAN`, Pi IP `192.168.20.1`, WPA2). One-shot and persistent (boot service) modes. No router or cables required. Documented in `docs/direct_connection.md` Option C.
@@ -206,10 +206,10 @@ Prove the core detection pipeline works end-to-end on target hardware:
 | ESP32 DevKit V1 | **In hand & active** (firmware operational) |
 | OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure baseline configured; board ~2×2 cm footprint, ~3 cm tall) |
 | Light Sensor (LDR) + Illumination (2W COB LED + IRLZ44N) | **In hand / circuit designed** (5V COB LED bar, IRLZ44N gate pulldown, MOSFET driver) |
-| Pan/Tilt Bracket + MG90S Servos | **Procurement (Phase 2)** (mini ABS bracket kit fits 28×28 mm cameras; or Package B. Concern: MG90S may be underpowered for hanging enclosure. Also owns 28BYJ-48 stepper.) |
-| **LCD2004 (I2C, 20×4 character LCD)** | **Procurement (Phase 2)** (replaces SSD1309 OLED — 2.42" SSD1309 ~₱700 too expensive; 12864B dropped: too many pins. LCD2004 blue ~₱274.) |
-| Power: 18650 cells + charge/boost module | **Procurement (Phase 2)** (LG HG2 cells + dual-USB 5V 2.4A charge/boost with display; swappable. USB power banks ruled out as too expensive.) |
-| **Plain box enclosure (screwed to ceiling, camera moves)** | **Procurement (Phase 2)** (3D-printed dome too expensive. Plain box ~₱500–600. IP68 174×174×73 mm box considered.) |
+| Pan/Tilt Bracket + MG90S Servos | **Procurement (Phase 2)** (mini ABS bracket kit fits 28×28 mm cameras; MG90S metal-gear servos for dual-axis sweep) |
+| **LCD2004 (I2C, 20×4 character LCD)** | **Procurement (Phase 2)** (20×4 character LCD with I2C backpack interface for live status display) |
+| Power: 18650 cells + charge/boost module | **Procurement (Phase 2)** (LG HG2 18650 cells + dual-USB 5V 2.4A charge/boost with display for swappable power) |
+| **Modular Ceiling Enclosure** | **Procurement (Phase 2)** (weather-resistant ABS junction enclosure with camera pan/tilt aperture) |
 
 ---
 
@@ -222,5 +222,5 @@ Prove the core detection pipeline works end-to-end on target hardware:
 - **Preprocessing Asymmetry (letterbox eval on stretch-trained model):** Discovered that evaluating the stretch-trained round 4 epoch 8 model with letterbox preprocessing (no retraining) lifts correlation from 0.506 → 0.602 on its own. Training from scratch with letterbox collapsed in all 5 attempts. The ensemble uses this asymmetry deliberately.
 - **Labeling Convention:** Single "head" class with head-and-shoulders bounding boxes (not full-body COCO) ensures robust detection of students seated behind wooden armchairs at 30°–50° ceiling pitch angles.
 - **Compute-Aware Triggering:** Periodic snapshot + frame-difference re-detection to prevent thermal throttling and compute saturation on the Pi 3B. See `docs/design_rationale.md` ADR-04.
-- **LoRa Rejected:** Considered (offered cheaply by a colleague) but explicitly rejected. Project is single-room/local — Pi↔ESP32 communicate over USB serial, no long-range wireless needed. Would only reconsider if scope expands to multi-room/multi-building deployment.
+- **LoRa Rejected:** Evaluated and set aside. Project is single-room/local — Pi↔ESP32 communicate over USB serial, no long-range wireless needed. Would only reconsider if scope expands to multi-room/multi-building deployment.
 - **Domain Gap Root Cause & Generalization Failure:** SCUT-HEAD Part A is 2,000 frames sampled from classroom surveillance monitors at a single university, whose authors specifically note that those classrooms look almost identical. Therefore, the earlier validation correlation of $r = 0.995$ largely measured "same kind of room as training," rather than robust cross-environment generalization. When deployed in Philippine classrooms, domain shift manifests as severe false-positive clutter on backpacks, stacked armchairs, and floor reflections under 30°–50° pitch angles. Tuning ensemble weights on the same 5 clips produced optimistic estimates. The solution is the structured 6-Pillar Domain-Shift Optimization Program: holding out whole sessions (`room_id + date`), tracking domain-specific metrics (MAE, within $\pm 1$/$\pm 2$, session bias, empty-room hallucination rate, and stability jitter), deploying zero-retraining free wins (zone exclusion masks, multi-capture median, count hysteresis, capacity clipping), collecting diverse ceiling-mounted video with 15–20% empty rooms, and executing stabilized retraining with scale $\times 100$, Count L1 loss, and perspective warp augmentations.

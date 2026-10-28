@@ -1,6 +1,6 @@
 # CLASSCAN — Prototype Deployment Checklist
-> **Hard deadline: September 28, 2026** (passed — project continues for polish and real-classroom validation)  
-> Work through this list top-to-bottom before the demo. Tick each box as you go.
+> Operational validation checklist for physical turret bringup and field testing.
+> Work through this list top-to-bottom. Tick each box as you go.
 
 ---
 
@@ -176,7 +176,7 @@ python main.py
 
 ---
 
-## 8 · Known Limitations (state at defense)
+## 8 · Known System Limitations
 
 | Issue | Status & Remediation Path |
 |---|---|

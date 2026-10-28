@@ -27,5 +27,6 @@ scripts/hardpos_annotations.json
 scripts/hardpos_annotations_v2.json
 manual_clutter_crops
 scripts/extracted_frames_v2
+zzexp
 
 NOTES.md

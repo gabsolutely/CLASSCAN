@@ -34,7 +34,7 @@ except ImportError:          # --optimize still works without it
 OUT_DIR = "classcan_cad_out"
 LAYOUT_FILE = "classcan_layout.json"     # written by --optimize, read by the build
 
-# --- enclosure (Lazada listing: outer 174x174x73, inner 160x160x63)
+# --- enclosure reference: outer 174x174x73, inner 160x160x63
 BOX_W = BOX_D = 174.0
 BOX_H = 73.0
 WALL = 7.0
