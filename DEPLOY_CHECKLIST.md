@@ -13,7 +13,7 @@
 ### 0b · Runtime Free-Win Verification (Zero Retraining)
 - [ ] `MAX_ROOM_CAPACITY = 45` and `MAX_ZONE_CAPACITY = 15` active in `src/pi/config.py`
 - [ ] `MULTI_CAPTURE_COUNT = 3` configured (takes 3 snapshots per quadrant and uses median)
-- [ ] `COUNT_HYSTERESIS_DELTA = 0.6` active (dead-band filtering prevents OLED integer jitter)
+- [ ] `COUNT_HYSTERESIS_DELTA = 0.6` active (dead-band filtering prevents display integer jitter)
 - [ ] `ZONE_EXCLUSION_MASKS` configured per quadrant to mask non-floor regions (doors, whiteboard, ceiling)
 - [ ] Verified via reconciler tests: `pytest tests/test_reconciler.py -v` (passes 100%)
 
@@ -119,7 +119,7 @@ python scripts/export_to_tflite.py --mode density \
   ```
 - [ ] Servo mechanism physically attached to pan/tilt bracket (genuine MG90S metal-gear servos) and free to rotate without obstruction
 - [ ] LDR and illumination LED circuit wired per `hardware/wiring_guide.md` (IRLZ44N logic-level MOSFET, 5V LED strip, 10k pulldown)
-- [ ] OLED display (SSD1309 2.42" 7-pin SPI) wired to ESP32 (GPIO 14, 27, 4, 2, 5) in factory SPI mode (no SMD soldering)
+- [ ] LCD2004 display (20×4 character LCD, PCF8574 I2C backpack) wired to ESP32 (GPIO 21 SDA, GPIO 22 SCL, 5V VCC, GND)
 
 ---
 
@@ -163,7 +163,7 @@ python main.py
 - [ ] **Pan/tilt servos:** Dual-axis bracket platform fitted with verified metal-gear MG90S units (tested under load, 2 spares available)
 - [ ] Camera mounted to pan/tilt bracket and pointed at the classroom area of interest
 - [ ] ESP32 connected to Pi via short USB serial cable; reports `{"type":"state","value":"idle"}`
-- [ ] OLED display (SSD1309 2.42") shows received headcount locally in crisp monochrome text
+- [ ] LCD2004 display (I2C 20×4) shows received headcount locally in crisp text on row 2
 - [ ] LDR / illumination circuit responds to ambient light changes (LED strip activates in darkness, total draw ≤500mA)
 
 ---

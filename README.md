@@ -56,7 +56,7 @@ Commands from the dashboard (e.g. "switch to zone-check mode", "check quadrant 2
 
 **Raspberry Pi 3B — the brain.** Runs headless **Raspberry Pi OS Lite (64-bit, Trixie)**. The quad-core Cortex-A53 CPU runs TFLite inference (`ai-edge-litert`), change detection, and communication bridging. Live continuous-stream inference is avoided due to CPU limits; CLASSCAN instead uses periodic snapshot detection with immediate re-trigger on significant frame change. Primary model: **`classcan_density_v4` density-map regression** (MobileNetV3-Large backbone, 104×104 density map output, softplus activation) achieving **MAE = 2.13 ($r=0.9951$) overall and MAE = 0.93 in the 0–20 quadrant operational regime**. Pi 3B CPU benchmark: density model **702.3 ms/frame**, box detector **0.557 s/frame** (both XNNPACK, float32). The **MobileNetV3-Large @ 416×416 box detector** (F1=31.8%, MAE=3.84, $r=0.986$ with 2×2 tiling and Soft-NMS) is available for visual HUD bounding boxes. Handles all networking via onboard Wi-Fi and bridges to ESP32 over USB serial.
 
-**ESP32 — the hands.** Fully isolated from networking (its Wi-Fi radio is unused by design — networking stays on the Pi 3B); handles physical I/O only: servo positioning (sweep or quadrant-targeted), LDR-triggered custom illumination module, and driving the SSD1309 OLED display. Receives commands only via USB serial from the Pi 3B — never connects to the network directly. Runs autonomously in default sweep mode — sweep and lighting logic continue even if the network or laptop dashboard drops. Reports its own state (idle/moving) back over serial so the Pi 3B's change-detection trigger can distinguish the turret's own motion from an actual change in the room. Supports a calibrated quadrant/seat pan-tilt lookup table for targeted mode, switchable with general sweep mode via dashboard command.
+**ESP32 — the hands.** Fully isolated from networking (its Wi-Fi radio is unused by design — networking stays on the Pi 3B); handles physical I/O only: servo positioning (sweep or quadrant-targeted), LDR-triggered custom illumination module, and driving the LCD2004 I2C display. Receives commands only via USB serial from the Pi 3B — never connects to the network directly. Runs autonomously in default sweep mode — sweep and lighting logic continue even if the network or laptop dashboard drops. Reports its own state (idle/moving) back over serial so the Pi 3B's change-detection trigger can distinguish the turret's own motion from an actual change in the room. Supports a calibrated quadrant/seat pan-tilt lookup table for targeted mode, switchable with general sweep mode via dashboard command.
 
 **Laptop Dashboard — the display.** Receives headcount and periodic snapshots over Wi-Fi from the Pi 3B, and presents a real-time monitoring view. Can send mode-switch and zone-check commands back to the turret.
 
@@ -147,8 +147,8 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 | OV4689 4MP BSI USB Camera Module (UVC, Type-C/A) | **In hand & connected** — Video feed for detection; ~2×2 cm footprint, ~3 cm tall |
 | Light Sensor (LDR) | **In hand** — Detects ambient brightness, triggers illumination module |
 | Custom illumination LED module (self-built, LDR-triggered) | **Procurement** — 2W 5V USB COB LED bar + IRLZ44N MOSFET driver, driven by ESP32 |
-| Pan/Tilt Bracket + MG90S Servos | **Procurement (Phase 2)** — Mini ABS pan/tilt bracket kit with MG90S metal-gear servos (fits 28×28 mm cameras) for dual-axis positioning. |
-| **LCD2004 (I2C, 20×4 character LCD, blue backlight)** | **Procurement (Phase 2)** — 20×4 character LCD with I2C backpack interface (4 pins: VCC, GND, SDA, SCL) for live headcount and system status display. |
+| Pan/Tilt Bracket + MG90S Servos | **In hand** — Mini ABS pan/tilt bracket kit with MG90S metal-gear servos (fits 28×28 mm cameras) for dual-axis positioning. |
+| **LCD2004 (I2C, 20×4 character LCD, blue backlight)** | **In hand** — 20×4 character LCD with I2C backpack interface (PCF8574, 4 pins: VCC, GND, SDA, SCL) for live headcount and system status display. |
 | 18650 Li-ion Cells + Charge/Boost Module | **Procurement (Phase 2)** — LG HG2 18650 rechargeable cells + dual-USB 5V 2.4A regulated charge/boost module with display for swappable power. |
 | **Modular Ceiling Enclosure** | **Procurement (Phase 2)** — Weather-resistant ABS junction enclosure mounted to ceiling; internal pan/tilt mechanism actuates camera aperture. |
 
@@ -199,7 +199,7 @@ ESP32 loop (autonomous, runs independent of network):
         hold briefly at each position for Pi 3B to detect
 
     if command received via serial: update mode / move to specific quadrant
-    if new headcount received via serial: update OLED display
+    if new headcount received via serial: update LCD2004 display
 
 Pi 3B loop:
     capture camera frame
@@ -227,7 +227,7 @@ Pi 3B loop:
 │   │   ├── comms/      → dashboard_server.py, serial bridge
 │   │   ├── config.py   → Deployment constants, thresholds, zone coordinates
 │   │   └── main.py     → Main execution loop & system coordinator
-│   ├── esp32/          → ESP32 firmware (servo control, LDR illumination, OLED display (SSD1309))
+│   ├── esp32/          → ESP32 firmware (servo control, LDR illumination, LCD2004 display (I2C 20×4))
 │   └── dashboard/      → Laptop web/client monitoring interface
 ├── scripts/            → Hardware & inference smoke-test scripts (run_on_image.py)
 ├── tests/              → Automated pytest test suite

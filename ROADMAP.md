@@ -149,7 +149,7 @@ Prove the core detection pipeline works end-to-end on target hardware:
 
 ### Hardware Integration (Post-PoC)
 - Pan/tilt servos, sweep mode, quadrant/zone targeting (servo "radar" mount prototype on ESP32)
-- SSD1309 OLED headcount display driven by ESP32 (SPI, 2.42", 7-pin)
+- LCD2004 headcount display driven by ESP32 (I2C 20×4, PCF8574 backpack)
 - Custom LDR-triggered illumination LED module (IRLZ44N MOSFET + 5V white LED strip)
 - ABS junction box enclosure (150×110×70 mm) with pan/tilt bracket mount
 - 18650 battery power module + 5V/2A boost converter (steps 3.0V–4.2V to 5V)
@@ -206,8 +206,8 @@ Prove the core detection pipeline works end-to-end on target hardware:
 | ESP32 DevKit V1 | **In hand & active** (firmware operational) |
 | OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure baseline configured; board ~2×2 cm footprint, ~3 cm tall) |
 | Light Sensor (LDR) + Illumination (2W COB LED + IRLZ44N) | **In hand / circuit designed** (5V COB LED bar, IRLZ44N gate pulldown, MOSFET driver) |
-| Pan/Tilt Bracket + MG90S Servos | **Procurement (Phase 2)** (mini ABS bracket kit fits 28×28 mm cameras; MG90S metal-gear servos for dual-axis sweep) |
-| **LCD2004 (I2C, 20×4 character LCD)** | **Procurement (Phase 2)** (20×4 character LCD with I2C backpack interface for live status display) |
+| Pan/Tilt Bracket + MG90S Servos | **✅ In hand** (mini ABS bracket kit; MG90S metal-gear servos for dual-axis sweep) |
+| **LCD2004 (I2C, 20×4 character LCD)** | **✅ In hand** (20×4 character LCD with I2C backpack/PCF8574 for live headcount display) |
 | Power: 18650 cells + charge/boost module | **Procurement (Phase 2)** (LG HG2 18650 cells + dual-USB 5V 2.4A charge/boost with display for swappable power) |
 | **Modular Ceiling Enclosure** | **Procurement (Phase 2)** (weather-resistant ABS junction enclosure with camera pan/tilt aperture) |
 
