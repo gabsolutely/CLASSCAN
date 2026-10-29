@@ -26,15 +26,17 @@ This document provides full hardware interconnections, circuit schematics, and p
      │                 │                             │   GPIO 34 (ADC) ├──────┐
      │  USB Port 2 ────┼─────────────┐               │   GPIO 25 (OUT) ├──┐   │
      └─────────────────┘             │               │   GPIO 18 (PWM) ├┐ │   │
-                                     │               │   GPIO 21 (PWM) ├┼┐│   │
-                                     ▼               │   OLED SPI/I2C  ├┼┼┐   │
+                                     │               │   GPIO 13 (PWM) ├┼┐│   │
+                                     ▼               │   GPIO 21/22 I2C├┼┼┐   │
                            [ OV4689 Camera Module ]  └─────────────────┘│││   │
                                                                         │││   │
   ┌─────────────────────────────────────────────────────────────────────┘││   │
   │ Pan Servo (MG90S): Signal ── GPIO18, Power ── +5V, Ground ── GND    ││   │
   ├──────────────────────────────────────────────────────────────────────┘│   │
-  │ Tilt Servo (MG90S): Signal ── GPIO21, Power ── +5V, Ground ── GND     │   │
+  │ Tilt Servo (MG90S): Signal ── GPIO13, Power ── +5V, Ground ── GND     │   │
   ├───────────────────────────────────────────────────────────────────────┘   │
+  │ LCD2004 Display: SDA ── GPIO21, SCL ── GPIO22, Power ── +5V, GND ── GND   │
+  ├───────────────────────────────────────────────────────────────────────────┤
   │ Illumination Driver (IRLZ44N): Gate ── GPIO25, Strip ── +5V, GND ── GND   │
   └───────────────────────────────────────────────────────────────────────────┘
     LDR Ambient Sensor: Signal ── GPIO34, Power ── 3.3V, Ground ── GND
@@ -112,38 +114,34 @@ ESP32 GPIO 21 (Tilt PWM) ──────────────────�
 
 ---
 
-## 4. SSD1309 OLED Display Connection (2.42", 128×64)
+## 4. LCD2004 I2C Display Connection (20×4 Character LCD, PCF8574 Backpack)
 
-The headcount is shown on a **2.42" SSD1309 OLED module** — crisp white pixels on a pure-black background, clearly legible in daylight and dim classroom conditions.
-
-> [!NOTE]
-> **Hardware Interface Notice:** Most 2.42" SSD1309 breakout boards ship from the factory pre-configured for **7-pin SPI mode**. Converting to I2C requires desoldering and relocating surface-mount 0603 resistors on the back of the PCB. **It is strongly recommended to use SPI mode as shipped** — it provides faster screen refreshes and requires zero soldering.
-
-### Option A: 7-Pin SPI Mode (Factory As-Shipped — Recommended)
-
-| SSD1309 Pin | ESP32 Pin | Wire Color | Function / Description |
-|---|:---:|:---:|---|
-| **GND** | `Common GND` | Black | Ground reference |
-| **VCC** | `3V3` (or `5V`)* | Red | Power input (*verify onboard LDO, 3.3V is standard) |
-| **D0 (SCL / SCK)** | `GPIO 14` | Yellow | SPI Clock (Hardware/Software SPI) |
-| **D1 (SDA / MOSI)** | `GPIO 27` | Green | SPI Data / MOSI |
-| **RES (Reset)** | `GPIO 4` | Orange | Hardware display reset (active low) |
-| **DC (Data/Command)**| `GPIO 2` | White | Data/Command mode select |
-| **CS (Chip Select)** | `GPIO 5` | Blue | SPI Slave Select (active low) |
-
-### Option B: 4-Pin I2C Mode (If Board Configured for I2C)
-
-If you purchased an I2C-specific version or moved the onboard SMD jumpers to I2C:
-
-| SSD1309 Pin | ESP32 Pin | Wire Color | Description |
-|---|:---:|:---:|---|
-| **VCC** | `3V3` | Red | 3.3 V display power |
-| **GND** | `Common GND` | Black | Ground reference |
-| **SCL** | `GPIO 17` | Blue | I2C clock (Bus 1, 400 kHz) |
-| **SDA** | `GPIO 16` | Yellow | I2C data (Bus 1, 400 kHz) |
+The headcount is shown on a **LCD2004 20×4 character LCD module** with a soldered-on **PCF8574 I2C backpack** — four wires only (VCC, GND, SDA, SCL).
 
 > [!NOTE]
-> The default I2C address is **0x3C** (`OLED_I2C_ADDR` in `config.h`). If blank, try **0x3D**. For 7-pin modules wired in I2C mode, `DC` and `CS` are tied to `GND`, and `RES` is tied to `3V3` or a reset GPIO.
+> **Why LCD2004?** Selected over the original SSD1309 OLED for superior character legibility at classroom distances and a simpler 4-wire I2C interface. No SPI wiring, no hardware reset line, no SMD soldering required.
+
+### Wiring Table
+
+| LCD2004 Pin | ESP32 Pin | Wire Color | Description |
+|---|:---:|:---:|---|
+| **VCC** | `VIN` (5V) | Red | 5V backlight + logic power (**must be 5V**, not 3.3V) |
+| **GND** | `Common GND` | Black | Ground reference |
+| **SDA** | `GPIO 21` | Yellow | I2C data (Bus 1, 400 kHz) |
+| **SCL** | `GPIO 22` | Blue | I2C clock (Bus 1, 400 kHz) |
+
+```
+         +5V Power Bus ────────────────────────────────────► VCC (LCD2004)
+         Common GND   ────────────────────────────────────► GND (LCD2004)
+ESP32 GPIO 21 (SDA)  ──────[4.7kΩ pull-up to 3.3V]───────► SDA (PCF8574)
+ESP32 GPIO 22 (SCL)  ──────[4.7kΩ pull-up to 3.3V]───────► SCL (PCF8574)
+```
+
+> [!IMPORTANT]
+> **GPIO 21 Remap:** GPIO 21 was previously the tilt servo signal pin. It is now the LCD I2C SDA line. **Tilt servo has been remapped to GPIO 13** (`PIN_TILT` in `config.h`). Update your physical wiring accordingly before flashing.
+
+> [!TIP]
+> **I2C Address:** The PCF8574 backpack ships at **0x27** by default. If the display stays blank, try **0x3F** — change `LCD_I2C_ADDR` in `src/esp32/include/config.h`. Pull-up resistors (4.7kΩ to 3.3V) are recommended if the bus cable run exceeds ~20 cm.
 
 
 ## 5. Active Cooling Fan Wiring (Raspberry Pi 3B)
