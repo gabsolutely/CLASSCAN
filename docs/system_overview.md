@@ -6,13 +6,13 @@ PCU-D Capstone Project · Sept 2026
 
 ## 1 · What It Does
 
-CLASSCAN is a CV-based classroom headcount system that mounts to a ceiling and continuously estimates the number of people present in a room. It uses a Raspberry Pi 3B running a custom-trained TFLite density-map model to count heads from camera frames, and streams live counts + video to a wireless web dashboard. An ESP32 co-processor drives a pan/tilt servo camera mount, an OLED display, and an automatic illumination circuit.
+CLASSCAN is a CV-based classroom headcount system that mounts to a ceiling and continuously estimates the number of people present in a room. It uses a Raspberry Pi 3B running a custom-trained TFLite density-map model to count heads from camera frames, and streams live counts + video to a wireless web dashboard. An ESP32 co-processor drives a pan/tilt servo camera mount, an LCD2004 character display, and an automatic illumination circuit.
 
 **Core pipeline:**
 ```
 OV4689 camera → Pi 3B TFLite inference (density ensemble) → headcount
     ├── Wi-Fi → dashboard (browser on any LAN device)
-    └── USB serial → ESP32 → OLED display + servo control
+    └── USB serial → ESP32 → LCD2004 display + servo control
 ```
 
 ---
@@ -23,9 +23,9 @@ OV4689 camera → Pi 3B TFLite inference (density ensemble) → headcount
 |---|---|
 | Raspberry Pi 3B (1 GB RAM) | Main compute; runs OS, detection, dashboard server |
 | OV4689 4MP BSI USB camera | UVC driver; active at `/dev/video0`; MJPG up to 2688×1520@30fps |
-| ESP32 DevKit | Co-processor; serial JSON protocol; GPIO for servos, LDR, OLED display (SSD1309) |
+| ESP32 DevKit | Co-processor; serial JSON protocol; GPIO for servos, LDR, LCD2004 display (I2C, PCF8574) |
 | MG90S 360° servos ×2 | Pan + tilt for camera mount sweep |
-| OLED display | Shows live headcount |
+| **LCD2004** (I2C 20×4) | Shows live headcount (PCF8574 backpack; GPIO 21/22; addr 0x27) |
 | LDR + MOSFET + LEDs | Auto illumination: dims room lights when ambient lux drops |
 | Pi acrylic case + active fan | Thermal management; ~36°C operating temp |
 
@@ -60,7 +60,7 @@ CLASSCAN/
 │   │   ├── styles.css
 │   │   └── app.js               ← Polling client, command send, zone display
 │   └── esp32/
-│       ├── src/main.cpp         ← Firmware: serial rx, servo control, OLED display (SSD1309), LDR
+│       ├── src/main.cpp         ← Firmware: serial rx, servo control, LCD2004 display (I2C), LDR
 │       └── include/config.h     ← GPIO pins, timing constants
 ├── models/
 │   ├── classcan_density_round4_ep8.tflite    ← Ensemble component 1 (weight 0.6)
@@ -81,7 +81,7 @@ while True:
   if frame is not None and (motion_active OR heartbeat):
     count = ensemble.predict(frame)       # density map sum → headcount
     detections = detector.detect(frame)   # bounding boxes for HUD only
-    serial_bridge.send_count(count)       # → ESP32 → OLED display (SSD1309)
+    serial_bridge.send_count(count)       # → ESP32 → LCD2004 display (I2C 20×4)
   annotated = draw_hud_overlay(frame, detections)
   dashboard.push(count, annotated, ...)  # → MJPEG stream + /status JSON
   cmd = dashboard.poll_command()         # handle UI commands (mode switch, zone)

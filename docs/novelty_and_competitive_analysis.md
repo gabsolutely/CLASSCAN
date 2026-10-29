@@ -47,11 +47,11 @@ Rather than running continuous live-stream inference (which saturates and therma
 
 The explicit separation of concerns between:
 - **Pi 3B (Brain):** inference, networking, logic
-- **ESP32 (Hands):** PWM servo control, LDR ADC, OLED display, autonomous failsafe
+- **ESP32 (Hands):** PWM servo control, LDR ADC, LCD2004 I2C display, autonomous failsafe
 
 ...mirrors standard industrial robotics and automation design (IEC 61131-style controller separation). Applying this architectural pattern to an embedded classroom occupancy device within a constrained hardware budget (~₱4,000–₱5,000 BOM) provides industrial-grade resilience rarely found in low-cost institutional monitoring systems.
 
-The ESP32 failsafe guarantee — room sweeping, lighting, and LED count display continue independently even if the Pi crashes or Wi-Fi drops — is an operational reliability property that cloud-connected competitors explicitly do not offer.
+The ESP32 failsafe guarantee — room sweeping, lighting, and LCD count display continue independently even if the Pi crashes or Wi-Fi drops — is an operational reliability property that cloud-connected competitors explicitly do not offer.
 
 ### 1.5 Fully Documented Negative Result Trail
 
@@ -84,7 +84,7 @@ Most commercial occupancy systems either (a) process video in the cloud, or (b) 
 
 | System / Product | Detection Method | Privacy | Edge-Only | Classroom-Geometry-Aware | Cost | Servo Sweep | LED Display | Dashboard | Failsafe |
 |---|---|---|---|---|---|---|---|---|---|
-| **CLASSCAN** | Density-map regression + head detector (custom TFLite) | ✅ Structural | ✅ Full | ✅ Armchair-occlusion trained | ~₱4–5K BOM (~$70–$90) | ✅ Pan/tilt | ✅ OLED display | ✅ Wi-Fi | ✅ ESP32 autonomous |
+| **CLASSCAN** | Density-map regression + head detector (custom TFLite) | ✅ Structural | ✅ Full | ✅ Armchair-occlusion trained | ~₱4–5K BOM (~$70–$90) | ✅ Pan/tilt | ✅ LCD2004 display | ✅ Wi-Fi | ✅ ESP32 autonomous |
 | Hikvision DeepinView Counting Camera | Full-body detection (proprietary DNN) | ❌ Cloud/NVR | ❌ Cloud option | ❌ Generic | $200–$800 | ❌ Fixed | ❌ | ❌ External | ❌ |
 | Axis People Counter | Full-body depth/stereo | ❌ Cloud/server | ❌ | ❌ Generic | $400–$1,200 | ❌ Fixed | ❌ | External | ❌ |
 | RetailNext / Sensormatic | Video analytics SaaS | ❌ Cloud required | ❌ | ❌ Retail-tuned | Subscription | ❌ | ❌ | SaaS | ❌ |

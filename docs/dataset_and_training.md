@@ -115,7 +115,7 @@ Naively computing Pearson's $r$ over a handful of low-variance clips is a weak s
 - **Within $\pm 1$ and Within $\pm 2$ Accuracy (%):** Operational reliability metrics reflecting acceptable error margins in classroom management.
 - **Per-Session Bias ($\mu_{\text{error}}$):** Mean signed deviation ($y - \hat{y}$) measuring whether the model systematically overcounts or undercounts in a specific room.
 - **Hallucination Rate (Empty Frames):** Mean predicted headcount on verified zero-occupancy frames ($N=0$). Measures false-positive resistance against backpacks, desks, and floor reflections.
-- **Stability / Count Jitter:** Standard deviation of predicted headcount across consecutive frames of identical occupancy ($\Delta y = 0$). High jitter destabilizes the physical OLED display.
+- **Stability / Count Jitter:** Standard deviation of predicted headcount across consecutive frames of identical occupancy ($\Delta y = 0$). High jitter destabilizes the physical LCD display.
 
 ### 3. Multi-Seed Reporting (3 Seeds):
 All benchmark runs are repeated across 3 fixed random seeds (`42`, `1337`, `2026`). Differences smaller than seed standard deviation are rejected as statistical noise.

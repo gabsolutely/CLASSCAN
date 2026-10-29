@@ -16,8 +16,8 @@
 | **1** | Compute Engine | **Raspberry Pi 3 Model B (1GB RAM)**<br>• Quad-core 64-bit ARM Cortex-A53 @ 1.2 GHz<br>• Onboard Wi-Fi (802.11n) & Bluetooth 4.1<br>• 4× USB 2.0, HDMI, CSI, DSI, Micro-SD | 1 | ₱1,400.00 | ₱1,400.00 | $25.00 | Used bundle (incl. 16GB SD card) / Local secondhand | **In Hand & Active** |
 | **2** | Microcontroller | **ESP32-WROOM-32 DevKit V1 (30-pin)**<br>• Dual-core Xtensa 32-bit LX6 @ 240 MHz<br>• 520 KB SRAM, 4 MB Flash<br>• Native ADC, PWM timers, Micro-USB UART | 1 | ₱190.00 | ₱190.00 | $3.40 | Shopee / Lazada / Makerlab | **In Hand & Active** |
 | **3** | Vision Sensor | **OmniVision OV4689 4MP USB Camera Module**<br>• 1/3" Back-Side Illuminated (BSI) sensor<br>• Driverless UVC compliance via USB Type-C/A<br>• Board footprint ~2×2 cm, ~3 cm tall<br>• Wide-angle M12 lens | 1 | ₱1,150.00 | ₱1,150.00 | $20.50 | Huang Li Electronics / Online Importer | **In Hand & Active** |
-| **4** | Pan/Tilt Actuators | **Mini ABS Pan/Tilt Bracket Kit with MG90S Servos**<br>• Fits 28×28 mm cameras (OV4689 board fits)<br>• Dual-axis bracket with MG90S metal-gear servos | 1 set | ₱1,000.00 | ₱1,000.00 | $17.86 | Electronics Distributor / Online | **Procurement — Phase 2** |
-| **5** | Display Module | **LCD2004 I2C Character LCD (20×4, Blue Backlight)**<br>• 20 columns × 4 rows character LCD<br>• I2C interface (4 pins: VCC, GND, SDA, SCL) for low wiring complexity<br>• Blue backlight, white text | 1 | ₱273.58 | ₱273.58 | $4.88 | Electronics Distributor / Online | **Procurement — Phase 2** |
+| **4** | Pan/Tilt Actuators | **Mini ABS Pan/Tilt Bracket Kit with MG90S Servos**<br>• Fits 28×28 mm cameras (OV4689 board fits)<br>• Dual-axis bracket with MG90S metal-gear servos | 1 set | ₱1,000.00 | ₱1,000.00 | $17.86 | Electronics Distributor / Online | **In Hand** |
+| **5** | Display Module | **LCD2004 I2C Character LCD (20×4, Blue Backlight)**<br>• 20 columns × 4 rows character LCD<br>• I2C interface (4 pins: VCC, GND, SDA, SCL) for low wiring complexity<br>• Blue backlight, white text | 1 | ₱273.58 | ₱273.58 | $4.88 | Electronics Distributor / Online | **In Hand** |
 | **6** | Ambient Sensor | **GL5528 Light Dependent Resistor (LDR)**<br>• 5mm Photoresistor + 10kΩ 1/4W pull-down resistor<br>• Analog voltage divider for ambient brightness reading | 1 | ₱15.00 | ₱15.00 | $0.27 | Local Electronics Store | **In Hand** |
 | **7** | Illumination Module | **2W 5V USB COB LED Bar + IRLZ44N MOSFET Driver**<br>• 2W 5V USB COB LED bar (white) — 81.91 PHP<br>• IRLZ44N Logic-Level N-Channel MOSFET — 99.88 PHP<br>• 2× 1000µF electrolytic capacitors — 25 PHP<br>• 2× screw terminals — 30 PHP<br>• Current-limiting & gate pull-down resistors | 1 set | ₱236.79 | ₱236.79 | $4.23 | Electronics Distributor / Online | **Procurement — Phase 2** |
 | **8** | Power Cells | **LG HG2 18650 Li-ion Cells (3.7V, ~3000mAh)**<br>• High-drain rechargeable 18650 cells<br>• Swappable design for continuous laboratory and classroom testing | 1 set | ₱198.00 | ₱198.00 | $3.54 | Battery Supply / Online | **Procurement — Phase 2** |
@@ -31,8 +31,8 @@
 
 | Summary Category | Amount (PHP) | Amount (USD) |
 |---|:---:|:---:|
-| **In Hand (Pi 3B, ESP32, Camera, LDR)** | ₱2,755.00 | $49.20 |
-| **Phase 2 Target Components (LCD2004, Pan/Tilt, Power, Enclosure)** | ₱2,526.69 | $45.12 |
+| **In Hand (Pi 3B, ESP32, Camera, LDR, Bracket Kit + Servos, LCD2004)** | ₱4,028.58 | $71.94 |
+| **Remaining Phase 2 Components (Power, Illumination, Enclosure)** | ₱1,253.11 | $22.38 |
 | **Total Estimated Hardware Investment (all phases)** | **~₱5,281.69** | **~$94.32** |
 
 ---

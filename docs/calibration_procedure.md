@@ -74,6 +74,14 @@ The classroom is divided into four spatial quadrants:
    ```
 6. Re-flash the ESP32 via `pio run -t upload` and restart the Pi service.
 
+> [!TIP]
+> **Rapid Servo & Display Verification:** You can verify the pan/tilt bracket and LCD without running the full vision pipeline by running:
+> ```bash
+> python scripts/hardware_verify.py --test-servos    # Test servo positioning
+> python scripts/hardware_verify.py --test-lcd       # Test LCD headcount display
+> python scripts/hardware_verify.py --interactive    # Interactive manual turret control
+> ```
+
 ---
 
 ## 3. LDR Illumination Threshold Calibration
@@ -185,5 +193,5 @@ v4l2-ctl -d /dev/video0 -c gamma=300
 | **7** | Continuous sweep mode | Turret smoothly sweeps between $0^\circ$ and $180^\circ$ pan | [ ] |
 | **8** | Zone mode step & dwell | Turret cycles through Q1 $\to$ Q2 $\to$ Q3 $\to$ Q4, dwelling 800ms at each | [ ] |
 | **9** | Real-time detection accuracy | Seated test students in Q1–Q4 detected with bounding boxes and HUD count | [ ] |
-| **10** | OLED Display update | SSD1309 2.42" OLED (SPI: GPIO 14/27/4/2/5, or I2C: GPIO 16/17) displays current headcount in large font | [ ] |
+| **10** | LCD2004 Display update | LCD2004 20×4 (I2C: GPIO 21 SDA / GPIO 22 SCL, PCF8574 addr 0x27) displays current headcount on row 2 | [ ] |
 

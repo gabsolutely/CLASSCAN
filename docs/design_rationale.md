@@ -28,7 +28,7 @@ CLASSCAN deliberately standardizes on **Raspberry Pi OS Lite (64-bit Debian 13 /
 ## ADR-02: Heterogeneous Dual-Tier Architecture — Pi 3B (Brain) vs. ESP32 (Hands)
 
 ### Context
-The system combines heavy computational tasks (neural network inference, HTTP MJPEG streaming, frame differencing) with real-time hardware I/O (PWM servo driving, analog sensor polling, OLED display I2C updates).
+The system combines heavy computational tasks (neural network inference, HTTP MJPEG streaming, frame differencing) with real-time hardware I/O (PWM servo driving, analog sensor polling, LCD2004 I2C display updates).
 
 ### Decision
 Adopt a decoupled, dual-tier architecture mirroring industrial robotics:
@@ -51,7 +51,7 @@ Adopt a decoupled, dual-tier architecture mirroring industrial robotics:
 │                                                             │
 │   ├── [ServoController] ──► Pan/Tilt Servos (PWM)           │
 │   ├── [LdrIllumination] ──► LDR (ADC) + White LEDs (MOSFET)│
-│   └── [OledDisplay]     ──► Local Count Display (SSD1309)   │
+│   └── [LcdDisplay]     ──► Local Count Display (LCD2004 I2C 20×4)  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -349,13 +349,13 @@ While model retraining requires substantial compute and annotated datasets, real
 Implement four zero-retraining runtime filters in `src/pi/config.py`, `src/pi/detection/detector.py`, and `src/pi/detection/zone_reconciler.py`:
 1. **Zone Exclusion Masks:** Zero out non-floor regions (whiteboards, open doors, windows, ceiling lighting fixtures) before summing the density map.
 2. **Multi-Capture Median Smoothing (`MULTI_CAPTURE_COUNT = 3`):** Capture 3 successive frames per quadrant and select the median density sum, filtering out transient motion blurs and servo vibration.
-3. **Dead-Band Count Hysteresis (`COUNT_HYSTERESIS_DELTA = 0.6`):** Prevent integer display flicker on the OLED screen by only updating displayed counts when moving beyond a $\pm 0.6$ person threshold.
+3. **Dead-Band Count Hysteresis (`COUNT_HYSTERESIS_DELTA = 0.6`):** Prevent integer display flicker on the LCD2004 screen by only updating displayed counts when moving beyond a $\pm 0.6$ person threshold.
 4. **Physical Capacity Clipping (`MAX_ROOM_CAPACITY = 45`, `MAX_ZONE_CAPACITY = 15`):** Hard-clip aggregated counts to the physical number of seats installed in the room.
 
 ### Rationale
 - Zero training cost or regression risk.
 - Directly eliminates edge hallucinations on non-seating structures.
-- Provides rock-solid temporal stability on the local ESP32 OLED display and web dashboard.
+- Provides rock-solid temporal stability on the local ESP32 LCD2004 display and web dashboard.
 
 ---
 
