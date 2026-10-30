@@ -11,27 +11,15 @@
 #define PIN_LDR            34    // Analog input (ADC1_CH6) from GL5528 + 10k pull-down divider
 #define PIN_ILLUMINATION   25    // Digital output → IRLZ44N logic-level MOSFET gate (5V white LED strip, <=500mA draw)
 #define PIN_PAN            18    // PWM output → pan servo signal (MG90S metal-gear)
-#define PIN_TILT           21    // PWM output → tilt servo signal (MG90S metal-gear)
-// ── OLED Display (2.42" SSD1309, 128×64) ──────────────────────────────────
-// Title must be SSD1309 (not SSD1306/SH1106) with 7 pins.
-// Factory modules ship pre-configured for 7-pin SPI mode (recommended: no SMD soldering).
-// Set OLED_USE_SPI to 1 for 7-pin SPI mode, or 0 for 4-pin I2C mode.
-#define OLED_USE_SPI        1
-
-// Option A: 7-Pin SPI Mode (Primary / Recommended per BOM & Wiring Guide)
-#define PIN_OLED_SCK       14    // D0 / SCK (SPI Clock)
-#define PIN_OLED_MOSI      27    // D1 / MOSI (SPI Data)
-#define PIN_OLED_RES        4    // RES (Hardware Reset, active low)
-#define PIN_OLED_DC         2    // DC (Data / Command select)
-#define PIN_OLED_CS         5    // CS (Chip Select, active low)
-
-// Option B: 4-Pin I2C Mode (Alternative if module modded for I2C)
-#define PIN_OLED_SDA       16    // I2C SDA (Bus 1)
-#define PIN_OLED_SCL       17    // I2C SCL (Bus 1)
-#define OLED_I2C_ADDR    0x3C    // Most common address (try 0x3D if blank)
-
-#define OLED_WIDTH        128
-#define OLED_HEIGHT        64
+#define PIN_TILT           13    // PWM output → tilt servo signal (MG90S metal-gear)
+                                 // NOTE: moved from GPIO21 to free it for LCD SDA
+// ── LCD Display (LCD2004, I2C 20×4, PCF8574 backpack) ──────────────────────
+// Standard blue-backlight character LCD with soldered PCF8574 I2C backpack.
+// 4 wires only: VCC (5V), GND, SDA, SCL.
+// Default PCF8574 address is 0x27; try 0x3F if the display stays blank.
+#define PIN_LCD_SDA        21    // I2C Bus 1 SDA
+#define PIN_LCD_SCL        22    // I2C Bus 1 SCL
+#define LCD_I2C_ADDR     0x27   // PCF8574 default (try 0x3F if blank)
 
 // ── LDR Thresholds ─────────────────────────────────────────────────────
 // ADC reads 0–4095; lower = darker. Tune once illumination module is built.

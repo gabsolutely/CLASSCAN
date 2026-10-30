@@ -5,7 +5,7 @@
  * Responsibilities:
  *   - Read LDR and toggle illumination module (with hysteresis — see ldr_illumination.h)
  *   - Drive pan/tilt servos (SWEEP or ZONE_CHECK mode)
- *   - Drive LED matrix display with current headcount
+ *   - Drive LCD2004 (I2C 20×4) with current headcount via led_matrix.h wrapper
  *   - Receive commands from Pi 3B over USB serial (JSON, newline-delimited)
  *   - Report state ("idle" | "moving") back over serial
  *   - Report illumination state changes + periodic LDR value over serial
