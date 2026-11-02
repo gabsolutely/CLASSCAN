@@ -11,6 +11,7 @@ those marked **Dev** run on a development machine (Windows/Linux/Mac with Python
 |---|---|---|
 | `run_on_image.py` | Dev / Pi | Run a single `.tflite` model on an image file and print the result. Quickest way to verify a model file loads and produces output. |
 | `camera_verify.py` | Pi | Live camera feed test — opens `/dev/video0` and streams frames to confirm the OV4689 is working and correctly exposed. |
+| `hardware_verify.py` | Dev / Pi | Dedicated bench-test & commissioning tool for LCD2004 (I2C), Pan/Tilt bracket kit (MG90S servos), and LDR illumination. Supports automated smoke-test and interactive CLI. |
 | `pi_benchmark.py` | Pi | Time TFLite inference on the Pi 3B CPU and report ms/frame. Use to verify performance after any model change. |
 | `speed_test.py` | Pi | Minimal inference timing script (lighter than `pi_benchmark.py`). |
 
@@ -77,4 +78,10 @@ python scripts/run_on_image.py path/to/image.jpg models/classcan_density_round4_
 
 # Benchmark inference speed on the Pi
 python scripts/pi_benchmark.py
+
+# Commission & smoke-test new materials (LCD2004 display + Pan/Tilt servos)
+python scripts/hardware_verify.py --all
+
+# Launch interactive CLI shell to test servos & LCD headcount live
+python scripts/hardware_verify.py --interactive
 ```
