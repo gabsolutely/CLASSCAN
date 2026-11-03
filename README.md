@@ -1,7 +1,7 @@
 # CLASSCAN
-**Development of an Intelligent Classroom Headcount Monitoring System using Computer Vision and LED Display Technology**
+**Development of an Intelligent Classroom Headcount Monitoring System using Computer Vision and LCD Display Technology**
 
-A ceiling-mounted smart camera turret that automatically detects and counts people in a classroom in real time, displaying the live headcount on an LED display and a wireless laptop dashboard — no manual attendance checking, no facial recognition, just occupancy (and optionally, seat-zone presence).
+A ceiling-mounted smart camera turret that automatically detects and counts people in a classroom in real time, displaying the live headcount on an LCD display and a wireless laptop dashboard — no manual attendance checking, no facial recognition, just occupancy (and optionally, seat-zone presence).
 
 ### __WORK IN PROGRESS, ACTIVELY CHANGING__
 
@@ -16,7 +16,7 @@ Most schools still rely on manual headcount and attendance checking — slow, er
 ## What It Does
 
 - Detects and counts people in a classroom using periodic snapshot detection, with immediate re-detection triggered by significant frame change (avoids the compute cost of continuous live-stream inference, which struggled even on stronger boards per community precedent)
-- Displays the current headcount on an LED display in real time
+- Displays the current headcount on an LCD display in real time
 - Switchable camera behavior: continuous room-wide sweep for general occupancy, or targeted sequential quadrant/seat positioning (servo points at each calibrated position) for verified per-zone vacant/occupied status
 - Quadrant-based zone detection (not per-seat) to shrink blind-spot windows, reduce inference load, and absorb in-quadrant seat shuffling as a non-event; includes a self-consistency check that re-scans if per-quadrant counts don't reconcile with the expected total, rather than trusting a single pass blindly
 - Streams count + periodic snapshot images to a wireless laptop dashboard; dashboard can also send commands (e.g. mode switch, check specific zone) back to the turret; supports one-click **event log CSV download** for the full monitoring session

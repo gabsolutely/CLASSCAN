@@ -109,7 +109,7 @@ class SerialBridge:
             self._ser.write((json.dumps(obj) + "\n").encode("utf-8"))
 
     def send_count(self, count: int):
-        """Push the latest headcount to the ESP32 for display on the LED matrix."""
+        """Push the latest headcount to the ESP32 for display on the LCD display."""
         self._send({"type": "count", "value": count})
 
     def send_command(self, cmd: str):

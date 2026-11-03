@@ -1,6 +1,6 @@
 # CLASSCAN — Novelty & Competitive Analysis
 
-**Project Title:** Development of an Intelligent Classroom Headcount Monitoring System using Computer Vision and LED Display Technology  
+**Project Title:** Development of an Intelligent Classroom Headcount Monitoring System using Computer Vision and LCD Display Technology  
 **Institution:** Philippine Christian University – Dasmariñas (PCU-D)
 
 ---
@@ -82,7 +82,7 @@ Most commercial occupancy systems either (a) process video in the cloud, or (b) 
 
 ### 2.1 Overview Matrix
 
-| System / Product | Detection Method | Privacy | Edge-Only | Classroom-Geometry-Aware | Cost | Servo Sweep | LED Display | Dashboard | Failsafe |
+| System / Product | Detection Method | Privacy | Edge-Only | Classroom-Geometry-Aware | Cost | Servo Sweep | LCD Display | Dashboard | Failsafe |
 |---|---|---|---|---|---|---|---|---|---|
 | **CLASSCAN** | Density-map regression + head detector (custom TFLite) | ✅ Structural | ✅ Full | ✅ Armchair-occlusion trained | ~₱4–5K BOM (~$70–$90) | ✅ Pan/tilt | ✅ LCD2004 display | ✅ Wi-Fi | ✅ ESP32 autonomous |
 | Hikvision DeepinView Counting Camera | Full-body detection (proprietary DNN) | ❌ Cloud/NVR | ❌ Cloud option | ❌ Generic | $200–$800 | ❌ Fixed | ❌ | ❌ External | ❌ |
@@ -122,7 +122,7 @@ Most commercial occupancy systems either (a) process video in the cloud, or (b) 
 - Classical HOG+SVM has the same fundamental failure mode as COCO full-body detectors: **0 detections on occluded, seated students at steep angles** (CLASSCAN empirically confirmed this).
 - Background subtraction counts "blobs of motion," not people — a student shifting in their seat registers as movement; a still class registers 0.
 - These pipelines require a fixed, calibrated camera with stable background. The CLASSCAN turret sweeps the room, making background models per-zone non-trivial.
-- No dashboard, no LED display, no servo control, no illumination — just a counting module.
+- No dashboard, no LCD display, no servo control, no illumination — just a counting module.
 
 ### 2.5 RFID / NFC Badge-Based Attendance (Common Philippine Capstone)
 

@@ -1,6 +1,6 @@
 # CLASSCAN — Scope & Delimitation
 
-**Project Title:** Development of an Intelligent Classroom Headcount Monitoring System using Computer Vision and LED Display Technology  
+**Project Title:** Development of an Intelligent Classroom Headcount Monitoring System using Computer Vision and LCD Display Technology  
 **Institution:** Philippine Christian University – Dasmariñas (PCU-D)  
 **Target Domain:** Edge AI / Computer Vision / Embedded Systems
 
@@ -8,7 +8,7 @@
 
 ## 1. System Overview
 
-CLASSCAN is an automated, ceiling-mounted edge computer vision turret engineered to monitor classroom occupancy and headcount in real time. The system processes visual data locally on a Raspberry Pi 3B using a custom TensorFlow Lite **density-map regression model** for headcount estimation and a secondary head detector for visual HUD overlays, broadcasts live counts and frame snapshots to a local wireless web dashboard, and drives a local dot-matrix LED display via an ESP32 microcontroller.
+CLASSCAN is an automated, ceiling-mounted edge computer vision turret engineered to monitor classroom occupancy and headcount in real time. The system processes visual data locally on a Raspberry Pi 3B using a custom TensorFlow Lite **density-map regression model** for headcount estimation and a secondary head detector for visual HUD overlays, broadcasts live counts and frame snapshots to a local wireless web dashboard, and drives a local LCD display via an ESP32 microcontroller.
 
 ---
 

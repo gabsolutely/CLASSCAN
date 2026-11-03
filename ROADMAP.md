@@ -1,6 +1,6 @@
 # CLASSCAN — Development Roadmap & PoC Scope
 
-**Full project vision:** Intelligent classroom headcount system (CV + LED display + wireless dashboard).
+**Full project vision:** Intelligent classroom headcount system (CV + LCD display + wireless dashboard).
 **PoC objective:** Prove the core edge vision pipeline end-to-end: **camera → Pi 3B → TFLite head detection → count displayed.**
 
 **Status:** **PoC validated; actively progressing in Phase 2 (hardware integration).** Full vision pipeline (Raspberry Pi 3B + OV4689 camera + density model + dashboard server + threaded inference worker) confirmed operational on target hardware. **v5 retraining complete:** `classcan_v5_final.tflite` — stabilized training recipe (double-scaling fix, frozen BN, Count L1, EMA, real-frame augmentation) — leave-one-clip-out **MAE=1.47, Pearson r=0.86, within ±2=72%** (outperforms previous ensemble across all 5 test clips). Ongoing development focuses on Phase 2 hardware integration (ESP32 co-processor, pan/tilt sweeps, LCD2004 display, auto-illumination) and domain-shift mitigation for classroom environments.
