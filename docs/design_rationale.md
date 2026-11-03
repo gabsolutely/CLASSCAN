@@ -213,7 +213,45 @@ Implement a custom visible-spectrum LED array controlled via an analog Light Dep
 
 ---
 
-## ADR-07: LoRa Wireless Rejected — USB Serial Sufficient for Single-Room Scope
+## ADR-07: Display Hardware — LCD2004 I2C Character LCD over OLED / LED Dot-Matrix
+
+### Context
+The original project spec and early documentation referred to a **"LED display"** (specifically an SSD1309 OLED and/or LED dot-matrix module) for showing the live headcount on the physical unit. During Phase 2 hardware procurement, the display choice was revisited against practical classroom deployment constraints.
+
+### Decision
+Replace the originally specified OLED / LED dot-matrix module with a **LCD2004 I2C 20×4 character LCD** (PCF8574 backpack, blue backlight, white characters).
+
+### Rationale & Trade-offs
+
+1. **Cost — Significantly Cheaper:**
+   - The LCD2004 I2C module costs approximately ₱273 (~$4.88), compared to ₱500–₱900 ($9–$16) for a comparable SSD1309 OLED or LED dot-matrix module with I2C driver IC. For a school-budget capstone build targeting a sub-₱5,000 BOM, this difference is non-trivial.
+
+2. **Legibility at Classroom Distances:**
+   - The LCD2004 produces large, high-contrast white characters on a blue backlit background — readable at 3–5 m from the ceiling mount without squinting. OLED displays (0.96″ or 1.3″) are crisp up close but physically small; their characters become difficult to read across a classroom without the viewer walking directly under the unit.
+
+3. **Wiring Simplicity — 4-Wire I2C vs. SPI:**
+   - The PCF8574 I2C backpack reduces the connection to four wires: VCC, GND, SDA, SCL — identical to every other I2C peripheral on the ESP32 bus. The SSD1309 OLED in SPI mode requires 6–7 wires plus a dedicated hardware reset line and precise timing; in I2C mode it shares the same bus but at a lower max clock rate that can introduce display lag under heavy bus traffic.
+
+4. **No SMD Soldering or Fragile Glass Substrate:**
+   - OLED panels use a fragile glass or flexible substrate with SMD pad connections. The LCD2004 is a through-hole/connector module — robust enough for repeated repositioning during hardware integration and field calibration sessions.
+
+5. **Adequate Information Density for the Use Case:**
+   - Displaying a headcount (e.g., `COUNT: 32`), operating mode (`SWEEP` / `ZONE_CHECK`), and a status line requires at most 4 lines × 20 characters — exactly what the LCD2004 provides. A graphical OLED adds zero functional value for this purely text-based output; its higher resolution is wasted.
+
+6. **Proven ESP32 Library Ecosystem:**
+   - The `LiquidCrystal_I2C` Arduino library for LCD2004 + PCF8574 is battle-tested and available directly via PlatformIO. The Adafruit SSD1306/SSD1309 library is also mature but adds ~15 KB of flash overhead and requires display-buffer management not needed for simple character output.
+
+### Trade-offs Accepted
+- **No graphics:** The LCD2004 is character-only; it cannot render pixel graphics or icons. This is an acceptable limitation — the display's sole job is showing the count and mode in text.
+- **Backlight always-on:** The blue backlight is powered continuously (no automatic dimming without added circuitry). Power draw is ~80–120 mA, which is budgeted into the 18650 charge/boost rail.
+- **5V logic requirement:** The LCD2004 backlight and contrast circuit requires 5V; the ESP32 GPIO is 3.3V, but the PCF8574 I2C backpack accepts 3.3V logic on its data lines, so no level-shifter is required.
+
+### Revisit Condition
+If the project expands to display live heatmaps or graphical room-layout overlays on the physical unit, a 2.4″+ TFT LCD (ILI9341 SPI) would be the next upgrade — not OLED, which remains cost/fragility-limited at usable sizes.
+
+---
+
+## ADR-08: LoRa Wireless Rejected — USB Serial Sufficient for Single-Room Scope
 
 ### Context
 During hardware sourcing, a colleague offered LoRa modules cheaply (potentially free) as an additional wireless communication layer between the Pi and ESP32.
@@ -231,7 +269,7 @@ LoRa (or equivalent LPWAN) would be worth considering if the project scope expan
 
 ---
 
-## ADR-08: TF Object Detection API / tensorflow_io — Abandoned Path
+## ADR-09: TF Object Detection API / tensorflow_io — Abandoned Path
 
 ### Context
 After the YOLOLite Roboflow fine-tune produced weak results (mAP@50=16.6%) and credits were exhausted, the next approach was to fine-tune the literal MobileNetV2-SSD architecture using the TensorFlow Object Detection API in Google Colab.
@@ -250,7 +288,7 @@ The project moved to a custom Keras/TF training pipeline (see ADR-03) that:
 
 ---
 
-## ADR-09: Camera Frame Synchronization — V4L2 Buffer Drain via `cap.grab()` Loop
+## ADR-10: Camera Frame Synchronization — V4L2 Buffer Drain via `cap.grab()` Loop
 
 **Date:** Sept 24, 2026
 
@@ -311,7 +349,7 @@ Applied to all three detector classes: `DensityDetector.capture_frame()`, `Ensem
 
 ---
 
-## ADR-10: Domain Shift & Whole-Session Evaluation Protocol
+## ADR-11: Domain Shift & Whole-Session Evaluation Protocol
 
 **Date:** Oct 20, 2026
 
@@ -338,7 +376,7 @@ Establish a strict Whole-Session Holdout Evaluation Harness (`scripts/eval_harne
 
 ---
 
-## ADR-11: Edge Runtime Free-Win Enhancements (Zero Retraining)
+## ADR-12: Edge Runtime Free-Win Enhancements (Zero Retraining)
 
 **Date:** Oct 20, 2026
 
@@ -359,7 +397,7 @@ Implement four zero-retraining runtime filters in `src/pi/config.py`, `src/pi/de
 
 ---
 
-## ADR-12: Training Dynamics Stabilization & INT8 Quantization Path
+## ADR-13: Training Dynamics Stabilization & INT8 Quantization Path
 
 **Date:** Oct 20, 2026
 
