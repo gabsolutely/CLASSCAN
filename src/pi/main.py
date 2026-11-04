@@ -280,7 +280,7 @@ def main():
                             prev_count = _result["count"]
                         density_count = reconciler.apply_hysteresis(raw_sum, prev_count)
                         density_count = reconciler.clip_capacity(density_count)
-                        new_count     = max(density_count, len(new_detections)) if new_detections else density_count
+                        new_count     = density_count
                     else:
                         new_count = reconciler.clip_capacity(len(new_detections))
                     new_zone_counts = None
@@ -295,7 +295,7 @@ def main():
                             prev_count = _result["count"]
                         density_count = reconciler.apply_hysteresis(raw_sum, prev_count)
                         density_count = reconciler.clip_capacity(density_count)
-                        new_count     = max(density_count, len(new_detections)) if new_detections else density_count
+                        new_count     = density_count
                     else:
                         with _infer_lock:
                             prev_count = _result["count"]
