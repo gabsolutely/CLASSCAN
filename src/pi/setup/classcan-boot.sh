@@ -51,10 +51,18 @@ fi
 
 
 # Start hostapd (uses /etc/hostapd/hostapd.conf written by hotspot.sh / install_autoconnect.sh)
+rfkill unblock wifi 2>/dev/null || true
 systemctl restart hostapd
 
 # Give it a moment to come up
 sleep 2
+
+# Ensure wlan0 has its static IP firmly in AP mode before dnsmasq starts
+if ! ip addr show wlan0 | grep -q "192.168.20.1"; then
+    log "  Re-applying static IP after hostapd startup."
+    ip link set wlan0 up
+    ip addr add 192.168.20.1/24 dev wlan0 2>/dev/null || true
+fi
 
 if systemctl is-active --quiet hostapd; then
     log "  hostapd running OK (SSID: CLASSCAN, 192.168.20.1)"

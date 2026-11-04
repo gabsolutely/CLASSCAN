@@ -147,7 +147,11 @@ log "Writing dnsmasq hotspot DHCP config (/etc/dnsmasq.d/classcan-hotspot.conf) 
 cat > /etc/dnsmasq.d/classcan-hotspot.conf <<'EOF'
 # CLASSCAN hotspot DHCP — written by install_autoconnect.sh
 interface=wlan0
+except-interface=lo
+bind-dynamic
 dhcp-range=192.168.20.10,192.168.20.50,255.255.255.0,12h
+dhcp-option=3,192.168.20.1
+dhcp-option=6,192.168.20.1
 domain=local
 address=/classcan.local/192.168.20.1
 EOF

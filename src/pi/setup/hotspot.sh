@@ -99,7 +99,11 @@ write_dnsmasq_conf() {
     cat > "$DNSMASQ_CONF" <<EOF
 # CLASSCAN hotspot DHCP — written by hotspot.sh
 interface=$IFACE
+except-interface=lo
+bind-dynamic
 dhcp-range=$DHCP_RANGE_START,$DHCP_RANGE_END,$DHCP_MASK,$DHCP_LEASE
+dhcp-option=3,$PI_IP
+dhcp-option=6,$PI_IP
 domain=local
 address=/classcan.local/$PI_IP
 EOF
@@ -128,6 +132,7 @@ restore_to_nm() {
 
 assign_static_ip() {
     log "Assigning static IP $PI_IP to $IFACE ..."
+    rfkill unblock wifi 2>/dev/null || true
     ip link set "$IFACE" up
     # Flush ALL addresses (including any DHCP lease from a school router)
     # so wlan0 ends up with only our static AP address.
@@ -138,16 +143,25 @@ assign_static_ip() {
 
 start_services() {
     log "Starting hostapd ..."
+    rfkill unblock wifi 2>/dev/null || true
     systemctl unmask hostapd 2>/dev/null || true
     # Reload unit files so systemd re-evaluates ConditionFileNotEmpty
     systemctl daemon-reload 2>/dev/null || true
     systemctl restart hostapd
 
+    # Give hostapd a moment to switch interface to AP mode
+    sleep 2
+
+    # Re-apply static IP in case hostapd bounced the interface into AP mode
+    ip link set "$IFACE" up
+    if ! ip addr show "$IFACE" | grep -q "$PI_IP"; then
+        log "Re-asserting static IP $PI_IP on $IFACE ..."
+        ip addr add "${PI_IP}/24" dev "$IFACE" 2>/dev/null || true
+    fi
+
     log "Starting dnsmasq ..."
     systemctl restart dnsmasq
-
-    # Give hostapd a moment to come up
-    sleep 2
+    sleep 1
 
     if systemctl is-active --quiet hostapd; then
         log "hostapd running OK"
@@ -157,6 +171,12 @@ start_services() {
         hostapd -dd "$HOSTAPD_CONF" &
         sleep 2
         kill %1 2>/dev/null || true
+    fi
+
+    if systemctl is-active --quiet dnsmasq; then
+        log "dnsmasq running OK"
+    else
+        warn "dnsmasq failed to start. Run: sudo journalctl -u dnsmasq -n 30"
     fi
 }
 
@@ -241,8 +261,11 @@ show_status() {
     echo "── dnsmasq ─────────────────────────────────────────"
     systemctl status dnsmasq --no-pager -n 5 2>/dev/null || echo "  (not running)"
     echo ""
-    echo "── wlan0 IP ─────────────────────────────────────────"
+    echo "── $IFACE IP ─────────────────────────────────────────"
     ip addr show "$IFACE" 2>/dev/null || echo "  (no address)"
+    echo ""
+    echo "── DHCP Leases (connected devices) ─────────────────"
+    cat /var/lib/misc/dnsmasq.leases 2>/dev/null || echo "  (no active leases recorded)"
     echo ""
 }
 
