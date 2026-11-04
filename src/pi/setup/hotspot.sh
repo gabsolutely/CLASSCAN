@@ -91,7 +91,12 @@ wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 EOF
     # Tell hostapd which config to use
-    sed -i 's|^#\?DAEMON_CONF=.*|DAEMON_CONF="'"$HOSTAPD_CONF"'"|' /etc/default/hostapd 2>/dev/null || true
+    mkdir -p /etc/default
+    if grep -q "DAEMON_CONF" /etc/default/hostapd 2>/dev/null; then
+        sed -i 's|^#\?DAEMON_CONF=.*|DAEMON_CONF="'"$HOSTAPD_CONF"'"|' /etc/default/hostapd 2>/dev/null || true
+    else
+        echo "DAEMON_CONF=\"$HOSTAPD_CONF\"" >> /etc/default/hostapd
+    fi
 }
 
 write_dnsmasq_conf() {
@@ -186,7 +191,12 @@ enable_persistent() {
     systemctl enable hostapd
     systemctl enable dnsmasq
 
-    # 1. Prevent NetworkManager from grabbing wlan0 on boot (the root cause of failed persistence)
+    # Clean up any legacy or deadlock-prone units
+    systemctl stop classcan-hotspot.service 2>/dev/null || true
+    systemctl disable classcan-hotspot.service 2>/dev/null || true
+    rm -f /etc/systemd/system/classcan-hotspot.service 2>/dev/null || true
+
+    # 1. Prevent NetworkManager from grabbing wlan0 on boot
     if command -v nmcli &>/dev/null || [ -d /etc/NetworkManager ]; then
         log "Writing NetworkManager unmanaged rule for $IFACE ..."
         mkdir -p /etc/NetworkManager/conf.d
@@ -199,44 +209,30 @@ EOF
         log "  $IFACE permanently unmanaged by NetworkManager."
     fi
 
-    # 2. Persist static IP via systemd-networkd (dhcpcd is not present on Trixie/Bookworm)
-    local NET_FILE="/etc/systemd/network/10-classcan-wlan0.network"
-    log "Writing $NET_FILE ..."
-    mkdir -p /etc/systemd/network
-    cat > "$NET_FILE" <<EOF
-# CLASSCAN hotspot static IP — written by hotspot.sh
-[Match]
-Name=$IFACE
-
-[Network]
-Address=${PI_IP}/24
-LinkLocalAddressing=no
-EOF
-    systemctl enable systemd-networkd 2>/dev/null || true
-
-    # 3. Dedicated systemd service to guarantee wlan0 is UP with static IP before hostapd starts on boot
-    local SERVICE_FILE="/etc/systemd/system/classcan-hotspot.service"
-    log "Writing boot bringup service -> $SERVICE_FILE ..."
-    cat > "$SERVICE_FILE" <<EOF
+    # 2. Configure hostapd systemd drop-in override (prepares wlan0 interface cleanly before hostapd starts)
+    log "Configuring systemd drop-in overrides ..."
+    mkdir -p /etc/systemd/system/hostapd.service.d
+    cat > /etc/systemd/system/hostapd.service.d/override.conf <<EOF
 [Unit]
-Description=CLASSCAN Wi-Fi Hotspot Boot Bringup
 After=network.target
-Before=hostapd.service dnsmasq.service
 
 [Service]
-Type=oneshot
-RemainAfterExit=yes
+ExecStartPre=-/usr/sbin/rfkill unblock wifi
 ExecStartPre=-/usr/bin/nmcli device set $IFACE managed no
-ExecStart=/sbin/ip link set $IFACE up
-ExecStart=/sbin/ip addr replace ${PI_IP}/24 dev $IFACE
-ExecStartPost=/bin/systemctl restart hostapd dnsmasq
-
-[Install]
-WantedBy=multi-user.target
+ExecStartPre=-/sbin/ip link set $IFACE up
+ExecStartPre=-/sbin/ip addr replace ${PI_IP}/24 dev $IFACE
 EOF
+
+    # 3. Configure dnsmasq drop-in override (starts only AFTER hostapd brings up AP mode)
+    mkdir -p /etc/systemd/system/dnsmasq.service.d
+    cat > /etc/systemd/system/dnsmasq.service.d/override.conf <<EOF
+[Unit]
+After=hostapd.service
+Wants=hostapd.service
+EOF
+
     systemctl daemon-reload
-    systemctl enable classcan-hotspot.service
-    log "Hotspot will start automatically on boot."
+    log "Hotspot persistence configured (hostapd & dnsmasq enabled via systemd drop-ins)."
 }
 
 stop_hotspot() {
@@ -246,6 +242,7 @@ stop_hotspot() {
     systemctl disable classcan-hotspot.service 2>/dev/null || true
     rm -f /etc/systemd/system/classcan-hotspot.service 2>/dev/null || true
     rm -f /etc/NetworkManager/conf.d/classcan-unmanaged.conf 2>/dev/null || true
+    rm -rf /etc/systemd/system/hostapd.service.d /etc/systemd/system/dnsmasq.service.d 2>/dev/null || true
     systemctl daemon-reload 2>/dev/null || true
     ip addr flush dev "$IFACE" 2>/dev/null || true
     restore_to_nm
