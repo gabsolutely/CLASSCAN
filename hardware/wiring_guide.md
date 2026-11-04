@@ -100,7 +100,7 @@ ESP32 GPIO 18 (Pan PWM) ──────────────────�
                                             ┌──────────┴──────────┐              │
                                             │ Positive (Red Wire) │              │
                                             │                     │              │
-ESP32 GPIO 21 (Tilt PWM) ──────────────────►│ Signal (Orange Wire)│  [ MG90S Tilt Servo ]
+ESP32 GPIO 13 (Tilt PWM) ──────────────────►│ Signal (Orange Wire)│  [ MG90S Tilt Servo ]
                                             │                     │              │
                                             │ Ground (Brown Wire) │              │
                                             └─────────────────────┘              │

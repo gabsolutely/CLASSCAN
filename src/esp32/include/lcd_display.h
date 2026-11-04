@@ -49,12 +49,6 @@ namespace LcdDisplay {
     }
 
     inline void showCount(int count) {
-        char countStr[8];
-        snprintf(countStr, sizeof(countStr), "%d", count);
-
-        char line1[21];   // e.g. "      14      "
-        snprintf(line1, sizeof(line1), "%d", count);
-
         _lcd.clear();
 
         // Row 0: header
