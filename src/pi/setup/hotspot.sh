@@ -114,18 +114,30 @@ address=/classcan.local/$PI_IP
 EOF
 }
 
-release_from_nm() {
-    if command -v nmcli &>/dev/null && systemctl is-active --quiet NetworkManager; then
-        log "NetworkManager is running — unmanaging $IFACE so hostapd can own it ..."
-        nmcli device disconnect "$IFACE" 2>/dev/null || true
-        nmcli device set "$IFACE" managed no
-        sleep 1
-        log "  $IFACE released from NetworkManager."
-    else
-        # Legacy: kill wpa_supplicant directly
-        pkill -f "wpa_supplicant.*$IFACE" 2>/dev/null && \
-            log "  Stopped wpa_supplicant on $IFACE." || true
+cleanup_deadlocks() {
+    # Cancel any hanging or queued systemd jobs (e.g. Job 120 / Job 127)
+    systemctl cancel 2>/dev/null || true
+    # Remove and stop any legacy deadlock-inducing units
+    if systemctl is-active --quiet classcan-hotspot.service 2>/dev/null || [ -f /etc/systemd/system/classcan-hotspot.service ]; then
+        log "Cleaning up legacy boot service ..."
+        systemctl stop classcan-hotspot.service 2>/dev/null || true
+        systemctl disable classcan-hotspot.service 2>/dev/null || true
+        rm -f /etc/systemd/system/classcan-hotspot.service 2>/dev/null || true
+        systemctl daemon-reload 2>/dev/null || true
     fi
+}
+
+release_from_nm() {
+    log "Releasing $IFACE from NetworkManager & wpa_supplicant ..."
+    if command -v nmcli &>/dev/null && systemctl is-active --quiet NetworkManager; then
+        nmcli device disconnect "$IFACE" 2>/dev/null || true
+        nmcli device set "$IFACE" managed no 2>/dev/null || true
+    fi
+    # Always kill and stop wpa_supplicant so it releases nl80211 driver lock on wlan0
+    systemctl stop wpa_supplicant 2>/dev/null || true
+    pkill -f "wpa_supplicant" 2>/dev/null || true
+    sleep 1
+    log "  $IFACE released."
 }
 
 restore_to_nm() {
@@ -150,7 +162,9 @@ start_services() {
     log "Starting hostapd ..."
     rfkill unblock wifi 2>/dev/null || true
     systemctl unmask hostapd 2>/dev/null || true
-    # Reload unit files so systemd re-evaluates ConditionFileNotEmpty
+    systemctl stop hostapd 2>/dev/null || true
+    pkill -9 hostapd 2>/dev/null || true
+    # Reload unit files so systemd re-evaluates ConditionFileNotEmpty and drop-ins
     systemctl daemon-reload 2>/dev/null || true
     systemctl restart hostapd
 
@@ -165,6 +179,8 @@ start_services() {
     fi
 
     log "Starting dnsmasq ..."
+    systemctl stop dnsmasq 2>/dev/null || true
+    pkill -9 dnsmasq 2>/dev/null || true
     systemctl restart dnsmasq
     sleep 1
 
@@ -298,16 +314,18 @@ case "${1:-}" in
         exit 0
         ;;
     --persistent)
+        cleanup_deadlocks
         install_deps
         write_hostapd_conf
         write_dnsmasq_conf
         release_from_nm
         assign_static_ip
-        start_services
         enable_persistent
+        start_services
         print_summary
         ;;
     "")
+        cleanup_deadlocks
         install_deps
         write_hostapd_conf
         write_dnsmasq_conf
