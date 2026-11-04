@@ -421,7 +421,7 @@ def main():
 
             # 7. Handle Inbound Dashboard Commands
             cmd = dashboard.poll_command()
-            if cmd:
+            if cmd: 
                 print(f"[CLASSCAN] Command received from dashboard: {cmd}")
                 serial_bridge.send_command(cmd)
                 if cmd == "MODE_SWEEP":

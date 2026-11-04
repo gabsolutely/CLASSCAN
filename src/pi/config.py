@@ -41,11 +41,13 @@ class Config:
     #   Fine-tuned on 176 hard-negative crops. Real-footage: MAE=3.87 (↓59%), r=0.448.
     #   ⚠️  Regenerate from epoch4 checkpoint before use.
     #   Export: python scripts/export_to_tflite.py --mode density --weights classcan_density_v4_hardneg_ft_epoch4.weights.h5
+    _DENSITY_V5      = str(MODELS_DIR / "classcan_v5_final.tflite")
     _DENSITY_FLOAT32 = str(MODELS_DIR / "classcan_density_float32.tflite")
     _DENSITY_INT8    = str(MODELS_DIR / "classcan_density_int8.tflite")
 
     # Resolved at startup — float32 first, int8 second, None if neither present
     DENSITY_MODEL_PATH: str | None = (
+        _DENSITY_V5      if os.path.isfile(_DENSITY_V5)      else
         _DENSITY_FLOAT32 if os.path.isfile(_DENSITY_FLOAT32) else
         _DENSITY_INT8    if os.path.isfile(_DENSITY_INT8)    else
         None
