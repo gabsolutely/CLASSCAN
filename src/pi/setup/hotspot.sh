@@ -162,25 +162,60 @@ start_services() {
 
 enable_persistent() {
     log "Enabling services on boot ..."
+    systemctl unmask hostapd 2>/dev/null || true
     systemctl enable hostapd
     systemctl enable dnsmasq
 
-    # Persist static IP via systemd-networkd (dhcpcd is not present on Trixie)
+    # 1. Prevent NetworkManager from grabbing wlan0 on boot (the root cause of failed persistence)
+    if command -v nmcli &>/dev/null || [ -d /etc/NetworkManager ]; then
+        log "Writing NetworkManager unmanaged rule for $IFACE ..."
+        mkdir -p /etc/NetworkManager/conf.d
+        cat > /etc/NetworkManager/conf.d/classcan-unmanaged.conf <<EOF
+# CLASSCAN — $IFACE is managed by hostapd (AP mode), not NetworkManager.
+[keyfile]
+unmanaged-devices=interface-name:$IFACE
+EOF
+        systemctl reload NetworkManager 2>/dev/null || true
+        log "  $IFACE permanently unmanaged by NetworkManager."
+    fi
+
+    # 2. Persist static IP via systemd-networkd (dhcpcd is not present on Trixie/Bookworm)
     local NET_FILE="/etc/systemd/network/10-classcan-wlan0.network"
     log "Writing $NET_FILE ..."
     mkdir -p /etc/systemd/network
     cat > "$NET_FILE" <<EOF
-
 # CLASSCAN hotspot static IP — written by hotspot.sh
 [Match]
 Name=$IFACE
 
 [Network]
 Address=${PI_IP}/24
-# No DHCP client — hostapd manages this interface
 LinkLocalAddressing=no
 EOF
     systemctl enable systemd-networkd 2>/dev/null || true
+
+    # 3. Dedicated systemd service to guarantee wlan0 is UP with static IP before hostapd starts on boot
+    local SERVICE_FILE="/etc/systemd/system/classcan-hotspot.service"
+    log "Writing boot bringup service -> $SERVICE_FILE ..."
+    cat > "$SERVICE_FILE" <<EOF
+[Unit]
+Description=CLASSCAN Wi-Fi Hotspot Boot Bringup
+After=network.target
+Before=hostapd.service dnsmasq.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/usr/bin/nmcli device set $IFACE managed no
+ExecStart=/sbin/ip link set $IFACE up
+ExecStart=/sbin/ip addr replace ${PI_IP}/24 dev $IFACE
+ExecStartPost=/bin/systemctl restart hostapd dnsmasq
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable classcan-hotspot.service
     log "Hotspot will start automatically on boot."
 }
 
@@ -188,8 +223,13 @@ stop_hotspot() {
     log "Stopping hotspot ..."
     systemctl stop hostapd  2>/dev/null && log "hostapd stopped." || warn "hostapd was not running."
     systemctl stop dnsmasq  2>/dev/null && log "dnsmasq stopped."  || warn "dnsmasq was not running."
+    systemctl disable classcan-hotspot.service 2>/dev/null || true
+    rm -f /etc/systemd/system/classcan-hotspot.service 2>/dev/null || true
+    rm -f /etc/NetworkManager/conf.d/classcan-unmanaged.conf 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
     ip addr flush dev "$IFACE" 2>/dev/null || true
     restore_to_nm
+    systemctl reload NetworkManager 2>/dev/null || true
     log "Done. wlan0 released — NetworkManager will reconnect to your normal Wi-Fi."
 }
 
