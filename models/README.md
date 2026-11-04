@@ -6,7 +6,7 @@ Place trained and exported `.tflite` model files here.
 
 ---
 
-### PRIMARY: Weighted Ensemble <- **DEPLOY THIS**
+### PRIMARY: classcan_v5_final.tflite <- **DEPLOY THIS** (v5 Final Model)
 
 > **Two TFLite files are required.** The previous single classcan_density_float32.tflite approach is superseded.  
 > The final adopted model is a **weighted ensemble** of two checkpoints evaluated with **different preprocessing geometries**.

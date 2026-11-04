@@ -8,20 +8,26 @@ Model Support
 -------------
 Four model classes are provided:
 
-1. EnsembleDensityDetector — FINAL ADOPTED HEADCOUNT ENGINE  ← use this
+1. DensityDetector (v5 path) — PRIMARY HEADCOUNT ENGINE  ← use this
+   Model: classcan_v5_final.tflite (MobileNetV3-Large Density-Map Regression)
+   5-clip leave-one-out holdout: MAE = 1.47, Pearson r = 0.86, within ±2 = 72%.
+   Input:  [1, 416, 416, 3]  float32  0-255 RGB  (NOT normalized to 0-1)
+   Output: [1, 104, 104]     float32  density map — take raw sum (no threshold)
+   Preprocessing: PIL bilinear gray-114 letterbox — do NOT replace with cv2.resize.
+   Single-model runtime ~702 ms on Pi 3B. is_v5 flag auto-detected from filename.
+
+2. EnsembleDensityDetector — FALLBACK 1 (v4 2-model, superseded by v5)
    Two-model weighted ensemble (MAE=2.77, r=0.586 on genuine v2 held-out data):
      • classcan_density_round4_ep8.tflite   (weight 0.6) — evaluated with LETTERBOX
      • classcan_density_style_aug_ep8.tflite (weight 0.4) — evaluated with STRETCH
    Preprocessing asymmetry is deliberate: letterbox eval on stretch-trained round4
    weights lifts correlation 0.506→0.602 with no retraining.
-   Drop both .tflite files into models/ and config.py picks them up automatically.
-   Falls back gracefully to DensityDetector if only one file is present.
 
-2. DensityDetector — SINGLE-MODEL HEADCOUNT ENGINE (fallback)
+3. DensityDetector (v4 path) — FALLBACK 2 (legacy single-model)
    Model: classcan_density_v4.tflite (float32 or int8 quantized)
    Architecture: MobileNetV3-Large backbone + progressive upsampling decoder
    → 104×104 single-channel spatial density map (Softplus activation, 3.6M params).
-   Input:  [1, 416, 416, 3]  float32  normalized [0, 1] RGB
+   Input:  [1, 416, 416, 3]  float32  normalized [0, 1] RGB  (legacy preprocessing)
    Output: [1, 104, 104]     float32  density surface (or [1, 104, 104, 1])
    Count:  output.sum()  (integral of density map ≈ head count)
    Validated on 407 images: MAE=2.13 overall, MAE=0.93 in 0-20 quadrant regime.
@@ -70,9 +76,11 @@ Training & Model Evolution (summary)
   (obj=0.35, MAE=3.57) → tiled inference (F1=31.8%, MAE=3.84) → QA review →
   density-map regression v4 (MAE=2.13, r=0.9951, quadrant MAE=0.93) →
   9 rounds hard-neg fine-tuning + ensemble search → final 2-model weighted ensemble
-  (MAE=2.77, r=0.586 on genuine v2 held-out, best real-footage result across all rounds).
+  (MAE=2.77, r=0.586 on genuine v2 held-out) → v5 retraining (double-scaling fix,
+  frozen BN, Count L1 + EMA) → classcan_v5_final.tflite (MAE=1.47, r=0.86, ±2=72%).
 """
 
+import os
 import threading
 import time
 
@@ -383,20 +391,29 @@ def _apply_exclusion_mask(
 
 class DensityDetector:
     """
-    CLASSCAN primary headcount engine — density-map regression model.
+    CLASSCAN headcount engine — density-map regression model.
 
-    Wraps classcan_density_v4.tflite (float32 or int8 quantized):
+    Supports two model variants (auto-detected by filename):
+
+    v5 (classcan_v5_final.tflite) — PRIMARY, is_v5=True:
+      - Input:  [1, 416, 416, 3]  float32  0-255 RGB  (NOT normalized)
+      - Output: [1, 104, 104]     float32  density map (also [1, 104, 104, 1])
+      - Preprocessing: PIL bilinear gray-114 letterbox (identical to training)
+      - Count:  output.sum() unthresholded (Count L1 training)
+      - Leave-one-out holdout: MAE = 1.47, r = 0.86, within ±2 = 72%.
+
+    v4 / legacy (classcan_density_v4.tflite etc.) — FALLBACK, is_v5=False:
       - Input:  [1, 416, 416, 3]  float32  normalized [0, 1] RGB
       - Output: [1, 104, 104]     float32  spatial density map (Softplus)
                 (also handles [1, 104, 104, 1] — trailing channel dim squeezed out)
       - Count:  round(output.sum())   (integral of density surface)
+      - Achieves MAE = 2.13 overall, MAE = 0.93 in 0–20 quadrant regime.
 
-    Achieves MAE = 2.13 overall, MAE = 0.93 in 0–20 quadrant regime.
     No bounding boxes — use Detector alongside for optional HUD box overlay.
 
     Parameters
     ----------
-    model_path          : str   — path to classcan_density_v4.tflite
+    model_path          : str   — path to tflite model file
     camera_index        : int   — OpenCV camera device index
     force_mock          : bool  — skip camera open, return synthetic result
     mock_count          : int   — simulated head count in mock mode
@@ -428,6 +445,9 @@ class DensityDetector:
         self.native_roi_crop     = native_roi_crop
         self.empty_room_baseline = empty_room_baseline
         self.is_mock             = force_mock
+        # Detect v5 by filename: activates PIL bilinear gray-114 letterbox
+        # and 0-255 float32 input (not normalized) to match v5 training.
+        self.is_v5               = "v5" in os.path.basename(model_path).lower()
 
         # ── Load TFLite model ──────────────────────────────────────────────
         self.interpreter = Interpreter(model_path=model_path)
@@ -454,8 +474,11 @@ class DensityDetector:
                     "Check: camera connected? correct device index? V4L2 driver loaded?"
                 )
 
-        print(f"[DensityDetector] Model loaded: {model_path}")
+        v5_tag = " [v5 — MAE=1.47, r=0.86]" if self.is_v5 else ""
+        print(f"[DensityDetector] Model loaded: {model_path}{v5_tag}")
         print(f"[DensityDetector] Input size:   {self.input_w}×{self.input_h}")
+        if self.is_v5:
+            print("[DensityDetector] Preprocessing: PIL bilinear gray-114 letterbox, 0-255 float32 RGB")
 
     # ── Frame capture ──────────────────────────────────────────────────────
 
@@ -469,11 +492,33 @@ class DensityDetector:
     # ── Preprocessing ──────────────────────────────────────────────────────
 
     def _preprocess(self, frame: np.ndarray) -> np.ndarray:
-        """Resize + normalize to [1, H, W, 3] float32 in [0, 1]."""
+        """Preprocess BGR frame for inference.
+
+        v5 path (is_v5=True):
+            PIL bilinear gray-114 letterbox to (input_w x input_h),
+            0-255 float32 RGB — identical to v5 training pipeline.
+            DO NOT normalize to [0,1]: v5 MobileNetV3 has a built-in
+            Rescaling layer; re-dividing causes the double-scaling bug.
+
+        v4 / legacy path (is_v5=False):
+            cv2 resize, [0,1]-normalized float32 RGB (original v4 pipeline).
+        """
         cropped = _crop_roi(frame, self.native_roi_crop)
-        resized = cv2.resize(cropped, (self.input_w, self.input_h))
-        rgb     = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-        return np.expand_dims(rgb.astype(np.float32) / 255.0, axis=0)
+        if self.is_v5:
+            from PIL import Image
+            img  = Image.fromarray(np.ascontiguousarray(cropped[:, :, ::-1]))  # BGR->RGB
+            w, h = img.size
+            s    = min(self.input_w / w, self.input_h / h)
+            nw, nh = int(round(w * s)), int(round(h * s))
+            canvas = Image.new("RGB", (self.input_w, self.input_h), (114, 114, 114))
+            canvas.paste(img.resize((nw, nh), Image.BILINEAR),
+                         ((self.input_w - nw) // 2, (self.input_h - nh) // 2))
+            arr = np.asarray(canvas, dtype=np.float32)  # 0-255, RGB
+            return arr[np.newaxis]  # (1, H, W, 3)
+        else:
+            resized = cv2.resize(cropped, (self.input_w, self.input_h))
+            rgb     = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            return np.expand_dims(rgb.astype(np.float32) / 255.0, axis=0)
 
     # ── Inference ──────────────────────────────────────────────────────────
 

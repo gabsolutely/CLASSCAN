@@ -80,7 +80,10 @@ def main():
 
     # Hardware self-test
     if not args.mock and not args.skip_boot_check:
-        if cfg.ENSEMBLE_ROUND4_EP8_PATH and cfg.ENSEMBLE_STYLE_AUG_EP8_PATH:
+        if cfg.DENSITY_V5_PATH:
+            boot_density_path  = cfg.DENSITY_V5_PATH
+            boot_density_path2 = None
+        elif cfg.ENSEMBLE_ROUND4_EP8_PATH and cfg.ENSEMBLE_STYLE_AUG_EP8_PATH:
             boot_density_path  = cfg.ENSEMBLE_ROUND4_EP8_PATH
             boot_density_path2 = cfg.ENSEMBLE_STYLE_AUG_EP8_PATH
         else:
@@ -102,9 +105,29 @@ def main():
 
     # 1. Initialize Subsystems
 
-    # Primary headcount engine: ensemble (final adopted) or single-model fallback
+    # ── Headcount engine selection (priority order) ─────────────────────────
+    # Priority 1: v5 single model (MAE=1.47, r=0.86) — fastest & most accurate
+    # Priority 2: v4 ensemble (MAE=2.77, r=0.586) — superseded by v5
+    # Priority 3: v4 single model (MAE=3.87) — legacy fallback
+    # Priority 4: none — box detector count only (HUD visual, low accuracy)
     density_detector = None
-    if cfg.ENSEMBLE_ROUND4_EP8_PATH and cfg.ENSEMBLE_STYLE_AUG_EP8_PATH:
+    if cfg.DENSITY_V5_PATH:
+        print("[CLASSCAN] Primary Headcount AI: classcan_v5_final.tflite")
+        print("           MAE=1.47, r=0.86, within +/-2=72% (5-clip leave-one-out holdout)")
+        density_detector = DensityDetector(
+            model_path=cfg.DENSITY_V5_PATH,
+            camera_index=args.camera,
+            force_mock=args.mock,
+            mock_count=args.mock_count,
+            density_threshold=cfg.DENSITY_V5_THRESHOLD,  # 0.0 — v5 uses Count L1 (no threshold)
+            exclusion_masks=getattr(cfg, "ZONE_EXCLUSION_MASKS", None),
+            max_capacity=getattr(cfg, "MAX_ROOM_CAPACITY", None),
+            linear_calibration=getattr(cfg, "LINEAR_CALIBRATION", None),
+            native_roi_crop=getattr(cfg, "NATIVE_ROI_CROP", None),
+        )
+    elif cfg.ENSEMBLE_ROUND4_EP8_PATH and cfg.ENSEMBLE_STYLE_AUG_EP8_PATH:
+        print("[CLASSCAN] Headcount AI: v4 ensemble (v5 not found, using fallback)")
+        print("           MAE=2.77, r=0.586. For best accuracy, add classcan_v5_final.tflite to models/")
         density_detector = EnsembleDensityDetector(
             round4_ep8_path=cfg.ENSEMBLE_ROUND4_EP8_PATH,
             style_aug_ep8_path=cfg.ENSEMBLE_STYLE_AUG_EP8_PATH,
@@ -118,9 +141,8 @@ def main():
             native_roi_crop=getattr(cfg, "NATIVE_ROI_CROP", None),
         )
     elif cfg.DENSITY_MODEL_PATH:
-        print("[CLASSCAN] Ensemble files not found - falling back to single density model.")
-        print(f"           To enable ensemble: export classcan_density_round4_ep8.tflite and")
-        print(f"           classcan_density_style_aug_ep8.tflite into models/ (see models/README.md)")
+        print("[CLASSCAN] Headcount AI: v4 single density model (legacy fallback)")
+        print(f"           To enable v5: add classcan_v5_final.tflite to models/")
         density_detector = DensityDetector(
             model_path=cfg.DENSITY_MODEL_PATH,
             camera_index=args.camera,
@@ -134,9 +156,9 @@ def main():
         )
     else:
         print("[CLASSCAN] WARNING: No density model found. Headcount will use box detector count.")
-        print("           Expected: models/classcan_density_round4_ep8.tflite +")
-        print("                     models/classcan_density_style_aug_ep8.tflite")
-        print("           (or legacy fallback: models/classcan_density_float32.tflite)")
+        print("           Add classcan_v5_final.tflite to models/ for best accuracy (MAE=1.47).")
+        print("           Fallbacks: classcan_density_round4_ep8.tflite + style_aug_ep8.tflite (ensemble)")
+        print("           Or:        classcan_density_float32.tflite (legacy single-model)")
 
     # Secondary box detector: bounding boxes for HUD overlay
     # Share the camera already opened by density_detector — V4L2 only allows

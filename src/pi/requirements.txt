@@ -2,6 +2,7 @@
 
 # Computer vision & camera
 opencv-python-headless>=4.9
+Pillow>=9.0
 
 # TFLite inference — ai-edge-litert is the production package for Pi 3B (aarch64 wheel).
 # On Pi:          pip install ai-edge-litert

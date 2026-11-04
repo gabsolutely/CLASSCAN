@@ -7,13 +7,13 @@ import os
 from pathlib import Path
 
 # Paths
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR   = Path(__file__).resolve().parent.parent.parent
 MODELS_DIR = BASE_DIR / "models"
 
 class Config:
     # ── Serial (Pi 3B ↔ ESP32) ─────────────────────────────────────────────
-    SERIAL_PORT   = "/dev/ttyUSB0"   # Adjust to actual device path
-    SERIAL_BAUD   = 115200
+    SERIAL_PORT = "/dev/ttyUSB0"   # Adjust to actual device path
+    SERIAL_BAUD = 115200
 
     # ── Wi-Fi Dashboard ────────────────────────────────────────────────────
     DASHBOARD_HOST = "0.0.0.0"
@@ -21,11 +21,21 @@ class Config:
 
     # ── TFLite Models ──────────────────────────────────────────────────────
 
-    # ── Ensemble (FINAL ADOPTED — drop these two files into models/) ───────
+    # ── Priority 1: v5 FINAL ADOPTED headcount engine ──────────────────────
+    # classcan_v5_final.tflite — MobileNetV3-Large Density-Map Regression.
+    # 5-clip leave-one-out holdout: MAE = 1.47, Pearson r = 0.86, within ±2 = 72%.
+    # Single-model runtime ~702 ms on Pi 3B (2x faster than 2-model ensemble).
+    # Preprocessing: PIL bilinear gray-114 letterbox to 416x416, 0-255 float32 RGB,
+    # unthresholded density map sum (Count L1 training — do NOT apply DENSITY_THRESHOLD).
+    _DENSITY_V5     = str(MODELS_DIR / "classcan_v5_final.tflite")
+    DENSITY_V5_PATH: str | None = _DENSITY_V5 if os.path.isfile(_DENSITY_V5) else None
+
+    # ── Priority 2: Ensemble fallback (v4 2-model weighted, superseded by v5) ─
+    # round4_ep8 (w=0.6, letterbox) + style_aug_ep8 (w=0.4, stretch).
+    # MAE = 2.77, r = 0.586, ~1400 ms/frame runtime.
     # Export from Colab Drive checkpoints (see models/README.md):
     #   round4_ep8:    classcan_density_v4_round4_ft_epoch8.weights.h5
     #   style_aug_ep8: classcan_density_style_aug_ft_lowLR_epoch8.weights.h5
-    # When both are present, main.py uses EnsembleDensityDetector (MAE=2.77, r=0.586).
     _ENSEMBLE_ROUND4_EP8    = str(MODELS_DIR / "classcan_density_round4_ep8.tflite")
     _ENSEMBLE_STYLE_AUG_EP8 = str(MODELS_DIR / "classcan_density_style_aug_ep8.tflite")
 
@@ -36,16 +46,15 @@ class Config:
         _ENSEMBLE_STYLE_AUG_EP8 if os.path.isfile(_ENSEMBLE_STYLE_AUG_EP8) else None
     )
 
-    # ── Single density-model fallbacks (legacy / partial deploy) ───────────
-    # classcan_density_v4_hardneg_ft_epoch4 — used when ensemble files are absent.
-    #   Fine-tuned on 176 hard-negative crops. Real-footage: MAE=3.87 (↓59%), r=0.448.
-    #   ⚠️  Regenerate from epoch4 checkpoint before use.
-    #   Export: python scripts/export_to_tflite.py --mode density --weights classcan_density_v4_hardneg_ft_epoch4.weights.h5
-    _DENSITY_V5      = str(MODELS_DIR / "classcan_v5_final.tflite")
+    # ── Priority 3: Single density-model fallbacks (legacy v4) ─────────────
+    # classcan_density_v4_hardneg_ft_epoch4 — used when v5 and ensemble absent.
+    # Real-footage: MAE = 3.87, r = 0.448. Regenerate from epoch4 checkpoint.
+    # Export: python scripts/export_to_tflite.py --mode density --weights <ckpt>
     _DENSITY_FLOAT32 = str(MODELS_DIR / "classcan_density_float32.tflite")
     _DENSITY_INT8    = str(MODELS_DIR / "classcan_density_int8.tflite")
 
-    # Resolved at startup — float32 first, int8 second, None if neither present
+    # Legacy alias: resolves to v5 path when present, then float32, then int8.
+    # Used by DensityDetector() when instantiated directly (not via v5 path).
     DENSITY_MODEL_PATH: str | None = (
         _DENSITY_V5      if os.path.isfile(_DENSITY_V5)      else
         _DENSITY_FLOAT32 if os.path.isfile(_DENSITY_FLOAT32) else
@@ -64,11 +73,11 @@ class Config:
     CONF_THRESHOLD  = 0.35            # Objectness threshold — calibrated for count accuracy (MAE 3.57, r=0.987)
                                       # (use 0.50 if falling back to COCO SSD model)
 
-    # Per-frame relative density threshold: zero out density_map values below this
-    # fraction of the frame's own max before summing for headcount.
-    # Adopted alongside classcan_density_v4_hardneg_ft_epoch4 (real-footage MAE 3.87→3.08).
-    # Set to 0.0 to use raw unthresholded sum (matches original v4 SCUT-HEAD eval).
-    DENSITY_THRESHOLD = 0.15
+    # Density thresholds:
+    # v5 was trained with Count L1 loss on raw sum — use 0.0 (no threshold).
+    # Legacy v4 threshold suppresses background density-map noise.
+    DENSITY_V5_THRESHOLD = 0.0
+    DENSITY_THRESHOLD    = 0.15  # used by v4 single-model and ensemble fallbacks
 
     # ── Detection Timing ───────────────────────────────────────────────────
     HEARTBEAT_INTERVAL = 3.0          # Seconds between periodic scans when scene is static
@@ -123,4 +132,3 @@ class Config:
     # 6. Native Resolution ROI Crop: [ymin, xmin, ymax, xmax] normalized
     # When enabled, crops floor area from 2688x1520 native frame before downscaling
     NATIVE_ROI_CROP: list[float] | None = None
-
