@@ -116,24 +116,26 @@ class SerialBridge:
         """Send a named command string (MODE_SWEEP, STOP_SERVOS, ZONE_Q1, etc.)."""
         self._send({"type": "command", "value": cmd})
 
-    def send_servo_speed(self, pan: int, tilt: int, duration_ms: int = 0):
+    def send_servo_speed(self, pan: int, tilt: int = 30, duration_ms: int = 0):
         """
-        Send a raw continuous-servo speed command.
+        Send Pan speed (MG90S 360° continuous) and Tilt angle (MG90S 180° positional).
 
-        pan / tilt: 0-180 speed value (90 = stop, >90 = forward, <90 = reverse)
-        duration_ms: if >0, ESP32 will auto-stop after this many ms.
+        pan: 0-180 speed value (90 = stop, >90 = forward/CW, <90 = reverse/CCW)
+        tilt: 0-180 target tilt angle in degrees (default 30° downward pitch)
+        duration_ms: if >0, ESP32 will auto-stop pan rotation after this many ms.
         """
         msg = {"type": "servo", "pan": pan, "tilt": tilt}
         if duration_ms > 0:
             msg["duration_ms"] = duration_ms
         self._send(msg)
 
-    def send_servo_angle(self, pan_angle: int, tilt_angle: int, speed: int = 155):
+    def send_servo_angle(self, pan_angle: int, tilt_angle: int = 30, speed: int = 155):
         """
-        Send a timed angle-move command (open-loop, calibrated by SERVO_MS_PER_DEGREE).
+        Send a timed Pan angle move (MG90S 360°) and absolute Tilt angle (MG90S 180°).
 
-        pan_angle / tilt_angle: target angle 0-180 degrees (relative to last SET_CENTER)
-        speed: continuous-servo run command (91-180, default SERVO_ANGLE_SPEED=155)
+        pan_angle: target pan angle 0-180 degrees (timed rotation via SERVO_MS_PER_DEGREE)
+        tilt_angle: target tilt angle 0-180 degrees (direct positional hold, default 30°)
+        speed: pan continuous-servo speed (default 155)
         """
         self._send({
             "type": "servo",

@@ -176,15 +176,15 @@ class Esp32HardwareInterface:
         """Move pan/tilt turret to a specific quadrant (e.g. 'Q1', 'Q2', 'Q3', 'Q4')."""
         return self.send_command(f"ZONE_{zone_name.upper()}")
 
-    def set_servo_speed(self, pan: int, tilt: int, duration_ms: int = 0) -> bool:
-        """Direct continuous-servo speed command (90 is stop)."""
+    def set_servo_speed(self, pan: int, tilt: int = 30, duration_ms: int = 0) -> bool:
+        """Pan speed (MG90S 360°, 90 is stop) and Tilt angle (MG90S 180°, degrees)."""
         payload = {"type": "servo", "pan": int(pan), "tilt": int(tilt)}
         if duration_ms > 0:
             payload["duration_ms"] = int(duration_ms)
         return self.send_raw(payload)
 
-    def set_servo_angle(self, pan_angle: int, tilt_angle: int, speed: int = 155) -> bool:
-        """Timed angle command (0-180 degrees)."""
+    def set_servo_angle(self, pan_angle: int, tilt_angle: int = 30, speed: int = 155) -> bool:
+        """Pan angle (MG90S 360°, timed rotation) and Tilt angle (MG90S 180°, positional)."""
         return self.send_raw({
             "type": "servo",
             "pan_angle": int(pan_angle),
