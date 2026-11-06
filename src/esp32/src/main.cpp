@@ -4,8 +4,8 @@
  *
  * Responsibilities:
  *   - Read LDR and toggle illumination module (with hysteresis — see ldr_illumination.h)
- *   - Drive pan/tilt servos (SWEEP or ZONE_CHECK mode)
- *   - Drive LCD2004 (I2C 20×4) with current headcount via led_matrix.h wrapper
+ *   - Drive pan servo (MG90S 360° continuous) and tilt servo (MG90S 180° positional)
+ *   - Drive LCD2004 (I2C 20×4) with current headcount via led_matrix.h / lcd_display.h
  *   - Receive commands from Pi 3B over USB serial (JSON, newline-delimited)
  *   - Report state ("idle" | "moving") back over serial
  *   - Report illumination state changes + periodic LDR value over serial
@@ -16,8 +16,8 @@
  *       Commands: MODE_SWEEP | MODE_ZONE | MODE_MANUAL |
  *                 STOP_SERVOS | SET_CENTER |
  *                 ZONE_Q1 | ZONE_Q2 | ZONE_Q3 | ZONE_Q4
- *   {"type": "servo",   "pan": <0-180>, "tilt": <0-180>, "duration_ms": <optional>}
- *   {"type": "servo",   "pan_angle": <0-180>, "tilt_angle": <0-180>, "speed": <91-180>}
+ *   {"type": "servo",   "pan": <0-180 speed>, "tilt": <0-180 deg>, "duration_ms": <optional>}
+ *   {"type": "servo",   "pan_angle": <0-180 deg>, "tilt_angle": <0-180 deg>, "speed": <91-180>}
  *
  * ── Outbound protocol (ESP32 → Pi): ─────────────────────────────────────────
  *   {"type": "state",  "value": "idle" | "moving"}
@@ -78,23 +78,23 @@ void handleIncoming(const String& line) {
         headcount = doc["value"].as<int>();
         LedMatrix::showCount(headcount);
 
-    // ── servo (raw speed or angle-move) ────────────────────────────────────
+    // ── servo (pan 360 speed, tilt 180 angle) ──────────────────────────────
     } else if (strcmp(type, "servo") == 0) {
         currentMode = Mode::MANUAL;
         if (doc.containsKey("pan_angle") || doc.containsKey("tilt_angle")) {
-            // Angle-move: caller specifies target angle; firmware uses timed run
+            // Angle-move: pan uses timed rotation, tilt sets absolute angle (180 servo)
             const int panAngle  = doc["pan_angle"]  | 90;
-            const int tiltAngle = doc["tilt_angle"] | 90;
-            const int speed     = doc["speed"]      | SERVO_ANGLE_SPEED;
+            const int tiltAngle = doc["tilt_angle"] | SERVO_TILT_DEFAULT_DEG;
+            const int speed     = doc["speed"]      | SERVO_PAN_ANGLE_SPEED;
             ServoController::startAngleMove(panAngle, tiltAngle, speed);
             reportState("moving");
         } else {
-            // Raw speed command: pan/tilt are continuous-servo speed values (0-180)
-            const int          pan        = doc["pan"]         | SERVO_STOP;
-            const int          tilt       = doc["tilt"]        | SERVO_STOP;
+            // Raw command: pan speed (0-180), tilt angle (0-180)
+            const int          pan        = doc["pan"]         | SERVO_PAN_STOP;
+            const int          tilt       = doc["tilt"]        | SERVO_TILT_DEFAULT_DEG;
             const unsigned long durationMs = doc["duration_ms"] | 0UL;
             ServoController::startManual(pan, tilt, durationMs);
-            reportState(pan != SERVO_STOP || tilt != SERVO_STOP ? "moving" : "idle");
+            reportState(pan != SERVO_PAN_STOP ? "moving" : "idle");
         }
 
     // ── command ────────────────────────────────────────────────────────────
@@ -117,13 +117,13 @@ void handleIncoming(const String& line) {
 
         } else if (strcmp(cmd, "STOP_SERVOS") == 0) {
             currentMode = Mode::MANUAL;
-            ServoController::startManual(SERVO_STOP, SERVO_STOP);
+            ServoController::stop();
             reportState("idle");
 
         } else if (strcmp(cmd, "SET_CENTER") == 0) {
             currentMode = Mode::MANUAL;
-            ServoController::startManual(SERVO_STOP, SERVO_STOP);
-            ServoController::setAngleReference();
+            ServoController::startManual(SERVO_PAN_STOP, SERVO_TILT_DEFAULT_DEG);
+            ServoController::setAngleReference(90, SERVO_TILT_DEFAULT_DEG);
             reportState("idle");
 
         } else if (strncmp(cmd, "ZONE_", 5) == 0) {

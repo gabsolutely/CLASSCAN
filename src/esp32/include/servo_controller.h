@@ -1,10 +1,9 @@
 /*
- * Timed controller for MG90S metal-gear micro servos (pan/tilt bracket platform).
+ * CLASSCAN — Dual-Axis Servo Controller
  *
- * Designed for authentic TowerPro MG90S metal-gear servos mounted in a dual-axis
- * camera bracket. These continuous-rotation / modified servos accept speed/direction
- * commands (90 is stop). Position is governed by calibrated timing intervals.
- * Note: Counterfeit MG90S servos with nylon gears strip under camera weight.
+ * Actuator Configuration:
+ *   - Pan Servo:  TowerPro MG90S 360° Continuous Rotation (Speed/Direction commands)
+ *   - Tilt Servo: TowerPro MG90S 180° Positional Servo (Absolute Angle 0°–180°)
  */
 
 #pragma once
@@ -25,80 +24,96 @@ namespace ServoController {
 
     struct ZoneEntry {
         const char* name;
-        int panCommand;
-        int tiltCommand;
+        int panSpeed;   // Continuous-rotation speed (70 = CCW, 110 = CW)
+        int tiltAngle;  // Positional tilt angle (0° to 180°, calibrated 25°–35°)
     };
 
-    // Commands are speeds/directions, not positions. Calibrate timings after mounting.
+    // Quadrant positions: pan speeds for timed movement, tilt absolute angles
     static const ZoneEntry ZONE_TABLE[] = {
-        {"Q1",  70, 105},
-        {"Q2", 110, 105},
-        {"Q3", 110,  75},
-        {"Q4",  70,  75},
+        {"Q1",  70, 35},   // Q1: Pan CCW, Tilt 35° downward
+        {"Q2", 110, 35},   // Q2: Pan CW,  Tilt 35° downward
+        {"Q3", 110, 25},   // Q3: Pan CW,  Tilt 25° downward
+        {"Q4",  70, 25},   // Q4: Pan CCW, Tilt 25° downward
     };
     static const int ZONE_COUNT = sizeof(ZONE_TABLE) / sizeof(ZONE_TABLE[0]);
     static int _zoneIdx = 0;
     static unsigned long _zonePhaseStarted = 0;
     static bool _zoneMoving = false;
+
+    // Manual / Angle move state
     static unsigned long _manualStopAt = 0;
     static bool _manualTimed = false;
     static bool _manualMoving = false;
+
     static int _panAngle = 90;
-    static int _tiltAngle = 90;
+    static int _tiltAngle = SERVO_TILT_DEFAULT_DEG;
     static int _panStartAngle = 90;
-    static int _tiltStartAngle = 90;
     static int _panTargetAngle = 90;
-    static int _tiltTargetAngle = 90;
+    static int _tiltTargetAngle = SERVO_TILT_DEFAULT_DEG;
     static unsigned long _angleMoveStarted = 0;
     static unsigned long _panMoveMs = 0;
-    static unsigned long _tiltMoveMs = 0;
 
-    inline void writeCommand(Servo& servo, int command) {
-        command = constrain(command, SERVO_COMMAND_MIN, SERVO_COMMAND_MAX);
-        servo.writeMicroseconds(map(command, SERVO_COMMAND_MIN, SERVO_COMMAND_MAX,
-                                    SERVO_MIN_US, SERVO_MAX_US));
+    // ── Low-Level Servo Writes ─────────────────────────────────────────────
+
+    // Write speed/direction to Pan Servo (MG90S 360° continuous)
+    inline void writePanSpeed(int speed) {
+        speed = constrain(speed, 0, 180);
+        _pan.writeMicroseconds(map(speed, 0, 180, SERVO_PAN_MIN_US, SERVO_PAN_MAX_US));
     }
 
+    // Write absolute angle to Tilt Servo (MG90S 180° positional)
+    inline void writeTiltAngle(int angle) {
+        angle = constrain(angle, SERVO_TILT_MIN_DEG, SERVO_TILT_MAX_DEG);
+        _tilt.writeMicroseconds(map(angle, 0, 180, SERVO_TILT_MIN_US, SERVO_TILT_MAX_US));
+        _tiltAngle = angle;
+    }
+
+    // Backward-compatible writeCommand (routes by servo)
+    inline void writeCommand(Servo& servo, int val) {
+        if (&servo == &_pan) {
+            writePanSpeed(val);
+        } else {
+            writeTiltAngle(val);
+        }
+    }
+
+    // Stop pan rotation (continuous servo); tilt holds its position
     inline void stop() {
-        writeCommand(_pan, SERVO_STOP);
-        writeCommand(_tilt, SERVO_STOP);
+        writePanSpeed(SERVO_PAN_STOP);
     }
 
-    inline void startManual(int panCommand, int tiltCommand, unsigned long durationMs = 0) {
-        writeCommand(_pan, panCommand);
-        writeCommand(_tilt, tiltCommand);
+    // ── Manual Control ─────────────────────────────────────────────────────
+
+    inline void startManual(int panSpeed, int tiltAngle = SERVO_TILT_DEFAULT_DEG, unsigned long durationMs = 0) {
+        writePanSpeed(panSpeed);
+        writeTiltAngle(tiltAngle);
         _manualTimed = durationMs > 0;
-        _manualMoving = panCommand != SERVO_STOP || tiltCommand != SERVO_STOP;
+        _manualMoving = (panSpeed != SERVO_PAN_STOP);
         _manualStopAt = millis() + durationMs;
     }
 
-    inline void startAngleMove(int panAngle, int tiltAngle, int speedCommand = SERVO_ANGLE_SPEED) {
+    inline void startAngleMove(int panAngle, int tiltAngle = SERVO_TILT_DEFAULT_DEG, int speedCommand = SERVO_PAN_ANGLE_SPEED) {
         _panTargetAngle = constrain(panAngle, 0, 180);
-        _tiltTargetAngle = constrain(tiltAngle, 0, 180);
-        speedCommand = constrain(speedCommand, SERVO_STOP + 1, SERVO_COMMAND_MAX);
+        _tiltTargetAngle = constrain(tiltAngle, SERVO_TILT_MIN_DEG, SERVO_TILT_MAX_DEG);
+        speedCommand = constrain(speedCommand, SERVO_PAN_STOP + 1, 180);
 
         _panStartAngle = _panAngle;
-        _tiltStartAngle = _tiltAngle;
         _panMoveMs = abs(_panTargetAngle - _panStartAngle) * SERVO_MS_PER_DEGREE;
-        _tiltMoveMs = abs(_tiltTargetAngle - _tiltStartAngle) * SERVO_MS_PER_DEGREE;
 
+        // Set Tilt position immediately (standard 180° servo moves directly)
+        writeTiltAngle(_tiltTargetAngle);
+
+        // Run Pan servo for timed duration (continuous 360° servo)
         if (_panMoveMs > 0) {
-            writeCommand(_pan, _panTargetAngle > _panStartAngle
-                ? speedCommand : SERVO_COMMAND_MAX - speedCommand);
+            writePanSpeed(_panTargetAngle > _panStartAngle ? speedCommand : 180 - speedCommand);
         } else {
-            writeCommand(_pan, SERVO_STOP);
-        }
-        if (_tiltMoveMs > 0) {
-            writeCommand(_tilt, _tiltTargetAngle > _tiltStartAngle
-                ? speedCommand : SERVO_COMMAND_MAX - speedCommand);
-        } else {
-            writeCommand(_tilt, SERVO_STOP);
+            writePanSpeed(SERVO_PAN_STOP);
         }
 
         _angleMoveStarted = millis();
-        _manualTimed = _panMoveMs > 0 || _tiltMoveMs > 0;
+        _manualTimed = (_panMoveMs > 0);
         _manualMoving = _manualTimed;
-        _manualStopAt = _angleMoveStarted + max(_panMoveMs, _tiltMoveMs);
+        _manualStopAt = _angleMoveStarted + _panMoveMs;
     }
 
     inline bool manual() {
@@ -108,75 +123,77 @@ namespace ServoController {
                 const float progress = min(1.0f, static_cast<float>(elapsed) / _panMoveMs);
                 _panAngle = _panStartAngle + (_panTargetAngle - _panStartAngle) * progress;
             }
-            if (_tiltMoveMs > 0) {
-                const float progress = min(1.0f, static_cast<float>(elapsed) / _tiltMoveMs);
-                _tiltAngle = _tiltStartAngle + (_tiltTargetAngle - _tiltStartAngle) * progress;
+            if (millis() >= _manualStopAt) {
+                writePanSpeed(SERVO_PAN_STOP);
+                _panAngle = _panTargetAngle;
+                _manualTimed = false;
+                _manualMoving = false;
+                return false;
             }
-        }
-        if (_manualTimed && millis() >= _manualStopAt) {
-            stop();
-            _panAngle = _panTargetAngle;
-            _tiltAngle = _tiltTargetAngle;
-            _manualTimed = false;
-            _manualMoving = false;
-            return false;
         }
         return _manualMoving;
     }
 
-    inline void setAngleReference(int panAngle = 90, int tiltAngle = 90) {
+    inline void setAngleReference(int panAngle = 90, int tiltAngle = SERVO_TILT_DEFAULT_DEG) {
         _panAngle = constrain(panAngle, 0, 180);
-        _tiltAngle = constrain(tiltAngle, 0, 180);
+        writeTiltAngle(tiltAngle);
     }
+
+    // ── Initialization ─────────────────────────────────────────────────────
 
     inline void begin(uint8_t pinPan, uint8_t pinTilt) {
         _pan.setPeriodHertz(50);
         _tilt.setPeriodHertz(50);
-        _pan.attach(pinPan, SERVO_MIN_US, SERVO_MAX_US);
-        _tilt.attach(pinTilt, SERVO_MIN_US, SERVO_MAX_US);
-        writeCommand(_pan, SERVO_SWEEP_SPEED);
-        writeCommand(_tilt, SERVO_STOP);
+        _pan.attach(pinPan, SERVO_PAN_MIN_US, SERVO_PAN_MAX_US);
+        _tilt.attach(pinTilt, SERVO_TILT_MIN_US, SERVO_TILT_MAX_US);
+
+        writePanSpeed(SERVO_PAN_STOP);
+        writeTiltAngle(SERVO_TILT_DEFAULT_DEG);
+
         _phaseStarted = millis();
         _zonePhaseStarted = millis();
     }
+
+    // ── Sweep Mode ─────────────────────────────────────────────────────────
 
     inline void startSweep() {
         _sweepForward = true;
         _sweepPhase = Phase::MOVING;
         _phaseStarted = millis();
-        writeCommand(_pan, SERVO_SWEEP_SPEED);
-        writeCommand(_tilt, SERVO_STOP);
-    }
-
-    inline void startZone() {
-        _zoneIdx = 0;
-        _zoneMoving = true;
-        _zonePhaseStarted = millis();
-        writeCommand(_pan, ZONE_TABLE[_zoneIdx].panCommand);
-        writeCommand(_tilt, ZONE_TABLE[_zoneIdx].tiltCommand);
+        writeTiltAngle(SERVO_TILT_DEFAULT_DEG);
+        writePanSpeed(SERVO_PAN_SWEEP_SPEED);
     }
 
     inline bool sweep() {
         const unsigned long now = millis();
-        const unsigned long phaseLength = _sweepPhase == Phase::MOVING
+        const unsigned long phaseLength = (_sweepPhase == Phase::MOVING)
             ? SERVO_SWEEP_MOVE_MS : SERVO_SWEEP_DWELL_MS;
 
         if (now - _phaseStarted < phaseLength) {
-            return _sweepPhase == Phase::MOVING;
+            return (_sweepPhase == Phase::MOVING);
         }
 
         _phaseStarted = now;
         if (_sweepPhase == Phase::MOVING) {
-            stop();
+            writePanSpeed(SERVO_PAN_STOP);
             _sweepPhase = Phase::DWELLING;
             return false;
         }
 
         _sweepForward = !_sweepForward;
-        writeCommand(_pan, _sweepForward ? SERVO_SWEEP_SPEED
-                          : SERVO_COMMAND_MAX - SERVO_SWEEP_SPEED);
+        writePanSpeed(_sweepForward ? SERVO_PAN_SWEEP_SPEED : 180 - SERVO_PAN_SWEEP_SPEED);
         _sweepPhase = Phase::MOVING;
         return true;
+    }
+
+    // ── Quadrant / Zone Check Mode ─────────────────────────────────────────
+
+    inline void startZone() {
+        _zoneIdx = 0;
+        _zoneMoving = true;
+        _zonePhaseStarted = millis();
+        writePanSpeed(ZONE_TABLE[_zoneIdx].panSpeed);
+        writeTiltAngle(ZONE_TABLE[_zoneIdx].tiltAngle);
     }
 
     inline bool stepZone() {
@@ -184,7 +201,7 @@ namespace ServoController {
 
         if (_zoneMoving) {
             if (now - _zonePhaseStarted < SERVO_ZONE_MOVE_MS) return true;
-            stop();
+            writePanSpeed(SERVO_PAN_STOP);
             _zoneMoving = false;
             _zonePhaseStarted = now;
             return false;
@@ -193,8 +210,8 @@ namespace ServoController {
         if (now - _zonePhaseStarted < ZONE_DWELL_MS) return false;
 
         _zoneIdx = (_zoneIdx + 1) % ZONE_COUNT;
-        writeCommand(_pan, ZONE_TABLE[_zoneIdx].panCommand);
-        writeCommand(_tilt, ZONE_TABLE[_zoneIdx].tiltCommand);
+        writePanSpeed(ZONE_TABLE[_zoneIdx].panSpeed);
+        writeTiltAngle(ZONE_TABLE[_zoneIdx].tiltAngle);
         _zoneMoving = true;
         _zonePhaseStarted = now;
         return true;
@@ -204,8 +221,8 @@ namespace ServoController {
         for (int i = 0; i < ZONE_COUNT; i++) {
             if (strcmp(ZONE_TABLE[i].name, zoneName) == 0) {
                 _zoneIdx = i;
-                writeCommand(_pan, ZONE_TABLE[i].panCommand);
-                writeCommand(_tilt, ZONE_TABLE[i].tiltCommand);
+                writePanSpeed(ZONE_TABLE[i].panSpeed);
+                writeTiltAngle(ZONE_TABLE[i].tiltAngle);
                 _zoneMoving = true;
                 _zonePhaseStarted = millis();
                 return;
