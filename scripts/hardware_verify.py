@@ -105,7 +105,7 @@ class Esp32HardwareInterface:
             if self.port:
                 try:
                     self._ser = serial.Serial(self.port, self.baud, timeout=0.2)
-                    time.sleep(1.5)  # Allow ESP32 bootloader settling time
+                    time.sleep(2.0)  # Allow ESP32 DTR-reset bootloader to settle
                     print(f"[Hardware] Connected to ESP32 on {self.port} @ {self.baud} baud.")
                 except Exception as e:
                     print(f"[Hardware] Warning: Could not open {self.port} ({e}).")
