@@ -12,6 +12,12 @@
  *
  * I2C Address: 0x27 default (auto-detects 0x3F for PCF8574A).
  * Library: marcoschwartz/LiquidCrystal_I2C @ ^1.1.4
+ *
+ * Implementation note:
+ *   The driver uses a pointer (_lcdPtr) rather than a static instance so
+ *   that the auto-detected I2C address is used to construct the object
+ *   exactly once inside begin(). Constructing at namespace scope and later
+ *   copy-assigning is unreliable with this library.
  */
 
 #pragma once
@@ -22,19 +28,20 @@
 
 namespace LcdDisplay {
 
-    static LiquidCrystal_I2C _lcd(LCD_I2C_ADDR, 20, 4);   // 20 cols, 4 rows
+    static LiquidCrystal_I2C* _lcdPtr = nullptr;
     static uint8_t _activeAddr = LCD_I2C_ADDR;
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    // Centre a string in a 20-char field; returns left-padded string.
+    // Centre a string in a 20-char field; prints to current _lcdPtr.
     inline void _printCentred(const char* str, int row) {
+        if (!_lcdPtr) return;
         int len = strlen(str);
         int pad = (20 - len) / 2;
-        _lcd.setCursor(0, row);
-        for (int i = 0; i < 20; i++) _lcd.print(' ');   // clear row
-        _lcd.setCursor(pad < 0 ? 0 : pad, row);
-        _lcd.print(str);
+        _lcdPtr->setCursor(0, row);
+        for (int i = 0; i < 20; i++) _lcdPtr->print(' ');   // clear row
+        _lcdPtr->setCursor(pad < 0 ? 0 : pad, row);
+        _lcdPtr->print(str);
     }
 
     // ── Public API ─────────────────────────────────────────────────────────
@@ -52,24 +59,28 @@ namespace LcdDisplay {
             }
         }
 
-        _lcd = LiquidCrystal_I2C(_activeAddr, 20, 4);
-        _lcd.init();
-        _lcd.backlight();
+        // Construct LCD object with the confirmed address (pointer avoids
+        // copy-assignment issues with LiquidCrystal_I2C).
+        delete _lcdPtr;
+        _lcdPtr = new LiquidCrystal_I2C(_activeAddr, 20, 4);
+        _lcdPtr->init();
+        _lcdPtr->backlight();
 
-        _lcd.clear();
+        _lcdPtr->clear();
         _printCentred("== CLASSCAN ==", 0);
         _printCentred("Initializing...", 2);
     }
 
     inline void showCount(int count) {
-        _lcd.clear();
+        if (!_lcdPtr) return;
+        _lcdPtr->clear();
 
         // Row 0: header
         _printCentred("== CLASSCAN ==", 0);
 
         // Row 1: blank spacer
-        _lcd.setCursor(0, 1);
-        for (int i = 0; i < 20; i++) _lcd.print(' ');
+        _lcdPtr->setCursor(0, 1);
+        for (int i = 0; i < 20; i++) _lcdPtr->print(' ');
 
         // Row 2: centered count
         char countLine[21];
@@ -81,7 +92,8 @@ namespace LcdDisplay {
     }
 
     inline void showStatus(const char* line2, const char* line3 = nullptr) {
-        _lcd.clear();
+        if (!_lcdPtr) return;
+        _lcdPtr->clear();
         _printCentred("== CLASSCAN ==", 0);
         _printCentred(line2, 1);
         if (line3) _printCentred(line3, 2);

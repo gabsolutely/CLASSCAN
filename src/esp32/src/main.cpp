@@ -140,7 +140,19 @@ void setup() {
 
     LdrIllumination::begin(PIN_LDR, PIN_ILLUMINATION);
     ServoController::begin(PIN_PAN, PIN_TILT);
-    LedMatrix::begin();
+    LedMatrix::begin();   // init I2C + LCD; prints "== CLASSCAN ==" splash
+
+    // Debug: report active LCD I2C address so Pi can confirm it over serial
+    {
+        StaticJsonDocument<96> dbg;
+        dbg["type"]  = "debug";
+        dbg["msg"]   = "boot";
+        dbg["lcd"]   = LcdDisplay::_activeAddr;
+        dbg["pan"]   = PIN_PAN;
+        dbg["tilt"]  = PIN_TILT;
+        serializeJson(dbg, Serial);
+        Serial.println();
+    }
 
     reportState("idle");
     reportIllumination();   // send initial LDR reading to Pi
