@@ -505,16 +505,29 @@ class DensityDetector:
         """
         cropped = _crop_roi(frame, self.native_roi_crop)
         if self.is_v5:
-            from PIL import Image
-            img  = Image.fromarray(np.ascontiguousarray(cropped[:, :, ::-1]))  # BGR->RGB
-            w, h = img.size
-            s    = min(self.input_w / w, self.input_h / h)
-            nw, nh = int(round(w * s)), int(round(h * s))
-            canvas = Image.new("RGB", (self.input_w, self.input_h), (114, 114, 114))
-            canvas.paste(img.resize((nw, nh), Image.BILINEAR),
-                         ((self.input_w - nw) // 2, (self.input_h - nh) // 2))
-            arr = np.asarray(canvas, dtype=np.float32)  # 0-255, RGB
-            return arr[np.newaxis]  # (1, H, W, 3)
+            try:
+                from PIL import Image
+                img  = Image.fromarray(np.ascontiguousarray(cropped[:, :, ::-1]))  # BGR->RGB
+                w, h = img.size
+                s    = min(self.input_w / w, self.input_h / h)
+                nw, nh = int(round(w * s)), int(round(h * s))
+                canvas = Image.new("RGB", (self.input_w, self.input_h), (114, 114, 114))
+                canvas.paste(img.resize((nw, nh), Image.BILINEAR),
+                             ((self.input_w - nw) // 2, (self.input_h - nh) // 2))
+                arr = np.asarray(canvas, dtype=np.float32)  # 0-255, RGB
+                return arr[np.newaxis]  # (1, H, W, 3)
+            except ImportError:
+                # Fallback to OpenCV bilinear letterbox with gray-114 pad if PIL is absent
+                h, w = cropped.shape[:2]
+                s = min(self.input_w / w, self.input_h / h)
+                nw, nh = int(round(w * s)), int(round(h * s))
+                resized = cv2.resize(cropped, (nw, nh), interpolation=cv2.INTER_LINEAR)
+                canvas = np.full((self.input_h, self.input_w, 3), 114, dtype=np.uint8)
+                top = (self.input_h - nh) // 2
+                left = (self.input_w - nw) // 2
+                canvas[top:top + nh, left:left + nw] = resized
+                rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+                return np.expand_dims(rgb.astype(np.float32), axis=0)
         else:
             resized = cv2.resize(cropped, (self.input_w, self.input_h))
             rgb     = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)

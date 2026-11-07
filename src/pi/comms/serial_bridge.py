@@ -15,14 +15,24 @@ Protocol (newline-delimited JSON):
 Notes:
   - In mock mode (serial port unavailable) all sends are silent no-ops and
     state/illumination accessors return their default values.
+  - Opening the serial port on Linux triggers a DTR reset on the ESP32.
+    __init__ waits 2 s for the ESP32 bootloader to finish before returning,
+    so the first command is never sent while the chip is still booting.
+  - _send() is guarded by _lock so the reader thread and writer thread
+    can never interleave bytes on the same UART connection.
   - The background reader thread exits cleanly when the port disconnects
     (OSError / SerialException); it does not restart automatically.
 """
 
 
 import json
+import time
 import threading
 import serial
+
+# Seconds to wait after opening the serial port for the ESP32 DTR-reset
+# bootloader sequence to finish before sending the first command.
+_BOOT_SETTLE_S = 2.0
 
 
 class SerialBridge:
@@ -38,6 +48,12 @@ class SerialBridge:
 
         try:
             self._ser = serial.Serial(port, baud, timeout=0.1)
+            # Opening the port pulses DTR which resets the ESP32 — wait for
+            # the bootloader to settle before the caller sends any commands.
+            print(f"[SerialBridge] Port opened ({port} @ {baud}). "
+                  f"Waiting {_BOOT_SETTLE_S:.0f} s for ESP32 boot…")
+            time.sleep(_BOOT_SETTLE_S)
+            self._ser.reset_input_buffer()   # discard bootloader noise
             # Background reader thread keeps _state and _illumination up-to-date
             self._reader = threading.Thread(target=self._read_loop, daemon=True)
             self._reader.start()
@@ -67,6 +83,14 @@ class SerialBridge:
                             self._ldr_value = int(msg["value"])
                         if "illumination" in msg:
                             self._illumination = bool(msg["illumination"])
+
+                elif msg_type == "debug":
+                    # Boot diagnostic from ESP32 — log but don't block
+                    lcd_addr = msg.get("lcd")
+                    pan_pin  = msg.get("pan")
+                    tilt_pin = msg.get("tilt")
+                    print(f"[SerialBridge][ESP32 boot] LCD I2C=0x{lcd_addr:02X}  "
+                          f"pan=GPIO{pan_pin}  tilt=GPIO{tilt_pin}")
 
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass  # Malformed line — ignore and continue
@@ -104,9 +128,15 @@ class SerialBridge:
     # ── Senders ──────────────────────────────────────────────────────────────
 
     def _send(self, obj: dict):
-        """Serialize obj as JSON and write it to serial (no-op in mock mode)."""
-        if self._ser and self._ser.is_open:
-            self._ser.write((json.dumps(obj) + "\n").encode("utf-8"))
+        """Serialize obj as JSON and write it to serial (no-op in mock mode).
+
+        Acquires _lock so the writer thread and reader thread never interleave
+        bytes on the shared UART connection.
+        """
+        with self._lock:
+            if self._ser and self._ser.is_open:
+                self._ser.write((json.dumps(obj) + "\n").encode("utf-8"))
+                self._ser.flush()
 
     def send_count(self, count: int):
         """Push the latest headcount to the ESP32 for display on the LCD display."""

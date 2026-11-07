@@ -182,7 +182,17 @@ def main():
     serial_bridge = SerialBridge(port=cfg.SERIAL_PORT, baud=cfg.SERIAL_BAUD)
     dashboard     = DashboardServer(host=cfg.DASHBOARD_HOST, port=cfg.DASHBOARD_PORT)
 
-    last_count      = 0
+    # ── Boot commands ─────────────────────────────────────────────────────────
+    # SerialBridge.__init__ already waited 2 s for the ESP32 DTR-reset to
+    # settle, so these are guaranteed to arrive after the bootloader exits.
+    # Send the operating mode so the turret starts sweeping immediately,
+    # and push count=0 so the LCD shows "Count: 0" rather than "Initializing…"
+    if serial_bridge.is_connected:
+        serial_bridge.send_command(f"MODE_{cfg.MODE}")
+        serial_bridge.send_count(0)
+        print(f"[CLASSCAN] Boot commands sent → MODE_{cfg.MODE}, count=0")
+
+    last_count      = -1   # -1 sentinel forces first inference result (even 0) to LCD
     last_check_time = time.time()
     last_fps_time   = time.time()
     current_fps     = 0.0
