@@ -237,16 +237,44 @@ def verify_pan_tilt_servos(hw: Esp32HardwareInterface) -> bool:
     print("\n" + "=" * 60)
     print("  TEST 2: Pan/Tilt Dual-Axis Bracket Kit (MG90S Servos)")
     print("=" * 60)
-    print("Testing mechanical range, continuous sweep, and quadrant targeting:\n")
+    print("Actuators:")
+    print("  Pan  — MG90S 360° Continuous Rotation  → ESP32 GPIO 18")
+    print("  Tilt — MG90S 180° Positional Servo      → ESP32 GPIO 13")
+    print()
 
     # Step 1: Center calibration
-    print("  [Step 1/4] Centering servos (SET_CENTER)...")
+    print("  [Step 1/5] Centering servos (SET_CENTER)...")
     hw.center_servos()
     hw.read_responses(max_seconds=0.5)
     time.sleep(0.5)
 
-    # Step 2: Test discrete quadrant moves (Q1 -> Q2 -> Q3 -> Q4)
-    print("  [Step 2/4] Testing quadrant targeting table (ZONE_Q1 -> ZONE_Q4)...")
+    # ── Tilt-only range test ───────────────────────────────────────────────
+    # Sends raw pan=90 (stop) with large tilt angle swings so the user can
+    # confirm the TILT servo (MG90S 180°, signal on GPIO 13) is wired correctly.
+    # If only the pan moves or nothing moves, the tilt signal wire is on the
+    # wrong pin — it must be on GPIO 13 (NOT GPIO 21, which is now LCD SDA).
+    print("  [Step 2/5] Tilt servo range sweep (GPIO 13) — pan stopped...")
+    print("             Tilt should visibly move: 30° → 90° → 10° → 30°")
+    tilt_sequence = [
+        (90, 30,  "default pitch (30°)"),
+        (90, 90,  "horizontal (90°)"),
+        (90, 10,  "steep down (10°)"),
+        (90, 30,  "back to default (30°)"),
+    ]
+    for pan_v, tilt_v, label in tilt_sequence:
+        print(f"    --> Tilt {label}...")
+        hw.send_raw({"type": "servo", "pan": pan_v, "tilt": tilt_v})
+        hw.read_responses(max_seconds=0.3)
+        time.sleep(1.0)
+
+    print()
+    print("     >> If tilt DID NOT move: check signal wire is on GPIO 13,")
+    print("        not GPIO 21 (GPIO 21 is now LCD SDA).")
+    print()
+
+    # Step 3: Test discrete quadrant moves (Q1 -> Q2 -> Q3 -> Q4)
+    print("  [Step 3/5] Testing quadrant table (ZONE_Q1 -> ZONE_Q4)...")
+    print("             Pan rotates; tilt should step between 25° and 35°.")
     quadrants = ["Q1", "Q2", "Q3", "Q4"]
     for q in quadrants:
         print(f"    --> Positioning turret to Quadrant {q}...")
@@ -254,16 +282,16 @@ def verify_pan_tilt_servos(hw: Esp32HardwareInterface) -> bool:
         hw.read_responses(max_seconds=0.8)
         time.sleep(0.5)
 
-    # Step 3: Test brief continuous sweep
-    print("  [Step 3/4] Activating continuous sweep mode (MODE_SWEEP) for 2 seconds...")
+    # Step 4: Test brief continuous sweep
+    print("  [Step 4/5] Activating continuous sweep mode (MODE_SWEEP) for 2 seconds...")
     hw.send_command("MODE_SWEEP")
     t_end = time.time() + 2.0
     while time.time() < t_end:
         hw.read_responses(max_seconds=0.5)
         time.sleep(0.1)
 
-    # Step 4: Halt servos safely
-    print("  [Step 4/4] Sending STOP_SERVOS to park turret safely...")
+    # Step 5: Halt servos safely
+    print("  [Step 5/5] Sending STOP_SERVOS to park turret safely...")
     hw.stop_servos()
     hw.read_responses(max_seconds=0.5)
     time.sleep(0.5)
