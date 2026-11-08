@@ -9,8 +9,9 @@ Protocol (newline-delimited JSON):
     {"type": "servo",   "pan_angle": <0-180>, "tilt_angle": <0-180>, "speed": <91-180>}
 
   ESP32 → Pi:
-    {"type": "state",  "value": "idle" | "moving"}
-    {"type": "ldr",    "value": <adc 0-4095>, "illumination": true | false}
+    {"type": "state",   "value": "idle" | "moving"}
+    {"type": "ldr",     "value": <adc 0-4095>, "illumination": true | false}
+    {"type": "pan_pos", "pct": <0-100>, "moving": <bool>}
 
 Notes:
   - In mock mode (serial port unavailable) all sends are silent no-ops and
@@ -42,6 +43,8 @@ class SerialBridge:
         self._state       = "idle"
         self._illumination = False   # True when ESP32 has turned its LEDs on
         self._ldr_value   = None     # Last raw ADC reading (0-4095), None before first report
+        self._pan_pct     = 50       # Estimated pan position 0-100 (dead-reckoned by ESP32)
+        self._pan_moving  = False    # True while ESP32 pan servo is in motion
         self._lock        = threading.Lock()
         self._ser         = None
         self._is_mock     = False
@@ -84,6 +87,11 @@ class SerialBridge:
                         if "illumination" in msg:
                             self._illumination = bool(msg["illumination"])
 
+                elif msg_type == "pan_pos":
+                    with self._lock:
+                        self._pan_pct = int(msg.get("pct", 50))
+                        self._pan_moving = bool(msg.get("moving", False))
+
                 elif msg_type == "debug":
                     # Boot diagnostic from ESP32 — log but don't block
                     lcd_addr = msg.get("lcd")
@@ -124,6 +132,16 @@ class SerialBridge:
         with self._lock:
             return self._ldr_value
 
+    def get_pan_pct(self) -> int:
+        """Returns the estimated pan servo sweep position (0-100%)."""
+        with self._lock:
+            return self._pan_pct
+
+    def get_pan_moving(self) -> bool:
+        """Returns True if the ESP32 reports the pan servo is actively sweeping."""
+        with self._lock:
+            return self._pan_moving
+
 
     # ── Senders ──────────────────────────────────────────────────────────────
 
@@ -141,6 +159,13 @@ class SerialBridge:
     def send_count(self, count: int):
         """Push the latest headcount to the ESP32 for display on the LCD display."""
         self._send({"type": "count", "value": count})
+
+    def send_zones(self, zone_counts: dict, total: int):
+        """Send per-zone counts to ESP32 for zone-mode LCD display."""
+        msg = {"type": "zones", "total": int(total)}
+        for k, v in zone_counts.items():
+            msg[k] = int(v)
+        self._send(msg)
 
     def send_command(self, cmd: str):
         """Send a named command string (MODE_SWEEP, STOP_SERVOS, ZONE_Q1, etc.)."""

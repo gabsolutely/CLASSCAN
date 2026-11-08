@@ -192,7 +192,8 @@ def main():
         serial_bridge.send_count(0)
         print(f"[CLASSCAN] Boot commands sent → MODE_{cfg.MODE}, count=0")
 
-    last_count      = -1   # -1 sentinel forces first inference result (even 0) to LCD
+    last_count       = -1   # -1 sentinel forces first inference result (even 0) to LCD
+    last_zone_counts = None
     last_check_time = time.time()
     last_fps_time   = time.time()
     current_fps     = 0.0
@@ -400,9 +401,13 @@ def main():
                 new_count   = _result["count"]
                 zone_counts = _result["zone_counts"]
 
-            if new_count != last_count:
+            if new_count != last_count or (cfg.MODE == "ZONE_CHECK" and zone_counts != last_zone_counts):
                 last_count = new_count
-                serial_bridge.send_count(last_count)
+                last_zone_counts = dict(zone_counts) if zone_counts else None
+                if cfg.MODE == "ZONE_CHECK" and zone_counts:
+                    serial_bridge.send_zones(zone_counts, last_count)
+                else:
+                    serial_bridge.send_count(last_count)
                 print(f"[CLASSCAN] Headcount updated -> {last_count}")
 
             # Cap boxes to last_count (top-N by confidence) so visual never shows
@@ -436,10 +441,35 @@ def main():
             #    stream with duplicate frames when the loop outruns the camera.
             if frame is not None and is_new_frame:
                 top_conf = max((d["score"] for d in detections), default=0.0)
+
+                # Camera 180° rotation (ceiling-down mount)
+                if getattr(cfg, 'CAMERA_FLIP', False):
+                    display_frame = cv2.flip(frame, -1)
+                    display_detections = [
+                        {
+                            **d,
+                            "box": [
+                                1.0 - d["box"][2],
+                                1.0 - d["box"][3],
+                                1.0 - d["box"][0],
+                                1.0 - d["box"][1],
+                            ]
+                        }
+                        for d in detections
+                    ]
+                else:
+                    display_frame = frame
+                    display_detections = detections
+
                 annotated_frame = draw_hud_overlay(
-                    frame, detections, fps=current_fps, mode_str=cfg.MODE,
+                    display_frame, display_detections, fps=current_fps, mode_str=cfg.MODE,
                     source_tag=source_tag, count=last_count,
                 )
+
+                pan_pct = serial_bridge.get_pan_pct()
+                pan_moving = serial_bridge.get_pan_moving()
+                quadrant = min(4, max(1, int(pan_pct // 25) + 1))
+
                 dashboard.push(
                     count=last_count,
                     frame=annotated_frame,
@@ -449,6 +479,9 @@ def main():
                     mode=cfg.MODE,
                     motion=motion_active,
                     watchdog=watchdog_status,
+                    pan_pct=pan_pct,
+                    pan_moving=pan_moving,
+                    quadrant=quadrant,
                 )
 
             # 7. Handle Inbound Dashboard Commands

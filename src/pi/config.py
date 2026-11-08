@@ -132,3 +132,9 @@ class Config:
     # 6. Native Resolution ROI Crop: [ymin, xmin, ymax, xmax] normalized
     # When enabled, crops floor area from 2688x1520 native frame before downscaling
     NATIVE_ROI_CROP: list[float] | None = None
+
+    # ── Camera Orientation ─────────────────────────────────────────────────
+    # Set True when the camera is mounted upside-down (ceiling-down deployment).
+    # The display frame shown in the dashboard is rotated 180° for readability;
+    # AI inference always uses the original unflipped frame.
+    CAMERA_FLIP: bool = True

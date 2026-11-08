@@ -41,6 +41,9 @@ _latest_telemetry: dict = {
     "zones": None,
     "mode": "SWEEP",
     "motion": False,
+    "pan_pct": 50,
+    "pan_moving": False,
+    "quadrant": 0,
     "watchdog": {
         "camera": True,
         "ai": True,
@@ -163,7 +166,8 @@ class DashboardServer:
 
     def push(self, count: int, frame: np.ndarray, fps: float = 0.0, top_conf: float = 0.0,
              zones: dict | None = None, mode: str = "SWEEP",
-             motion: bool = False, watchdog: dict | None = None):
+             motion: bool = False, watchdog: dict | None = None,
+             pan_pct: int = 50, pan_moving: bool = False, quadrant: int = 0):
         """Store latest count, annotated frame, and telemetry for polling & streaming."""
         global _latest_frame_jpg, _frame_id, _latest_snapshot_b64, _last_snapshot_ts
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
@@ -187,6 +191,9 @@ class DashboardServer:
             _latest_telemetry["zones"] = zones
             _latest_telemetry["mode"] = mode
             _latest_telemetry["motion"] = motion
+            _latest_telemetry["pan_pct"] = pan_pct
+            _latest_telemetry["pan_moving"] = pan_moving
+            _latest_telemetry["quadrant"] = quadrant
             if watchdog is not None:
                 _latest_telemetry["watchdog"] = watchdog
             _frame_condition.notify_all()
