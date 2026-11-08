@@ -38,15 +38,18 @@
 
 // ── Pan Servo (MG90S 360° Continuous Rotation) ──────────────────────────
 // Commands are speed/direction: 90 is neutral stop, >90 forward/CW, <90 reverse/CCW.
+// POWER NOTE: Sweep speed is kept close to neutral (90) to minimise current draw
+// when powered solely from Pi USB. Full speed (155/25) may cause brownout;
+// reduce further toward 90 if brownouts persist. Use external 5V for full speed.
 #define SERVO_PAN_STOP          90
 #define SERVO_PAN_MIN_US      1000
 #define SERVO_PAN_MAX_US      2000
-#define SERVO_PAN_SWEEP_SPEED  155    // Forward sweep speed
-#define SERVO_PAN_ANGLE_SPEED  155    // Continuous-servo speed for timed angle moves
-#define SERVO_MS_PER_DEGREE     12    // Calibrated ms per degree for pan rotation
-#define SERVO_SWEEP_MOVE_MS   1500    // Panning duration per sweep stroke
+#define SERVO_PAN_SWEEP_SPEED  120    // Reduced from 155 — lower current, still moves
+#define SERVO_PAN_ANGLE_SPEED  120    // Reduced from 155
+#define SERVO_MS_PER_DEGREE     18    // Recalibrated for slower speed (was 12 at 155)
+#define SERVO_SWEEP_MOVE_MS   2000    // Longer stroke to compensate for slower speed (was 1500)
 #define SERVO_SWEEP_DWELL_MS   800    // Pause at ends of sweep
-#define SERVO_ZONE_MOVE_MS     700    // Panning duration to reach next quadrant
+#define SERVO_ZONE_MOVE_MS    1100    // Longer zone move for slower speed (was 700)
 
 // ── Tilt Servo (MG90S 180° Positional Standard Servo) ───────────────────
 // Commands are absolute angles in degrees: 0° to 180°.

@@ -29,11 +29,12 @@ namespace ServoController {
     };
 
     // Quadrant positions: pan speeds for timed movement, tilt absolute angles
+    // Speeds kept close to neutral (90) to minimise current draw on Pi USB power.
     static const ZoneEntry ZONE_TABLE[] = {
-        {"Q1",  70, 35},   // Q1: Pan CCW, Tilt 35° downward
-        {"Q2", 110, 35},   // Q2: Pan CW,  Tilt 35° downward
-        {"Q3", 110, 25},   // Q3: Pan CW,  Tilt 25° downward
-        {"Q4",  70, 25},   // Q4: Pan CCW, Tilt 25° downward
+        {"Q1",  75, 35},   // Q1: Pan CCW slow, Tilt 35° downward
+        {"Q2", 105, 35},   // Q2: Pan CW  slow, Tilt 35° downward
+        {"Q3", 105, 25},   // Q3: Pan CW  slow, Tilt 25° downward
+        {"Q4",  75, 25},   // Q4: Pan CCW slow, Tilt 25° downward
     };
     static const int ZONE_COUNT = sizeof(ZONE_TABLE) / sizeof(ZONE_TABLE[0]);
     static int _zoneIdx = 0;
@@ -147,8 +148,12 @@ namespace ServoController {
         _pan.attach(pinPan, SERVO_PAN_MIN_US, SERVO_PAN_MAX_US);
         _tilt.attach(pinTilt, SERVO_TILT_MIN_US, SERVO_TILT_MAX_US);
 
-        writePanSpeed(SERVO_PAN_STOP);
+        // Write tilt first, stagger 150 ms, then write pan stop.
+        // This avoids both servos pulling inrush current simultaneously,
+        // which can brown out the ESP32 when powered from Pi USB alone.
         writeTiltAngle(SERVO_TILT_DEFAULT_DEG);
+        delay(150);
+        writePanSpeed(SERVO_PAN_STOP);
 
         _phaseStarted = millis();
         _zonePhaseStarted = millis();
