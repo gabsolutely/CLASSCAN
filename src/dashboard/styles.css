@@ -803,6 +803,89 @@ footer {
   margin-top: 1px;
 }
 
+/* ── Turret Sweep Position ───────────────────────────────────────── */
+.turret-track {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.turret-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+
+.turret-bar-wrap {
+  width: 100%;
+}
+
+.turret-bar-bg {
+  position: relative;
+  width: 100%;
+  height: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: visible;
+}
+
+.turret-marker {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 0 10px var(--accent-glow);
+  transform: translateX(-50%);
+  transition: left 0.4s ease-out;
+  pointer-events: none;
+}
+
+.turret-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 0 4px;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.turret-quadrant {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.turret-pct {
+  color: var(--text-muted);
+}
+
+.turret-status {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all var(--transition);
+}
+
+.turret-status.moving {
+  color: var(--green);
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.12);
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.25);
+}
+
 /* ── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   main {

@@ -188,6 +188,23 @@ function updateZones(zones) {
   });
 }
 
+// ── Turret Position update ───────────────────────────────────────────────
+function updateTurret(panPct, moving) {
+  const marker = document.getElementById("turret-marker");
+  const quadEl = document.getElementById("turret-quadrant");
+  const pctEl  = document.getElementById("turret-pct");
+  const movEl  = document.getElementById("turret-moving");
+
+  const clampedPct = Math.max(0, Math.min(100, panPct));
+  if (marker) marker.style.left = clampedPct + "%";
+  if (quadEl) quadEl.textContent = "Q" + Math.min(4, Math.max(1, Math.floor(clampedPct / 25) + 1));
+  if (pctEl)  pctEl.textContent  = clampedPct + "%";
+  if (movEl)  {
+    movEl.textContent = moving ? "sweeping" : "idle";
+    movEl.className = "turret-status " + (moving ? "moving" : "");
+  }
+}
+
 // ── Mode UI update ───────────────────────────────────────────────────────
 // Sweep  = density model only, no zone display, no servo scan needed.
 // Zone   = per-quadrant servo scan; requires tilt wired to GPIO 13.
@@ -251,6 +268,7 @@ async function poll() {
     if (data.count !== undefined) updateCount(data.count);
     if (data.zones)               updateZones(data.zones);
     if (data.mode)                updateModeUI(data.mode);
+    if (data.pan_pct !== undefined) updateTurret(data.pan_pct, !!data.pan_moving);
     updateMotion(!!data.motion);
     if (data.watchdog)            updateWatchdog(data.watchdog);
 
