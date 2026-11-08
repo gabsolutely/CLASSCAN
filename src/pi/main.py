@@ -27,6 +27,7 @@ Open http://localhost:8080 or http://<pi-ip>:8080 in your browser.
 import argparse
 import threading
 import time
+import cv2
 
 from config import Config
 from comms.dashboard_server import DashboardServer
