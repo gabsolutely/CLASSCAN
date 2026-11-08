@@ -7,6 +7,7 @@ let pollTimer      = null;
 let lastCount      = null;
 let streamMode     = false;
 let streamFailed   = false;
+let currentMode    = "SWEEP";  // tracks active detection mode
 
 // In-memory log store for CSV export
 // Each entry: { ts: "HH:MM:SS", type: ""|"ok"|"err", message: string }
@@ -187,6 +188,54 @@ function updateZones(zones) {
   });
 }
 
+// ── Mode UI update ───────────────────────────────────────────────────────
+// Sweep  = density model only, no zone display, no servo scan needed.
+// Zone   = per-quadrant servo scan; requires tilt wired to GPIO 13.
+function updateModeUI(mode) {
+  if (mode === currentMode) return;
+  currentMode = mode;
+
+  const btnSweep     = document.getElementById("btn-sweep");
+  const btnZone      = document.getElementById("btn-zone");
+  const hintSweep    = document.getElementById("mode-hint-sweep");
+  const hintZone     = document.getElementById("mode-hint-zone");
+  const zoneGrid     = document.getElementById("zone-grid");
+  const zoneTag      = document.getElementById("zone-mode-tag");
+  const zoneSweepMsg = document.getElementById("zone-sweep-msg");
+
+  if (mode === "SWEEP") {
+    btnSweep?.classList.add("active");
+    btnZone?.classList.remove("active");
+    if (hintSweep)    hintSweep.style.display    = "";
+    if (hintZone)     hintZone.style.display     = "none";
+    if (zoneGrid)     zoneGrid.style.display     = "none";
+    if (zoneSweepMsg) zoneSweepMsg.style.display = "";
+    if (zoneTag) {
+      zoneTag.textContent = "SWEEP \u2014 zones inactive";
+      zoneTag.className   = "zone-mode-tag";
+    }
+    // Reset stale zone values so they don\u2019t show when switching back
+    ZONES.forEach(z => {
+      const c = document.getElementById(`zone-count-${z}`);
+      const b = document.getElementById(`zone-bar-${z}`);
+      if (c) c.textContent = "\u2014";
+      if (b) b.style.width = "0%";
+    });
+  } else {
+    // ZONE_CHECK
+    btnZone?.classList.add("active");
+    btnSweep?.classList.remove("active");
+    if (hintZone)     hintZone.style.display     = "";
+    if (hintSweep)    hintSweep.style.display    = "none";
+    if (zoneGrid)     zoneGrid.style.display     = "";
+    if (zoneSweepMsg) zoneSweepMsg.style.display = "none";
+    if (zoneTag) {
+      zoneTag.textContent = "ZONE CHECK \u2014 per-quadrant";
+      zoneTag.className   = "zone-mode-tag zone-mode-tag-active";
+    }
+  }
+}
+
 // ── Polling loop ────────────────────────────────────────────────────────
 async function poll() {
   const urlInput = document.getElementById("pi-url");
@@ -201,6 +250,7 @@ async function poll() {
 
     if (data.count !== undefined) updateCount(data.count);
     if (data.zones)               updateZones(data.zones);
+    if (data.mode)                updateModeUI(data.mode);
     updateMotion(!!data.motion);
     if (data.watchdog)            updateWatchdog(data.watchdog);
 
@@ -290,17 +340,9 @@ async function sendCommand(cmd) {
   const url = urlInput.value.replace(/\/$/, "");
   log(`→ CMD: ${cmd}`);
 
-  // Update mode button active state immediately
-  const btnSweep = document.getElementById("btn-sweep");
-  const btnZone  = document.getElementById("btn-zone");
-
-  if (cmd === "MODE_SWEEP") {
-    btnSweep?.classList.add("active");
-    btnZone?.classList.remove("active");
-  } else if (cmd === "MODE_ZONE") {
-    btnZone?.classList.add("active");
-    btnSweep?.classList.remove("active");
-  }
+  // Update mode UI immediately on button click (don't wait for next poll)
+  if (cmd === "MODE_SWEEP") updateModeUI("SWEEP");
+  else if (cmd === "MODE_ZONE") updateModeUI("ZONE_CHECK");
 
   try {
     const res = await fetch(`${url}/command`, {

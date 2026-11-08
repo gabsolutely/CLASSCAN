@@ -70,9 +70,16 @@
 
       <!-- Zone Grid -->
       <div class="card">
-        <div class="card-label">Zone Occupancy (last scan)</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div class="card-label" style="margin-bottom:0;">Zone Occupancy (last scan)</div>
+          <span class="zone-mode-tag" id="zone-mode-tag">SWEEP — zones inactive</span>
+        </div>
         <div class="zone-grid" id="zone-grid">
           <!-- Populated dynamically by app.js -->
+        </div>
+        <div class="zone-sweep-msg" id="zone-sweep-msg">
+          Density model is active. Switch to <strong>Zone Check</strong> mode
+          (and ensure tilt servo is on GPIO&nbsp;13) to see per-quadrant counts.
         </div>
       </div>
 
@@ -95,8 +102,23 @@
       <div class="card">
         <div class="card-label">Detection Mode</div>
         <div class="mode-row">
-          <button class="mode-btn active" id="btn-sweep" type="button">Sweep</button>
-          <button class="mode-btn" id="btn-zone" type="button">Zone Check</button>
+          <button class="mode-btn active" id="btn-sweep" type="button"
+                  title="Density model only — no servo required">
+            📡 Sweep <span class="mode-badge">Density Only</span>
+          </button>
+          <button class="mode-btn" id="btn-zone" type="button"
+                  title="Quadrant scanning — requires working tilt servo on GPIO 13">
+            🔁 Zone Check <span class="mode-badge mode-badge-warn">Needs Servo</span>
+          </button>
+        </div>
+        <div class="mode-hint" id="mode-hint-sweep">
+          AI density model counts the full frame. LCD &amp; sweep are active.
+          Tilt servo holds at 30°.
+        </div>
+        <div class="mode-hint mode-hint-warn" id="mode-hint-zone" style="display:none">
+          ⚠️ Zone mode divides the frame by servo quadrant. Requires tilt servo
+          wired to <strong>GPIO 13</strong>. Counts may be inaccurate if servo
+          isn't moving — use Sweep mode instead.
         </div>
       </div>
 

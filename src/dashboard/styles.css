@@ -323,6 +323,65 @@ main {
   color: #fff;
 }
 
+/* Small badge inside mode buttons */
+.mode-badge {
+  display: inline-block;
+  font-size: 0.6rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.85);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  margin-left: 4px;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+
+.mode-badge-warn {
+  background: rgba(245,158,11,0.25);
+  color: var(--amber);
+}
+
+/* Mode hint text below buttons */
+.mode-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+.mode-hint-warn {
+  color: var(--amber);
+}
+
+/* Zone card mode tag */
+.zone-mode-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.zone-mode-tag-active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Zone sweep placeholder message */
+.zone-sweep-msg {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 14px 8px;
+  line-height: 1.5;
+}
+
 /* ── Command log ─────────────────────────────────────────────────── */
 .log-scroll {
   height: 180px;
