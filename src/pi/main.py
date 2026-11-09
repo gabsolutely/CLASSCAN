@@ -33,7 +33,13 @@ from config import Config
 from comms.dashboard_server import DashboardServer
 from comms.serial_bridge import SerialBridge
 from detection.change_trigger import ChangeTrigger
-from detection.detector import Detector, DensityDetector, EnsembleDensityDetector, draw_hud_overlay
+from detection.detector import (
+    Detector,
+    DensityDetector,
+    EnsembleDensityDetector,
+    draw_hud_overlay,
+    extract_zone_counts,
+)
 from detection.zone_reconciler import ZoneReconciler
 from setup.startup import run_boot_sequence
 
@@ -254,6 +260,7 @@ def main():
         "detections":  [],
         "count":       0,
         "zone_counts": None,
+        "density_map": None,  # latest 104x104 float32 density map for dashboard heatmap
     }
 
     def _inference_worker():
@@ -280,55 +287,36 @@ def main():
                 continue
 
             try:
-                if cfg.MODE == "SWEEP":
-                    # Always run box detector for HUD bounding-box overlay.
-                    # Count comes from density_detector (accurate); boxes from
-                    # COCO SSD are visual-only and may miss some people.
-                    new_detections = detector.detect(frame)
-                    if density_detector:
-                        result        = density_detector.predict(frame)
-                        raw_sum       = result.get("calibrated_sum", result["raw_sum"])
-                        with _infer_lock:
-                            prev_count = _result["count"]
-                        density_count = reconciler.apply_hysteresis(raw_sum, prev_count)
-                        density_count = reconciler.clip_capacity(density_count)
-                        new_count     = density_count
-                    else:
-                        new_count = reconciler.clip_capacity(len(new_detections))
-                    new_zone_counts = None
+                # 1. Primary AI Engine: v5 Density Model (drives total headcount and per-zone counts)
+                if density_detector:
+                    result = density_detector.predict(frame)
+                    raw_sum = result.get("calibrated_sum", result["raw_sum"])
+                    with _infer_lock:
+                        prev_count = _result["count"]
+                    density_count = reconciler.apply_hysteresis(raw_sum, prev_count)
+                    density_count = reconciler.clip_capacity(density_count)
+                    new_count = density_count
 
-                elif cfg.MODE == "ZONE_CHECK":
-                    new_zone_counts = detector.detect_zones(frame, cfg.ZONE_POSITIONS)
-                    new_detections  = detector.detect(frame)
-                    if density_detector:
-                        result        = density_detector.predict(frame)
-                        raw_sum       = result.get("calibrated_sum", result["raw_sum"])
-                        with _infer_lock:
-                            prev_count = _result["count"]
-                        density_count = reconciler.apply_hysteresis(raw_sum, prev_count)
-                        density_count = reconciler.clip_capacity(density_count)
-                        new_count     = density_count
-                    else:
-                        with _infer_lock:
-                            prev_count = _result["count"]
-                        new_count, needs_rescan = reconciler.reconcile(
-                            new_zone_counts, prev_count)
-                        if needs_rescan:
-                            print("[CLASSCAN] Reconciliation mismatch - re-scanning...")
-                            new_zone_counts = detector.detect_zones(
-                                frame, cfg.ZONE_POSITIONS)
-                            new_count, _ = reconciler.reconcile(
-                                new_zone_counts, prev_count)
-
+                    # Extract per-quadrant counts directly from the v5 spatial density map
+                    d_map = result.get("density_map")
+                    new_zone_counts = extract_zone_counts(
+                        d_map, new_count, camera_flip=getattr(cfg, "CAMERA_FLIP", False)
+                    )
                 else:
-                    new_detections  = []
-                    new_count       = 0
-                    new_zone_counts = None
+                    result = {}
+                    d_map = None
+                    new_detections = detector.detect(frame)
+                    new_count = reconciler.clip_capacity(len(new_detections))
+                    new_zone_counts = detector.detect_zones(frame, cfg.ZONE_POSITIONS)
+
+                # 2. Secondary Box Detector: for HUD video overlay boxes only
+                new_detections = detector.detect(frame)
 
                 with _infer_lock:
-                    _result["detections"]  = new_detections
-                    _result["count"]       = new_count
-                    _result["zone_counts"] = new_zone_counts
+                    _result["detections"]   = new_detections
+                    _result["count"]        = new_count
+                    _result["zone_counts"]  = new_zone_counts
+                    _result["density_map"]  = d_map  # for dashboard heatmap overlay
                 _wd_last_inference = time.time()  # watchdog: mark AI healthy
 
             except Exception as exc:
@@ -342,6 +330,7 @@ def main():
 
     motion_active_until   = 0.0
     initial_infer_queued = False
+    latest_density_map   = None  # last density map from AI worker, forwarded to dashboard
 
     try:
         while True:
@@ -401,6 +390,7 @@ def main():
                 detections  = _result["detections"]
                 new_count   = _result["count"]
                 zone_counts = _result["zone_counts"]
+                latest_density_map = _result["density_map"]
 
             if new_count != last_count or (cfg.MODE == "ZONE_CHECK" and zone_counts != last_zone_counts):
                 last_count = new_count
@@ -443,7 +433,7 @@ def main():
             if frame is not None and is_new_frame:
                 top_conf = max((d["score"] for d in detections), default=0.0)
 
-                # Camera 180° rotation (ceiling-down mount)
+                # Camera 180 deg rotation (ceiling-down mount)
                 if getattr(cfg, 'CAMERA_FLIP', False):
                     display_frame = cv2.flip(frame, -1)
                     display_detections = [
@@ -483,6 +473,7 @@ def main():
                     pan_pct=pan_pct,
                     pan_moving=pan_moving,
                     quadrant=quadrant,
+                    density_map=latest_density_map,
                 )
 
             # 7. Handle Inbound Dashboard Commands
@@ -492,8 +483,11 @@ def main():
                 serial_bridge.send_command(cmd)
                 if cmd == "MODE_SWEEP":
                     cfg.MODE = "SWEEP"
+                    serial_bridge.send_count(last_count)
                 elif cmd == "MODE_ZONE":
                     cfg.MODE = "ZONE_CHECK"
+                    if zone_counts:
+                        serial_bridge.send_zones(zone_counts, last_count)
 
             # Dynamic loop pacing: when a new frame is processed, sleep just enough
             # to hit target 30 FPS without artificial delay.

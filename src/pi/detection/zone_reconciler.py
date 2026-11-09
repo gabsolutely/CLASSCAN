@@ -43,7 +43,7 @@ class ZoneReconciler:
         """
         if delta is None:
             delta = self.hysteresis_delta
-        if previous_int <= 0:
+        if previous_int <= 0 or current_raw < 0.5:
             return max(0, round(current_raw))
 
         lower_bound = previous_int - delta

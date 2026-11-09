@@ -547,6 +547,15 @@ class DensityDetector:
                 "density_map": fake_map,
             }
 
+        # Covered camera / pitch-black lens check (0 lux -> 0 occupants)
+        if frame is None or float(np.mean(frame)) < 12.0:
+            return {
+                "count":          0,
+                "raw_sum":        0.0,
+                "calibrated_sum": 0.0,
+                "density_map":    np.zeros((104, 104), dtype=np.float32),
+            }
+
         tensor = self._preprocess(frame)
         self.interpreter.set_tensor(self.input_idx, tensor)
         self.interpreter.invoke()
@@ -571,6 +580,15 @@ class DensityDetector:
                 )
 
         raw_sum = float(density_map.sum())
+
+        # Noise-floor cutoff: for v5 Count L1 model, real people produce raw_sum >= 1.0
+        # and a concentrated peak >= 0.025. Background noise stays below raw_sum=0.5.
+        # Both conditions must be true simultaneously to suppress (AND, not OR) so that
+        # a real person at an oblique angle (low peak, adequate sum) is never dropped.
+        peak = float(density_map.max())
+        if raw_sum < 0.5 and peak < 0.025:
+            raw_sum = 0.0
+            density_map = np.zeros_like(density_map)
 
         # 4. Linear calibration: count = a * raw_sum + b
         calibrated_sum = raw_sum
@@ -740,6 +758,17 @@ class EnsembleDensityDetector:
                 "raw_sum_style_aug": float(self._mock_count),
             }
 
+        # Covered camera / pitch-black lens check (0 lux -> 0 occupants)
+        if frame is None or float(np.mean(frame)) < 12.0:
+            return {
+                "count":             0,
+                "raw_sum":           0.0,
+                "calibrated_sum":    0.0,
+                "density_map":       np.zeros((104, 104), dtype=np.float32),
+                "raw_sum_round4":    0.0,
+                "raw_sum_style_aug": 0.0,
+            }
+
         # round4_ep8 — letterbox input
         inp_lb = self._letterbox(frame)
         self._interp_r4.set_tensor(self._r4_in_idx, inp_lb)
@@ -778,6 +807,15 @@ class EnsembleDensityDetector:
                 )
 
         raw_sum = float(density_map.sum())
+
+        # Noise-floor cutoff: for v5 Count L1 model, real people produce raw_sum >= 1.0
+        # and a concentrated peak >= 0.025. Background noise stays below raw_sum=0.5.
+        # Both conditions must be true simultaneously to suppress (AND, not OR) so that
+        # a real person at an oblique angle (low peak, adequate sum) is never dropped.
+        peak = float(density_map.max())
+        if raw_sum < 0.5 and peak < 0.025:
+            raw_sum = 0.0
+            density_map = np.zeros_like(density_map)
 
         # 4. Linear calibration: count = a * raw_sum + b
         calibrated_sum = raw_sum
@@ -1113,3 +1151,64 @@ def draw_hud_overlay(
         1,
     )
     return out
+
+
+# ─── Spatial Density Zone Extraction ────────────────────────────────────────
+
+def extract_zone_counts(
+    density_map: np.ndarray | None,
+    total_count: int,
+    camera_flip: bool = True,
+) -> dict[str, int]:
+    """
+    Extract per-quadrant occupant counts directly from the v5 104x104 spatial density map.
+
+    Guarantees:
+      1. Uses v5 density model for zone occupancy.
+      2. Every quadrant count is an integer >= 0.
+      3. Q1 + Q2 + Q3 + Q4 == total_count EXACTLY (Hamilton proportional seat allocation).
+      4. Honors ceiling-mount 180 deg rotation (CAMERA_FLIP) so room quadrants match reality.
+    """
+    if total_count <= 0 or density_map is None:
+        return {"Q1": 0, "Q2": 0, "Q3": 0, "Q4": 0}
+
+    h, w = density_map.shape[:2]
+    mid_y, mid_x = h // 2, w // 2
+
+    if camera_flip:
+        # Ceiling mount rotated 180 deg:
+        # Top of image is Front of room, Right of image is Left of room
+        raw_q1 = float(np.sum(density_map[0:mid_y, mid_x:w]))   # Front-Left
+        raw_q2 = float(np.sum(density_map[0:mid_y, 0:mid_x]))   # Front-Right
+        raw_q3 = float(np.sum(density_map[mid_y:h, 0:mid_x]))   # Rear-Right
+        raw_q4 = float(np.sum(density_map[mid_y:h, mid_x:w]))   # Rear-Left
+    else:
+        # Normal upright mount:
+        raw_q1 = float(np.sum(density_map[mid_y:h, 0:mid_x]))   # Front-Left
+        raw_q2 = float(np.sum(density_map[mid_y:h, mid_x:w]))   # Front-Right
+        raw_q3 = float(np.sum(density_map[0:mid_y, mid_x:w]))   # Rear-Right
+        raw_q4 = float(np.sum(density_map[0:mid_y, 0:mid_x]))   # Rear-Left
+
+    raw_counts = {
+        "Q1": max(0.0, raw_q1),
+        "Q2": max(0.0, raw_q2),
+        "Q3": max(0.0, raw_q3),
+        "Q4": max(0.0, raw_q4),
+    }
+    total_raw = sum(raw_counts.values())
+
+    if total_raw <= 1e-6:
+        # If density was completely uniform or zero, put count in Q1
+        return {"Q1": total_count, "Q2": 0, "Q3": 0, "Q4": 0}
+
+    # Proportional seat allocation (Hamilton / Hare-Niemeyer method)
+    shares = {z: (raw_counts[z] / total_raw) * total_count for z in raw_counts}
+    allocated = {z: int(shares[z]) for z in raw_counts}
+    remainder = total_count - sum(allocated.values())
+
+    # Distribute remaining whole units to quadrants with largest fractional remainders
+    sorted_zones = sorted(raw_counts.keys(), key=lambda z: shares[z] - allocated[z], reverse=True)
+    for i in range(remainder):
+        allocated[sorted_zones[i]] += 1
+
+    return allocated
