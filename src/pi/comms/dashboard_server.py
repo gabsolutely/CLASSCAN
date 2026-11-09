@@ -32,6 +32,7 @@ _frame_id: int = 0
 _latest_frame_jpg: bytes | None = None
 _latest_snapshot_b64: str = ""
 _last_snapshot_ts: float = 0.0
+_last_heatmap_ts: float = 0.0
 _latest_telemetry: dict = {
     "count": 0,
     "fps": 0.0,
@@ -44,6 +45,7 @@ _latest_telemetry: dict = {
     "pan_pct": 50,
     "pan_moving": False,
     "quadrant": 0,
+    "heatmap": None,   # base64-encoded uint8 104x104 density map (throttled, nullable)
     "watchdog": {
         "camera": True,
         "ai": True,
@@ -167,9 +169,10 @@ class DashboardServer:
     def push(self, count: int, frame: np.ndarray, fps: float = 0.0, top_conf: float = 0.0,
              zones: dict | None = None, mode: str = "SWEEP",
              motion: bool = False, watchdog: dict | None = None,
-             pan_pct: int = 50, pan_moving: bool = False, quadrant: int = 0):
+             pan_pct: int = 50, pan_moving: bool = False, quadrant: int = 0,
+             density_map: np.ndarray | None = None):
         """Store latest count, annotated frame, and telemetry for polling & streaming."""
-        global _latest_frame_jpg, _frame_id, _latest_snapshot_b64, _last_snapshot_ts
+        global _latest_frame_jpg, _frame_id, _latest_snapshot_b64, _last_snapshot_ts, _last_heatmap_ts
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
         jpg_bytes = bytes(buf)
         ts = time.strftime("%H:%M:%S")
@@ -179,6 +182,18 @@ class DashboardServer:
         if now - _last_snapshot_ts >= 1.0 or not _latest_snapshot_b64:
             _latest_snapshot_b64 = base64.b64encode(buf).decode("utf-8")
             _last_snapshot_ts = now
+
+        # Encode density map as uint8 base64 (max 1x per second, ~10 KB per update)
+        heatmap_b64 = None
+        if density_map is not None and (now - _last_heatmap_ts >= 1.0):
+            dm = np.array(density_map, dtype=np.float32)
+            dm_max = float(dm.max())
+            if dm_max > 0:
+                dm_uint8 = (dm / dm_max * 255).astype(np.uint8)
+            else:
+                dm_uint8 = np.zeros((104, 104), dtype=np.uint8)
+            heatmap_b64 = base64.b64encode(dm_uint8.tobytes()).decode("utf-8")
+            _last_heatmap_ts = now
 
         with _frame_condition:
             _latest_frame_jpg = jpg_bytes
@@ -194,6 +209,8 @@ class DashboardServer:
             _latest_telemetry["pan_pct"] = pan_pct
             _latest_telemetry["pan_moving"] = pan_moving
             _latest_telemetry["quadrant"] = quadrant
+            if heatmap_b64 is not None:
+                _latest_telemetry["heatmap"] = heatmap_b64
             if watchdog is not None:
                 _latest_telemetry["watchdog"] = watchdog
             _frame_condition.notify_all()
