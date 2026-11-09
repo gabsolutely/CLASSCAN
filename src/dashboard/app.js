@@ -8,6 +8,74 @@ let lastCount      = null;
 let streamMode     = false;
 let streamFailed   = false;
 let currentMode    = "SWEEP";  // tracks active detection mode
+let heatmapEnabled = false;    // heatmap overlay toggle
+
+// ── Jet Colormap (matches OpenCV COLORMAP_JET) ───────────────────────────
+// Maps a normalised value [0..1] → [R, G, B] using the classic jet ramp.
+function jetColor(t) {
+  // 4-segment piecewise linear interpolation matching matplotlib/OpenCV jet
+  const r = Math.max(0, Math.min(1, 1.5 - Math.abs(4 * t - 3)));
+  const g = Math.max(0, Math.min(1, 1.5 - Math.abs(4 * t - 2)));
+  const b = Math.max(0, Math.min(1, 1.5 - Math.abs(4 * t - 1)));
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+// ── Heatmap Render ────────────────────────────────────────────────────────
+// Decodes a base64 uint8 104x104 raw byte buffer and renders it onto the
+// heatmap canvas using the jet colormap at full canvas resolution.
+function renderHeatmap(b64) {
+  const canvas = document.getElementById("heatmap-canvas");
+  if (!canvas || !heatmapEnabled) return;
+
+  const H = 104, W = 104;
+  const raw   = atob(b64);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+
+  // Upscale 104x104 → canvas display size via ImageData then drawImage
+  const tmpCanvas = document.createElement("canvas");
+  tmpCanvas.width  = W;
+  tmpCanvas.height = H;
+  const ctx2 = tmpCanvas.getContext("2d");
+  const imgData = ctx2.createImageData(W, H);
+
+  for (let i = 0; i < H * W; i++) {
+    const t = bytes[i] / 255;
+    const [r, g, bl] = jetColor(t);
+    // Fully transparent where value is very low (background suppression)
+    const alpha = t < 0.08 ? 0 : Math.round(t * 220);
+    imgData.data[i * 4 + 0] = r;
+    imgData.data[i * 4 + 1] = g;
+    imgData.data[i * 4 + 2] = bl;
+    imgData.data[i * 4 + 3] = alpha;
+  }
+  ctx2.putImageData(imgData, 0, 0);
+
+  // Stretch the 104x104 tile to fill the canvas (smooth interpolation)
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  canvas.width  = canvas.offsetWidth  || 640;
+  canvas.height = canvas.offsetHeight || 480;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(tmpCanvas, 0, 0, canvas.width, canvas.height);
+}
+
+// ── Heatmap Toggle ────────────────────────────────────────────────────────
+function toggleHeatmap() {
+  heatmapEnabled = !heatmapEnabled;
+  const canvas    = document.getElementById("heatmap-canvas");
+  const stateEl   = document.getElementById("heatmap-toggle-state");
+  const btn       = document.getElementById("btn-heatmap");
+  if (canvas)  canvas.style.display  = heatmapEnabled ? "block" : "none";
+  if (stateEl) stateEl.textContent   = heatmapEnabled ? "ON"    : "OFF";
+  if (btn)     btn.classList.toggle("heatmap-active", heatmapEnabled);
+  if (!heatmapEnabled && canvas) {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  log(`Heatmap overlay ${heatmapEnabled ? "enabled" : "disabled"}`);
+}
 
 // In-memory log store for CSV export
 // Each entry: { ts: "HH:MM:SS", type: ""|"ok"|"err", message: string }
@@ -271,6 +339,7 @@ async function poll() {
     if (data.pan_pct !== undefined) updateTurret(data.pan_pct, !!data.pan_moving);
     updateMotion(!!data.motion);
     if (data.watchdog)            updateWatchdog(data.watchdog);
+    if (data.heatmap)             renderHeatmap(data.heatmap);
 
     // Only fall back to base64 snapshot if the live MJPEG stream failed or was disabled
     if (streamFailed) {
@@ -395,6 +464,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Bind Mode buttons
   document.getElementById("btn-sweep")?.addEventListener("click", () => sendCommand("MODE_SWEEP"));
   document.getElementById("btn-zone")?.addEventListener("click", () => sendCommand("MODE_ZONE"));
+
+  // Bind Heatmap toggle
+  document.getElementById("btn-heatmap")?.addEventListener("click", toggleHeatmap);
 
   // Bind Zone Check buttons
   document.querySelectorAll(".zone-cmd-btn").forEach(btn => {
