@@ -29,16 +29,54 @@ V4_STYLE_AUG = str(ROOT / "models" / "classcan_density_style_aug_ep8.tflite")
 
 def make_heatmap_overlay(frame, density_map, alpha=0.5):
     """
-    Standard CLASSCAN heatmap overlay matching the user's reference images:
-    Normalizes density map to [0, 1], applies COLORMAP_JET, resizes to frame size,
-    and blends 50% frame + 50% colored heatmap.
+    CLASSCAN heatmap overlay with UNPADDED alignment.
+
+    The model preprocesses frames using gray-114 letterbox into 416x416, so the
+    104x104 density map includes black padding rows/columns that map outside the
+    actual image content. Cropping those padding rows/columns before upscaling
+    ensures heatmap hotspots land exactly on heads rather than floating above them.
+
+    For a 16:9 source frame (e.g. 1920x1080):
+      scale = 416 / max(1080, 1920) = 416/1920 = 0.2167
+      nh = int(1080 * 0.2167) = 233  nw = int(1920 * 0.2167) = 416
+      pad_y = (416 - 233) // 2 = 91 px  (top + bottom)
+      -> in 104x104 map: y0 = round(91*104/416) = 23  y1 = round((91+233)*104/416) = 81
+    So dm[23:81, 0:104] is the actual image content region.
     """
-    norm_map = density_map - density_map.min()
+    h, w = frame.shape[:2]
+    target = 416
+    dm_size = 104
+
+    # Compute letterbox padding for this frame's aspect ratio
+    scale = target / max(h, w)
+    nh = int(h * scale)
+    nw = int(w * scale)
+    pad_y = (target - nh) // 2
+    pad_x = (target - nw) // 2
+
+    # Map padding pixels -> density map coordinates
+    y0 = round(pad_y * dm_size / target)
+    y1 = round((pad_y + nh) * dm_size / target)
+    x0 = round(pad_x * dm_size / target)
+    x1 = round((pad_x + nw) * dm_size / target)
+
+    # Clamp to valid range
+    y0 = max(0, min(y0, dm_size))
+    y1 = max(y0 + 1, min(y1, dm_size))
+    x0 = max(0, min(x0, dm_size))
+    x1 = max(x0 + 1, min(x1, dm_size))
+
+    # Crop out the letterbox-padded rows/cols
+    dm_cropped = density_map[y0:y1, x0:x1]
+
+    # Normalize and colorize
+    norm_map = dm_cropped - dm_cropped.min()
     if norm_map.max() > 0:
         norm_map = norm_map / norm_map.max()
     heat_u8 = (norm_map * 255).astype(np.uint8)
     colored_heat = cv2.applyColorMap(heat_u8, cv2.COLORMAP_JET)
-    h, w = frame.shape[:2]
+
+    # Upscale cropped heatmap back to full frame size
     colored_heat = cv2.resize(colored_heat, (w, h), interpolation=cv2.INTER_CUBIC)
     overlay = cv2.addWeighted(frame, 1.0 - alpha, colored_heat, alpha, 0)
     return overlay
