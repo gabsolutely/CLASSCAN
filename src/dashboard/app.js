@@ -23,42 +23,77 @@ function jetColor(t) {
 // ── Heatmap Render ────────────────────────────────────────────────────────
 // Decodes a base64 uint8 104x104 raw byte buffer and renders it onto the
 // heatmap canvas using the jet colormap at full canvas resolution.
+//
+// UNPADDED alignment: the model letterboxes the camera frame into 416x416 with
+// gray-114 padding. The 104x104 density map therefore contains padding rows/cols
+// outside the actual image content. We compute the padding crop and draw only
+// the content region, stretching it to cover the full canvas so hotspots land
+// on heads rather than floating above/below them.
+//
+// Camera is 16:9 (e.g. 1920x1080):
+//   scale = 416/1920 = 0.2167  ->  nh=233, nw=416, pad_y=91px top+bottom
+//   y0 = round(91 * 104/416) = 23   y1 = round(324 * 104/416) = 81
+//   Content rows: dm[23:81, 0:104]  (58 of 104 rows = actual scene)
 function renderHeatmap(b64) {
   const canvas = document.getElementById("heatmap-canvas");
   if (!canvas || !heatmapEnabled) return;
 
-  const H = 104, W = 104;
+  const DM = 104;    // density map size
+  const TGT = 416;   // model input size
+
   const raw   = atob(b64);
   const bytes = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
 
-  // Upscale 104x104 → canvas display size via ImageData then drawImage
-  const tmpCanvas = document.createElement("canvas");
-  tmpCanvas.width  = W;
-  tmpCanvas.height = H;
-  const ctx2 = tmpCanvas.getContext("2d");
-  const imgData = ctx2.createImageData(W, H);
+  // Compute unpadded crop region from canvas (stream) aspect ratio
+  const canvasW = canvas.offsetWidth  || 640;
+  const canvasH = canvas.offsetHeight || 480;
+  const scale   = TGT / Math.max(canvasH, canvasW);
+  const nh      = Math.floor(canvasH * scale);
+  const nw      = Math.floor(canvasW * scale);
+  const padY    = Math.floor((TGT - nh) / 2);
+  const padX    = Math.floor((TGT - nw) / 2);
 
-  for (let i = 0; i < H * W; i++) {
-    const t = bytes[i] / 255;
-    const [r, g, bl] = jetColor(t);
-    // Fully transparent where value is very low (background suppression)
-    const alpha = t < 0.08 ? 0 : Math.round(t * 220);
-    imgData.data[i * 4 + 0] = r;
-    imgData.data[i * 4 + 1] = g;
-    imgData.data[i * 4 + 2] = bl;
-    imgData.data[i * 4 + 3] = alpha;
+  // Map padding to 104x104 density map coordinates
+  const y0 = Math.max(0, Math.round(padY * DM / TGT));
+  const y1 = Math.min(DM, Math.round((padY + nh) * DM / TGT));
+  const x0 = Math.max(0, Math.round(padX * DM / TGT));
+  const x1 = Math.min(DM, Math.round((padX + nw) * DM / TGT));
+
+  const cropH = Math.max(1, y1 - y0);
+  const cropW = Math.max(1, x1 - x0);
+
+  // Render only the unpadded content region into a small canvas
+  const tmpCanvas = document.createElement("canvas");
+  tmpCanvas.width  = cropW;
+  tmpCanvas.height = cropH;
+  const ctx2    = tmpCanvas.getContext("2d");
+  const imgData = ctx2.createImageData(cropW, cropH);
+
+  for (let row = 0; row < cropH; row++) {
+    for (let col = 0; col < cropW; col++) {
+      const srcIdx = (y0 + row) * DM + (x0 + col);
+      const dstIdx = (row * cropW + col) * 4;
+      const t = bytes[srcIdx] / 255;
+      const [r, g, bl] = jetColor(t);
+      // Fully transparent where value is very low (background suppression)
+      const alpha = t < 0.08 ? 0 : Math.round(t * 220);
+      imgData.data[dstIdx + 0] = r;
+      imgData.data[dstIdx + 1] = g;
+      imgData.data[dstIdx + 2] = bl;
+      imgData.data[dstIdx + 3] = alpha;
+    }
   }
   ctx2.putImageData(imgData, 0, 0);
 
-  // Stretch the 104x104 tile to fill the canvas (smooth interpolation)
+  // Stretch the unpadded tile to fill the full canvas
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  canvas.width  = canvas.offsetWidth  || 640;
-  canvas.height = canvas.offsetHeight || 480;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(tmpCanvas, 0, 0, canvas.width, canvas.height);
+  canvas.width  = canvasW;
+  canvas.height = canvasH;
+  ctx.clearRect(0, 0, canvasW, canvasH);
+  ctx.drawImage(tmpCanvas, 0, 0, canvasW, canvasH);
 }
 
 // ── Heatmap Toggle ────────────────────────────────────────────────────────
