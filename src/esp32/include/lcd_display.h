@@ -31,6 +31,11 @@ namespace LcdDisplay {
     static LiquidCrystal_I2C* _lcdPtr = nullptr;
     static uint8_t _activeAddr = LCD_I2C_ADDR;
 
+    // State flags to avoid full-screen clears on every update
+    static int  _lastCount      = -1;
+    static bool _headerWritten  = false;
+    static bool _inZoneMode     = false;
+
     // ── Helpers ────────────────────────────────────────────────────────────
 
     // Centre a string in a 20-char field; prints to current _lcdPtr.
@@ -66,36 +71,104 @@ namespace LcdDisplay {
         _lcdPtr->init();
         _lcdPtr->backlight();
 
-        _lcdPtr->clear();
+        // Write splash without clear() so servo PWM noise can't corrupt it
+        // (clear() causes a ~1.5ms I2C blackout that is bridged by servo noise)
         _printCentred("== CLASSCAN ==", 0);
+        _printCentred("",              1);
         _printCentred("Initializing...", 2);
+        _printCentred("",              3);
+
+        _headerWritten = false;
+        _lastCount     = -1;
+        _inZoneMode    = false;
     }
 
+    // ── Sweep mode: show headcount.  Redraws only changed rows. ────────────
     inline void showCount(int count) {
         if (!_lcdPtr) return;
-        _lcdPtr->clear();
 
-        // Row 0: header
-        _printCentred("== CLASSCAN ==", 0);
+        // If we were in zone mode, force full redraw of the sweep layout
+        if (_inZoneMode) {
+            _inZoneMode    = false;
+            _headerWritten = false;
+            _lastCount     = -1;
+        }
 
-        // Row 1: blank spacer
-        _lcdPtr->setCursor(0, 1);
-        for (int i = 0; i < 20; i++) _lcdPtr->print(' ');
+        // Write static rows once per mode-entry (never use clear())
+        if (!_headerWritten) {
+            _printCentred("== CLASSCAN ==", 0);
+            _printCentred("",              1);   // blank spacer
+            _printCentred("students",      3);
+            _headerWritten = true;
+        }
 
-        // Row 2: centered count
-        char countLine[21];
-        snprintf(countLine, sizeof(countLine), "Count: %d", count);
-        _printCentred(countLine, 2);
-
-        // Row 3: "students"
-        _printCentred("students", 3);
+        // Update count row only when value changed
+        if (count != _lastCount) {
+            _lastCount = count;
+            char countLine[21];
+            snprintf(countLine, sizeof(countLine), "Count: %d", count);
+            _printCentred(countLine, 2);
+        }
     }
 
+    // ── Zone-check mode: show per-quadrant counts + total. ─────────────────
+    // Layout (20×4):
+    //   Row 0: "CLASSCAN  Total: 42"
+    //   Row 1: "Q1:07       Q2:05  "
+    //   Row 2: "Q3:03       Q4:04  "
+    //   Row 3: "    Zone Check     "
+    inline void showZones(int q1, int q2, int q3, int q4, int total) {
+        if (!_lcdPtr) return;
+
+        // If entering zone mode from sweep, invalidate header so row 0 redraws
+        if (!_inZoneMode) {
+            _inZoneMode    = true;
+            _headerWritten = false;
+            _lastCount     = -1;
+        }
+
+        // Row 0: title + total (always redraw — total changes every inference)
+        {
+            char row0[21];
+            snprintf(row0, sizeof(row0), "CLASSCAN  Total:%3d ", total);
+            _lcdPtr->setCursor(0, 0);
+            _lcdPtr->print(row0);
+        }
+
+        // Row 1: Q1 / Q2
+        {
+            char row1[21];
+            snprintf(row1, sizeof(row1), "Q1:%02d       Q2:%02d   ", q1, q2);
+            _lcdPtr->setCursor(0, 1);
+            _lcdPtr->print(row1);
+        }
+
+        // Row 2: Q3 / Q4
+        {
+            char row2[21];
+            snprintf(row2, sizeof(row2), "Q3:%02d       Q4:%02d   ", q3, q4);
+            _lcdPtr->setCursor(0, 2);
+            _lcdPtr->print(row2);
+        }
+
+        // Row 3: mode label (static once in zone mode)
+        if (!_headerWritten) {
+            _printCentred("Zone Check", 3);
+            _headerWritten = true;
+        }
+    }
+
+    // ── Generic status (splash / boot messages) ─────────────────────────────
     inline void showStatus(const char* line2, const char* line3 = nullptr) {
         if (!_lcdPtr) return;
-        _lcdPtr->clear();
+        // Reset state so the next showCount/showZones does a full redraw
+        _headerWritten = false;
+        _lastCount     = -1;
+        _inZoneMode    = false;
         _printCentred("== CLASSCAN ==", 0);
         _printCentred(line2, 1);
         if (line3) _printCentred(line3, 2);
+        else       _printCentred("", 2);
+        _printCentred("", 3);
     }
 }

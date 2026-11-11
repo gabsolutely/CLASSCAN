@@ -234,4 +234,25 @@ namespace ServoController {
             }
         }
     }
+
+    // ── Dead-Reckoning Pan Position ─────────────────────────────────────────
+    // Returns estimated pan position as a percentage (0 = one extreme, 100 = other).
+    // Uses elapsed time within the current sweep phase against SERVO_SWEEP_MOVE_MS.
+    inline float getPanProgressPct() {
+        if (_sweepPhase == Phase::DWELLING) {
+            return _sweepForward ? 100.0f : 0.0f;
+        }
+        unsigned long elapsed = millis() - _phaseStarted;
+        float p = min(1.0f, static_cast<float>(elapsed) / static_cast<float>(SERVO_SWEEP_MOVE_MS));
+        return _sweepForward ? p * 100.0f : (1.0f - p) * 100.0f;
+    }
+
+    // Returns estimated current quadrant (1–4) based on pan progress percentage.
+    inline int getEstimatedQuadrant() {
+        float pct = getPanProgressPct();
+        if (pct < 25.0f) return 1;
+        if (pct < 50.0f) return 2;
+        if (pct < 75.0f) return 3;
+        return 4;
+    }
 }
