@@ -18,10 +18,12 @@
  *                 ZONE_Q1 | ZONE_Q2 | ZONE_Q3 | ZONE_Q4
  *   {"type": "servo",   "pan": <0-180 speed>, "tilt": <0-180 deg>, "duration_ms": <optional>}
  *   {"type": "servo",   "pan_angle": <0-180 deg>, "tilt_angle": <0-180 deg>, "speed": <91-180>}
+ *   {"type": "zones",   "Q1": <int>, "Q2": <int>, "Q3": <int>, "Q4": <int>, "total": <int>}
  *
  * ── Outbound protocol (ESP32 → Pi): ─────────────────────────────────────────
- *   {"type": "state",  "value": "idle" | "moving"}
- *   {"type": "ldr",    "value": <adc 0-4095>, "illumination": true | false}
+ *   {"type": "state",   "value": "idle" | "moving"}
+ *   {"type": "ldr",     "value": <adc 0-4095>, "illumination": true | false}
+ *   {"type": "pan_pos", "pct": <0-100>, "moving": <bool>}   // SWEEP mode only, every 500 ms
  */
 
 #include <Arduino.h>
@@ -41,6 +43,7 @@ int     headcount    = 0;
 bool    servoMoving  = false;
 
 unsigned long _lastIllumReport = 0;   // millis() of last periodic LDR report
+unsigned long _lastPanReport   = 0;   // millis() of last pan_pos broadcast
 
 // ── Serial helpers ──────────────────────────────────────────────────────────
 
@@ -77,6 +80,15 @@ void handleIncoming(const String& line) {
     if (strcmp(type, "count") == 0) {
         headcount = doc["value"].as<int>();
         LedMatrix::showCount(headcount);
+
+    // ── zones (per-quadrant counts in ZONE_CHECK mode) ─────────────────────
+    } else if (strcmp(type, "zones") == 0) {
+        int q1    = doc["Q1"]    | 0;
+        int q2    = doc["Q2"]    | 0;
+        int q3    = doc["Q3"]    | 0;
+        int q4    = doc["Q4"]    | 0;
+        int total = doc["total"] | 0;
+        LedMatrix::showZones(q1, q2, q3, q4, total);
 
     // ── servo (pan 360 speed, tilt 180 angle) ──────────────────────────────
     } else if (strcmp(type, "servo") == 0) {
@@ -184,6 +196,20 @@ void loop() {
     }
     if (wasMoving != servoMoving) {
         reportState(servoMoving ? "moving" : "idle");
+    }
+
+    // 2a. Pan position dead-reckoning broadcast (SWEEP mode, every 500 ms)
+    if (currentMode == Mode::SWEEP) {
+        unsigned long now = millis();
+        if (now - _lastPanReport >= 500) {
+            _lastPanReport = now;
+            StaticJsonDocument<96> pdoc;
+            pdoc["type"]   = "pan_pos";
+            pdoc["pct"]    = static_cast<int>(ServoController::getPanProgressPct());
+            pdoc["moving"] = servoMoving;
+            serializeJson(pdoc, Serial);
+            Serial.println();
+        }
     }
 
     // 3. Read serial command from Pi 3B

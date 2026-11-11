@@ -3,7 +3,7 @@
  *
  * Actuators & Sensors:
  *   - Pan Servo:  MG90S 360° Continuous-Rotation Servo (Speed/Direction commands)
- *   - Tilt Servo: MG90S 180° Standard Positional Servo (Absolute Angle in degrees)
+ *   - Tilt Servo: MG90S  ,   80° Standard Positional Servo (Absolute Angle in degrees)
  *   - Display:    LCD2004 20×4 Character LCD with PCF8574 I2C Backpack (0x27 / 0x3F)
  *   - Sensor:     LDR Ambient Light Sensor (GL5528) + IRLZ44N LED Strip Driver
  */
@@ -17,7 +17,7 @@
 #define PIN_LDR            34    // Analog input (ADC1_CH6) from GL5528 + 10k pull-down divider
 #define PIN_ILLUMINATION   25    // Digital output → IRLZ44N logic-level MOSFET gate (5V white LED strip, <=500mA draw)
 #define PIN_PAN            18    // PWM output → Pan Servo signal (MG90S 360° continuous)
-#define PIN_TILT           13    // PWM output → Tilt Servo signal (MG90S 180° positional)
+#define PIN_TILT           12    // PWM output → Tilt Servo signal (MG90S 180° positional)
                                  // NOTE: remapped from GPIO21 to free GPIO21 for LCD SDA
 
 // ── LCD Display (LCD2004, I2C 20×4, PCF8574 backpack) ──────────────────────
@@ -47,9 +47,9 @@
 #define SERVO_PAN_SWEEP_SPEED  120    // Reduced from 155 — lower current, still moves
 #define SERVO_PAN_ANGLE_SPEED  120    // Reduced from 155
 #define SERVO_MS_PER_DEGREE     18    // Recalibrated for slower speed (was 12 at 155)
-#define SERVO_SWEEP_MOVE_MS   2000    // Longer stroke to compensate for slower speed (was 1500)
+#define SERVO_SWEEP_MOVE_MS   4000    // Full room sweep per stroke — doubled from 2000 (was covering only half)
 #define SERVO_SWEEP_DWELL_MS   800    // Pause at ends of sweep
-#define SERVO_ZONE_MOVE_MS    1100    // Longer zone move for slower speed (was 700)
+#define SERVO_ZONE_MOVE_MS    1000    // 1/4 of full sweep (4000/4) = one quadrant step
 
 // ── Tilt Servo (MG90S 180° Positional Standard Servo) ───────────────────
 // Commands are absolute angles in degrees: 0° to 180°.
