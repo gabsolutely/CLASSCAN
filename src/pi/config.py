@@ -80,9 +80,9 @@ class Config:
     DENSITY_THRESHOLD    = 0.15  # used by v4 single-model and ensemble fallbacks
 
     # ── Detection Timing ───────────────────────────────────────────────────
-    HEARTBEAT_INTERVAL = 3.0          # Seconds between periodic scans when scene is static
+    HEARTBEAT_INTERVAL = 0.8          # Seconds between periodic scans when scene is static (lowered from 3.0s for responsive updates)
     LOOP_SLEEP         = 0.033        # Seconds between loop iterations (~30 Hz frame poll)
-    CHANGE_THRESHOLD   = 0.015        # Frame-diff ratio to trigger immediate re-detect (calibrated for human motion)
+    CHANGE_THRESHOLD   = 0.008        # Frame-diff ratio to trigger immediate re-detect (more sensitive to human motion)
 
     # ── Mode ("SWEEP" | "ZONE_CHECK") ──────────────────────────────────────
     MODE = "SWEEP"

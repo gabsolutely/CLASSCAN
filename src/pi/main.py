@@ -287,9 +287,16 @@ def main():
                 continue
 
             try:
+                # Camera orientation: if mounted ceiling-down (CAMERA_FLIP=True),
+                # flip frame so the neural network sees students right-side up!
+                if getattr(cfg, "CAMERA_FLIP", False):
+                    infer_frame = cv2.flip(frame, -1)
+                else:
+                    infer_frame = frame
+
                 # 1. Primary AI Engine: v5 Density Model (drives total headcount and per-zone counts)
                 if density_detector:
-                    result = density_detector.predict(frame)
+                    result = density_detector.predict(infer_frame)
                     raw_sum = result.get("calibrated_sum", result["raw_sum"])
                     with _infer_lock:
                         prev_count = _result["count"]
@@ -300,17 +307,17 @@ def main():
                     # Extract per-quadrant counts directly from the v5 spatial density map
                     d_map = result.get("density_map")
                     new_zone_counts = extract_zone_counts(
-                        d_map, new_count, camera_flip=getattr(cfg, "CAMERA_FLIP", False)
+                        d_map, new_count, camera_flip=False
                     )
                 else:
                     result = {}
                     d_map = None
-                    new_detections = detector.detect(frame)
+                    new_detections = detector.detect(infer_frame)
                     new_count = reconciler.clip_capacity(len(new_detections))
-                    new_zone_counts = detector.detect_zones(frame, cfg.ZONE_POSITIONS)
+                    new_zone_counts = detector.detect_zones(infer_frame, cfg.ZONE_POSITIONS)
 
                 # 2. Secondary Box Detector: for HUD video overlay boxes only
-                new_detections = detector.detect(frame)
+                new_detections = detector.detect(infer_frame)
 
                 with _infer_lock:
                     _result["detections"]   = new_detections
@@ -436,21 +443,11 @@ def main():
                 # Camera 180 deg rotation (ceiling-down mount)
                 if getattr(cfg, 'CAMERA_FLIP', False):
                     display_frame = cv2.flip(frame, -1)
-                    display_detections = [
-                        {
-                            **d,
-                            "box": [
-                                1.0 - d["box"][2],
-                                1.0 - d["box"][3],
-                                1.0 - d["box"][0],
-                                1.0 - d["box"][1],
-                            ]
-                        }
-                        for d in detections
-                    ]
                 else:
                     display_frame = frame
-                    display_detections = detections
+
+                # Detections are already in upright space (matching display_frame)
+                display_detections = detections
 
                 annotated_frame = draw_hud_overlay(
                     display_frame, display_detections, fps=current_fps, mode_str=cfg.MODE,
