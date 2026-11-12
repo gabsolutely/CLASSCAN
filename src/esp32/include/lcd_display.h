@@ -5,8 +5,8 @@
  * 4 wires only: VCC (5V), GND, SDA, SCL.
  *
  * Pin assignments (from config.h):
- *   SDA → PIN_LCD_SDA  (GPIO 21)
- *   SCL → PIN_LCD_SCL  (GPIO 22)
+ *   SDA → PIN_LCD_SDA  (GPIO 14)
+ *   SCL → PIN_LCD_SCL  (GPIO 27)
  *   VCC → 5V
  *   GND → GND
  *
