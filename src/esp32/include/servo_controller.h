@@ -40,6 +40,8 @@ namespace ServoController {
     static int _zoneIdx = 0;
     static unsigned long _zonePhaseStarted = 0;
     static bool _zoneMoving = false;
+    static bool _zoneReported = false;
+    static bool _advanceRequested = false;
 
     // Manual / Angle move state
     static unsigned long _manualStopAt = 0;
@@ -196,9 +198,23 @@ namespace ServoController {
     inline void startZone() {
         _zoneIdx = 0;
         _zoneMoving = true;
+        _zoneReported = false;
+        _advanceRequested = false;
         _zonePhaseStarted = millis();
         writePanSpeed(ZONE_TABLE[_zoneIdx].panSpeed);
         writeTiltAngle(ZONE_TABLE[_zoneIdx].tiltAngle);
+    }
+
+    inline const char* getCurrentZoneName() {
+        return ZONE_TABLE[_zoneIdx].name;
+    }
+
+    inline bool isZoneSettled(unsigned long settleDelayMs = 250) {
+        return (!_zoneMoving && (millis() - _zonePhaseStarted >= settleDelayMs));
+    }
+
+    inline void requestAdvanceZone() {
+        _advanceRequested = true;
     }
 
     inline bool stepZone() {
@@ -209,17 +225,25 @@ namespace ServoController {
             writePanSpeed(SERVO_PAN_STOP);
             _zoneMoving = false;
             _zonePhaseStarted = now;
+            _zoneReported = false;
+            _advanceRequested = false;
             return false;
         }
 
-        if (now - _zonePhaseStarted < ZONE_DWELL_MS) return false;
+        // Turret is stationary at this quadrant.
+        // Wait for Pi handshake (NEXT_ZONE) or safe fallback timeout of 6 seconds.
+        if (_advanceRequested || (now - _zonePhaseStarted >= 6000)) {
+            _advanceRequested = false;
+            _zoneIdx = (_zoneIdx + 1) % ZONE_COUNT;
+            writePanSpeed(ZONE_TABLE[_zoneIdx].panSpeed);
+            writeTiltAngle(ZONE_TABLE[_zoneIdx].tiltAngle);
+            _zoneMoving = true;
+            _zonePhaseStarted = now;
+            _zoneReported = false;
+            return true;
+        }
 
-        _zoneIdx = (_zoneIdx + 1) % ZONE_COUNT;
-        writePanSpeed(ZONE_TABLE[_zoneIdx].panSpeed);
-        writeTiltAngle(ZONE_TABLE[_zoneIdx].tiltAngle);
-        _zoneMoving = true;
-        _zonePhaseStarted = now;
-        return true;
+        return false;
     }
 
     inline void moveTo(const char* zoneName) {
@@ -230,6 +254,8 @@ namespace ServoController {
                 writeTiltAngle(ZONE_TABLE[i].tiltAngle);
                 _zoneMoving = true;
                 _zonePhaseStarted = millis();
+                _zoneReported = false;
+                _advanceRequested = false;
                 return;
             }
         }
