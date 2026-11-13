@@ -117,7 +117,7 @@ namespace LcdDisplay {
     //   Row 1: "Q1:07       Q2:05  "
     //   Row 2: "Q3:03       Q4:04  "
     //   Row 3: "    Zone Check     "
-    inline void showZones(int q1, int q2, int q3, int q4, int total) {
+    inline void showZones(int q1, int q2, int q3, int q4, int total, const char* activeZone = nullptr) {
         if (!_lcdPtr) return;
 
         // If entering zone mode from sweep, invalidate header so row 0 redraws
@@ -127,7 +127,7 @@ namespace LcdDisplay {
             _lastCount     = -1;
         }
 
-        // Row 0: title + total (always redraw — total changes every inference)
+        // Row 0: title + total (always redraw — total updates after each quadrant scan)
         {
             char row0[21];
             snprintf(row0, sizeof(row0), "CLASSCAN  Total:%3d ", total);
@@ -151,9 +151,15 @@ namespace LcdDisplay {
             _lcdPtr->print(row2);
         }
 
-        // Row 3: mode label (static once in zone mode)
-        if (!_headerWritten) {
-            _printCentred("Zone Check", 3);
+        // Row 3: status / current quadrant scan
+        if (activeZone && strlen(activeZone) > 0) {
+            char row3[21];
+            snprintf(row3, sizeof(row3), " Scanning: %-9s", activeZone);
+            _lcdPtr->setCursor(0, 3);
+            _lcdPtr->print(row3);
+            _headerWritten = true;
+        } else if (!_headerWritten) {
+            _printCentred("Zone Accumulator", 3);
             _headerWritten = true;
         }
     }
