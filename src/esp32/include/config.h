@@ -16,8 +16,8 @@
 // ── GPIO Pins ──────────────────────────────────────────────────────────
 #define PIN_LDR            34    // Analog input (ADC1_CH6) from GL5528 + 10k pull-down divider
 #define PIN_ILLUMINATION   25    // Digital output → IRLZ44N logic-level MOSFET gate (5V white LED strip, <=500mA draw)
-#define PIN_PAN            13    // PWM output → Pan Servo signal (MG90S 360° continuous)
-#define PIN_TILT           12    // PWM output → Tilt Servo signal (MG90S 180° positional)
+#define PIN_PAN            14    // PWM output → Pan Servo signal (MG90S 360° continuous)
+#define PIN_TILT           13    // PWM output → Tilt Servo signal (MG90S 180° positional)
                                  // NOTE: remapped from GPIO21 to free GPIO21 for LCD SDA
 
 // ── LCD Display (LCD2004, I2C 20×4, PCF8574 backpack) ──────────────────────

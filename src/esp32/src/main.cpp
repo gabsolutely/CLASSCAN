@@ -88,7 +88,8 @@ void handleIncoming(const String& line) {
         int q3    = doc["Q3"]    | 0;
         int q4    = doc["Q4"]    | 0;
         int total = doc["total"] | 0;
-        LedMatrix::showZones(q1, q2, q3, q4, total);
+        const char* active = doc.containsKey("active") ? doc["active"].as<const char*>() : nullptr;
+        LedMatrix::showZones(q1, q2, q3, q4, total, active);
 
     // ── servo (pan 360 speed, tilt 180 angle) ──────────────────────────────
     } else if (strcmp(type, "servo") == 0) {
@@ -118,9 +119,12 @@ void handleIncoming(const String& line) {
             currentMode = Mode::SWEEP;
             ServoController::startSweep();
 
-        } else if (strcmp(cmd, "MODE_ZONE") == 0) {
+        } else if (strcmp(cmd, "MODE_ZONE") == 0 || strcmp(cmd, "MODE_ZONE_CHECK") == 0) {
             currentMode = Mode::ZONE_CHECK;
             ServoController::startZone();
+
+        } else if (strcmp(cmd, "NEXT_ZONE") == 0) {
+            ServoController::requestAdvanceZone();
 
         } else if (strcmp(cmd, "MODE_MANUAL") == 0) {
             currentMode = Mode::MANUAL;
@@ -191,6 +195,15 @@ void loop() {
         servoMoving = ServoController::sweep();
     } else if (currentMode == Mode::ZONE_CHECK) {
         servoMoving = ServoController::stepZone();
+        // Handshake: once turret settles at a zone, inform Pi so it can capture a crisp frame
+        if (!servoMoving && ServoController::isZoneSettled(200) && !ServoController::_zoneReported) {
+            ServoController::_zoneReported = true;
+            StaticJsonDocument<96> zdoc;
+            zdoc["type"] = "zone_ready";
+            zdoc["zone"] = ServoController::getCurrentZoneName();
+            serializeJson(zdoc, Serial);
+            Serial.println();
+        }
     } else {
         servoMoving = ServoController::manual();
     }
@@ -198,14 +211,21 @@ void loop() {
         reportState(servoMoving ? "moving" : "idle");
     }
 
-    // 2a. Pan position dead-reckoning broadcast (SWEEP mode, every 500 ms)
-    if (currentMode == Mode::SWEEP) {
+    // 2a. Pan position dead-reckoning broadcast (every 500 ms)
+    {
         unsigned long now = millis();
         if (now - _lastPanReport >= 500) {
             _lastPanReport = now;
+            int pct = 50;
+            if (currentMode == Mode::SWEEP) {
+                pct = static_cast<int>(ServoController::getPanProgressPct());
+            } else if (currentMode == Mode::ZONE_CHECK) {
+                // Approximate quadrant percentage for dashboard track
+                pct = (ServoController::_zoneIdx * 25) + 12;
+            }
             StaticJsonDocument<96> pdoc;
             pdoc["type"]   = "pan_pos";
-            pdoc["pct"]    = static_cast<int>(ServoController::getPanProgressPct());
+            pdoc["pct"]    = pct;
             pdoc["moving"] = servoMoving;
             serializeJson(pdoc, Serial);
             Serial.println();
