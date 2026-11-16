@@ -85,7 +85,7 @@ class Config:
     CHANGE_THRESHOLD   = 0.008        # Frame-diff ratio to trigger immediate re-detect (more sensitive to human motion)
 
     # ── Mode ("SWEEP" | "ZONE_CHECK") ──────────────────────────────────────
-    MODE = "SWEEP"
+    MODE = "ZONE_CHECK"  # Option B: 4-Quadrant Accumulator (Primary trial mode)
 
     # ── Zone/Quadrant Config ───────────────────────────────────────────────
     # Named zones with (pan_deg, tilt_deg) servo positions.

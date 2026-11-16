@@ -189,15 +189,26 @@ def main():
     serial_bridge = SerialBridge(port=cfg.SERIAL_PORT, baud=cfg.SERIAL_BAUD)
     dashboard     = DashboardServer(host=cfg.DASHBOARD_HOST, port=cfg.DASHBOARD_PORT)
 
+    # 4-Zone Accumulator state (Option B: full-room coverage without blind spots)
+    accumulated_zones = {
+        "Q1": 0,
+        "Q2": 0,
+        "Q3": 0,
+        "Q4": 0,
+    }
+
     # ── Boot commands ─────────────────────────────────────────────────────────
     # SerialBridge.__init__ already waited 2 s for the ESP32 DTR-reset to
     # settle, so these are guaranteed to arrive after the bootloader exits.
-    # Send the operating mode so the turret starts sweeping immediately,
-    # and push count=0 so the LCD shows "Count: 0" rather than "Initializing…"
     if serial_bridge.is_connected:
-        serial_bridge.send_command(f"MODE_{cfg.MODE}")
-        serial_bridge.send_count(0)
-        print(f"[CLASSCAN] Boot commands sent → MODE_{cfg.MODE}, count=0")
+        if cfg.MODE == "ZONE_CHECK":
+            serial_bridge.send_command("MODE_ZONE")
+            serial_bridge.send_zones(accumulated_zones, 0, active="Q1")
+            print("[CLASSCAN] Boot commands sent → MODE_ZONE (Option B: 4-Zone Accumulator), total=0")
+        else:
+            serial_bridge.send_command(f"MODE_{cfg.MODE}")
+            serial_bridge.send_count(0)
+            print(f"[CLASSCAN] Boot commands sent → MODE_{cfg.MODE}, count=0")
 
     last_count       = -1   # -1 sentinel forces first inference result (even 0) to LCD
     last_zone_counts = None
@@ -254,13 +265,15 @@ def main():
     _stop_flag          = threading.Event()
     _pending_frame_lock = threading.Lock()
     _pending_frame      = [None]  # list wrapper avoids closure rebind issues
+    _pending_zone_req   = [None]  # zone identifier (e.g. 'Q1') if triggered for a quadrant scan
 
     # Shared inference results - worker writes, main loop reads
     _result = {
-        "detections":  [],
-        "count":       0,
-        "zone_counts": None,
-        "density_map": None,  # latest 104x104 float32 density map for dashboard heatmap
+        "detections":       [],
+        "count":            0,
+        "zone_counts":      dict(accumulated_zones),
+        "density_map":      None,  # latest 104x104 float32 density map for dashboard heatmap
+        "completed_zone":   None,  # set when a quadrant finishes scanning
     }
 
     def _inference_worker():
@@ -281,6 +294,7 @@ def main():
 
             with _pending_frame_lock:
                 frame = _pending_frame[0]
+                target_zone = _pending_zone_req[0]
 
             if frame is None:
                 _infer_busy.clear()
@@ -294,36 +308,47 @@ def main():
                 else:
                     infer_frame = frame
 
-                # 1. Primary AI Engine: v5 Density Model (drives total headcount and per-zone counts)
+                # 1. Primary AI Engine: v5 Density Model
                 if density_detector:
                     result = density_detector.predict(infer_frame)
                     raw_sum = result.get("calibrated_sum", result["raw_sum"])
-                    with _infer_lock:
-                        prev_count = _result["count"]
-                    density_count = reconciler.apply_hysteresis(raw_sum, prev_count)
-                    density_count = reconciler.clip_capacity(density_count)
-                    new_count = density_count
-
-                    # Extract per-quadrant counts directly from the v5 spatial density map
                     d_map = result.get("density_map")
-                    new_zone_counts = extract_zone_counts(
-                        d_map, new_count, camera_flip=False
-                    )
+
+                    if cfg.MODE == "ZONE_CHECK" and target_zone:
+                        # Option B: 4-Quadrant Accumulator
+                        q_count = max(0, round(raw_sum))
+                        accumulated_zones[target_zone] = q_count
+                        total_count = sum(accumulated_zones.values())
+                        total_count = reconciler.clip_capacity(total_count)
+                        new_count = total_count
+                        new_zone_counts = dict(accumulated_zones)
+                        completed_zone = target_zone
+                    else:
+                        # Sweep / single-frame mode fallback
+                        with _infer_lock:
+                            prev_count = _result["count"]
+                        density_count = reconciler.apply_hysteresis(raw_sum, prev_count)
+                        density_count = reconciler.clip_capacity(density_count)
+                        new_count = density_count
+                        new_zone_counts = extract_zone_counts(d_map, new_count, camera_flip=False)
+                        completed_zone = None
                 else:
                     result = {}
                     d_map = None
                     new_detections = detector.detect(infer_frame)
                     new_count = reconciler.clip_capacity(len(new_detections))
                     new_zone_counts = detector.detect_zones(infer_frame, cfg.ZONE_POSITIONS)
+                    completed_zone = None
 
                 # 2. Secondary Box Detector: for HUD video overlay boxes only
                 new_detections = detector.detect(infer_frame)
 
                 with _infer_lock:
-                    _result["detections"]   = new_detections
-                    _result["count"]        = new_count
-                    _result["zone_counts"]  = new_zone_counts
-                    _result["density_map"]  = d_map  # for dashboard heatmap overlay
+                    _result["detections"]     = new_detections
+                    _result["count"]          = new_count
+                    _result["zone_counts"]    = new_zone_counts
+                    _result["density_map"]    = d_map  # for dashboard heatmap overlay
+                    _result["completed_zone"] = completed_zone
                 _wd_last_inference = time.time()  # watchdog: mark AI healthy
 
             except Exception as exc:
@@ -368,44 +393,64 @@ def main():
                 _fps_frame_count_ref = _cam_fc_now
                 last_fps_time        = time.time()
 
-            # 4. Schedule next inference pass when worker is idle and one is due.
-            #    Motion detection extends the active inference window (2s) so AI
-            #    stays locked onto moving targets with minimal latency.
-            #    Guard: skip trigger.check() entirely when no frame is available
-            #    so a missed camera read never disrupts the heartbeat counter.
-            # Only run motion detection on genuinely new frames (avoids double-checking
-            # the same frame when the 30Hz loop outruns the 15 FPS camera).
-            if frame is not None and is_new_frame:
-                significant_change = trigger.check(frame)
-                if significant_change:
-                    motion_active_until = time.time() + 2.0
-
-            motion_active = time.time() < motion_active_until
-            heartbeat_due = (time.time() - last_check_time) >= cfg.HEARTBEAT_INTERVAL
-
+            # 4. Schedule next inference pass when worker is idle
             worker_idle = not _infer_busy.is_set() and not _infer_trigger.is_set()
-            if frame is not None and worker_idle and (not initial_infer_queued or motion_active or heartbeat_due):
-                initial_infer_queued = True
-                last_check_time      = time.time()
-                # Copy the frame so inference operates on a stable snapshot
-                with _pending_frame_lock:
-                    _pending_frame[0] = frame.copy()
-                _infer_trigger.set()
+
+            # Poll for quadrant ready signal from ESP32
+            ready_zone = serial_bridge.get_ready_zone()
+
+            # Mock simulation of quadrant progression if serial is unavailable (desktop testing)
+            if serial_bridge._is_mock and cfg.MODE == "ZONE_CHECK":
+                if time.time() - last_check_time >= 3.0:
+                    mock_quadrants = ["Q1", "Q2", "Q3", "Q4"]
+                    _mock_q_idx = getattr(main, "_mock_q_idx", 0)
+                    ready_zone = mock_quadrants[_mock_q_idx]
+                    main._mock_q_idx = (_mock_q_idx + 1) % len(mock_quadrants)
+
+            if frame is not None and worker_idle:
+                if cfg.MODE == "ZONE_CHECK":
+                    if ready_zone is not None:
+                        last_check_time = time.time()
+                        with _pending_frame_lock:
+                            _pending_frame[0] = frame.copy()
+                            _pending_zone_req[0] = ready_zone
+                        _infer_trigger.set()
+                else:
+                    # Continuous sweep mode fallback
+                    if is_new_frame:
+                        significant_change = trigger.check(frame)
+                        if significant_change:
+                            motion_active_until = time.time() + 2.0
+                    motion_active = time.time() < motion_active_until
+                    heartbeat_due = (time.time() - last_check_time) >= cfg.HEARTBEAT_INTERVAL
+
+                    if not initial_infer_queued or motion_active or heartbeat_due:
+                        initial_infer_queued = True
+                        last_check_time = time.time()
+                        with _pending_frame_lock:
+                            _pending_frame[0] = frame.copy()
+                            _pending_zone_req[0] = None
+                        _infer_trigger.set()
 
             # 5. Read the most recently completed inference results (non-blocking)
             with _infer_lock:
-                detections  = _result["detections"]
-                new_count   = _result["count"]
-                zone_counts = _result["zone_counts"]
-                latest_density_map = _result["density_map"]
+                detections          = _result["detections"]
+                new_count           = _result["count"]
+                zone_counts         = _result["zone_counts"]
+                latest_density_map  = _result["density_map"]
+                just_completed_zone = _result["completed_zone"]
+                _result["completed_zone"] = None
 
-            if new_count != last_count or (cfg.MODE == "ZONE_CHECK" and zone_counts != last_zone_counts):
+            # Handshake with ESP32 when a quadrant finishes scanning
+            if just_completed_zone is not None and cfg.MODE == "ZONE_CHECK":
                 last_count = new_count
                 last_zone_counts = dict(zone_counts) if zone_counts else None
-                if cfg.MODE == "ZONE_CHECK" and zone_counts:
-                    serial_bridge.send_zones(zone_counts, last_count)
-                else:
-                    serial_bridge.send_count(last_count)
+                serial_bridge.send_zones(zone_counts, last_count, active=just_completed_zone)
+                serial_bridge.send_command("NEXT_ZONE")
+                print(f"[CLASSCAN][ZoneAccumulator] Scanned {just_completed_zone} -> Zone: {zone_counts[just_completed_zone]} | Total: {last_count}")
+            elif cfg.MODE == "SWEEP" and new_count != last_count:
+                last_count = new_count
+                serial_bridge.send_count(last_count)
                 print(f"[CLASSCAN] Headcount updated -> {last_count}")
 
             # Cap boxes to last_count (top-N by confidence) so visual never shows
