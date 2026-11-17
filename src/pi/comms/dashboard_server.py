@@ -170,7 +170,8 @@ class DashboardServer:
              zones: dict | None = None, mode: str = "SWEEP",
              motion: bool = False, watchdog: dict | None = None,
              pan_pct: int = 50, pan_moving: bool = False, quadrant: int = 0,
-             density_map: np.ndarray | None = None):
+             density_map: np.ndarray | None = None,
+             scan_zone: str | None = None, scan_pending: bool = False):
         """Store latest count, annotated frame, and telemetry for polling & streaming."""
         global _latest_frame_jpg, _frame_id, _latest_snapshot_b64, _last_snapshot_ts, _last_heatmap_ts
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
@@ -209,6 +210,8 @@ class DashboardServer:
             _latest_telemetry["pan_pct"] = pan_pct
             _latest_telemetry["pan_moving"] = pan_moving
             _latest_telemetry["quadrant"] = quadrant
+            _latest_telemetry["scan_zone"] = scan_zone
+            _latest_telemetry["scan_pending"] = scan_pending
             if heatmap_b64 is not None:
                 _latest_telemetry["heatmap"] = heatmap_b64
             if watchdog is not None:

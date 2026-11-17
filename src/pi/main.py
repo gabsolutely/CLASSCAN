@@ -197,6 +197,10 @@ def main():
         "Q4": 0,
     }
 
+    # Zone scan status tracking (exposed to dashboard)
+    current_scan_zone    = None   # e.g. "Q1" ... "Q4"; None while moving between zones
+    zone_inference_pending = False  # True after zone_ready received, False after inference done
+
     # ── Boot commands ─────────────────────────────────────────────────────────
     # SerialBridge.__init__ already waited 2 s for the ESP32 DTR-reset to
     # settle, so these are guaranteed to arrive after the bootloader exits.
@@ -411,6 +415,8 @@ def main():
                 if cfg.MODE == "ZONE_CHECK":
                     if ready_zone is not None:
                         last_check_time = time.time()
+                        current_scan_zone    = ready_zone
+                        zone_inference_pending = True
                         with _pending_frame_lock:
                             _pending_frame[0] = frame.copy()
                             _pending_zone_req[0] = ready_zone
@@ -445,6 +451,7 @@ def main():
             if just_completed_zone is not None and cfg.MODE == "ZONE_CHECK":
                 last_count = new_count
                 last_zone_counts = dict(zone_counts) if zone_counts else None
+                zone_inference_pending = False          # inference done for this zone
                 serial_bridge.send_zones(zone_counts, last_count, active=just_completed_zone)
                 serial_bridge.send_command("NEXT_ZONE")
                 print(f"[CLASSCAN][ZoneAccumulator] Scanned {just_completed_zone} -> Zone: {zone_counts[just_completed_zone]} | Total: {last_count}")
@@ -516,6 +523,8 @@ def main():
                     pan_moving=pan_moving,
                     quadrant=quadrant,
                     density_map=latest_density_map,
+                    scan_zone=current_scan_zone,
+                    scan_pending=zone_inference_pending,
                 )
 
             # 7. Handle Inbound Dashboard Commands
