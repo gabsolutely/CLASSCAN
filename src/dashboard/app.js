@@ -308,6 +308,27 @@ function updateTurret(panPct, moving) {
   }
 }
 
+// -- Scan Zone + Inference Status --
+// Yellow pulse = AI is running on this zone. Green check = zone counted.
+function updateScanStatus(zone, pending, mode) {
+  const el = document.getElementById("scan-status");
+  if (!el) return;
+
+  if (mode !== "ZONE_CHECK" || !zone) {
+    el.style.display = "none";
+    return;
+  }
+
+  el.style.display = "flex";
+  if (pending) {
+    el.className = "scan-status-badge pending";
+    el.textContent = "Running AI on " + zone + "...";
+  } else {
+    el.className = "scan-status-badge done";
+    el.textContent = "✓ " + zone + " counted";
+  }
+}
+
 // ── Mode UI update ───────────────────────────────────────────────────────
 // Sweep  = density model only, no zone display, no servo scan needed.
 // Zone   = per-quadrant servo scan; requires tilt wired to GPIO 13.
@@ -375,6 +396,7 @@ async function poll() {
     updateMotion(!!data.motion);
     if (data.watchdog)            updateWatchdog(data.watchdog);
     if (data.heatmap)             renderHeatmap(data.heatmap);
+    updateScanStatus(data.scan_zone ?? null, !!data.scan_pending, data.mode ?? "");
 
     // Only fall back to base64 snapshot if the live MJPEG stream failed or was disabled
     if (streamFailed) {

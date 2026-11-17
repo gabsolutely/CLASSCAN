@@ -373,6 +373,46 @@ main {
   border-color: var(--accent);
 }
 
+/* Scan status badge — shown below zone header in ZONE_CHECK mode */
+.scan-status-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 5px 10px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.3s, color 0.3s;
+}
+
+.scan-status-badge.pending {
+  background: rgba(255, 183, 0, 0.12);
+  color: #ffb700;
+  border: 1px solid rgba(255, 183, 0, 0.35);
+}
+
+.scan-status-badge.pending::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffb700;
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+.scan-status-badge.done {
+  background: rgba(0, 200, 120, 0.1);
+  color: #00c878;
+  border: 1px solid rgba(0, 200, 120, 0.3);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
 /* Zone sweep placeholder message */
 .zone-sweep-msg {
   font-size: 0.74rem;
