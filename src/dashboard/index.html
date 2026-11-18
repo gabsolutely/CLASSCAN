@@ -81,12 +81,28 @@
           <span class="zone-mode-tag" id="zone-mode-tag">SWEEP — zones inactive</span>
         </div>
         <div id="scan-status" class="scan-status-badge" style="display:none;"></div>
+        <!-- Zone progress chips: Q1 Q2 Q3 Q4 -->
+        <div id="zone-progress" class="zone-progress" style="display:none;">
+          <span class="zone-chip" id="chip-Q1">Q1</span>
+          <span class="zone-chip-sep">›</span>
+          <span class="zone-chip" id="chip-Q2">Q2</span>
+          <span class="zone-chip-sep">›</span>
+          <span class="zone-chip" id="chip-Q3">Q3</span>
+          <span class="zone-chip-sep">›</span>
+          <span class="zone-chip" id="chip-Q4">Q4</span>
+        </div>
         <div class="zone-grid" id="zone-grid">
           <!-- Populated dynamically by app.js -->
         </div>
+        <!-- Cycle-complete banner -->
+        <div id="cycle-banner" class="cycle-banner" style="display:none;"></div>
         <div class="zone-sweep-msg" id="zone-sweep-msg">
           Density model is active. Switch to <strong>Zone Check</strong> mode
           (and ensure tilt servo is on GPIO&nbsp;13) to see per-quadrant counts.
+        </div>
+        <!-- Rescan button (Zone mode only) -->
+        <div id="rescan-row" class="rescan-row" style="display:none;">
+          <button id="btn-rescan" class="rescan-btn" type="button">&#x21BA; Rescan Room</button>
         </div>
       </div>
 

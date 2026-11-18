@@ -277,16 +277,25 @@ function updateWatchdog(wd) {
 }
 
 // ── Zone update ─────────────────────────────────────────────────────────
-function updateZones(zones) {
+function updateZones(zones, activeZone) {
   if (!zones) return;
   Object.entries(zones).forEach(([name, count]) => {
     const countEl = document.getElementById(`zone-count-${name}`);
     const barEl   = document.getElementById(`zone-bar-${name}`);
+    const cellEl  = document.getElementById(`zone-${name}`);
     if (countEl) {
       countEl.textContent = count;
     }
     if (barEl) {
       barEl.style.width = Math.min(100, (count / MAX_SEATS) * 100) + "%";
+    }
+    // Highlight the zone currently being scanned
+    if (cellEl) {
+      if (name === activeZone) {
+        cellEl.classList.add("scanning");
+      } else {
+        cellEl.classList.remove("scanning");
+      }
     }
   });
 }
@@ -306,6 +315,66 @@ function updateTurret(panPct, moving) {
     movEl.textContent = moving ? "sweeping" : "idle";
     movEl.className = "turret-status " + (moving ? "moving" : "");
   }
+}
+
+// -- Zone Progress Chips (Q1 Q2 Q3 Q4 indicator row) --
+function updateZoneProgress(zones, activeZone, mode) {
+  const row = document.getElementById("zone-progress");
+  if (!row) return;
+  if (mode !== "ZONE_CHECK") { row.style.display = "none"; return; }
+  row.style.display = "flex";
+
+  ZONES.forEach(z => {
+    const chip = document.getElementById("chip-" + z);
+    if (!chip) return;
+    const count = zones ? (zones[z] ?? 0) : 0;
+    const isActive = z === activeZone;
+    const isDone   = count > 0 || (zones && z in zones && !isActive);
+    chip.className = "zone-chip" + (isActive ? " active" : (isDone ? " done" : ""));
+    chip.textContent = isActive ? z + " ⏳" : (isDone ? z + " ✓" : z);
+  });
+}
+
+// -- Cycle Complete Banner --
+let _bannerHideTimer = null;
+function updateCycleBanner(cycleComplete, count) {
+  const el = document.getElementById("cycle-banner");
+  if (!el) return;
+  if (cycleComplete) {
+    el.style.display = "flex";
+    el.textContent = "✓ Scan Complete — " + count + " " + (count === 1 ? "person" : "people") + " detected";
+    if (_bannerHideTimer) clearTimeout(_bannerHideTimer);
+    _bannerHideTimer = setTimeout(() => { if (el) el.style.display = "none"; }, 8000);
+  }
+}
+
+// -- Rescan Button --
+function initRescanButton() {
+  const btn = document.getElementById("btn-rescan");
+  if (!btn || btn._classcanBound) return;
+  btn._classcanBound = true;
+  btn.addEventListener("click", async () => {
+    const urlInput = document.getElementById("pi-url");
+    if (!urlInput) return;
+    const url = urlInput.value.replace(/\/$/, "");
+    try {
+      await fetch(`${url}/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: "RESCAN" }),
+      });
+      log("RESCAN sent to Pi", "info");
+      // Clear chips immediately for visual feedback
+      ZONES.forEach(z => {
+        const chip = document.getElementById("chip-" + z);
+        if (chip) { chip.className = "zone-chip"; chip.textContent = z; }
+      });
+      const banner = document.getElementById("cycle-banner");
+      if (banner) banner.style.display = "none";
+    } catch (err) {
+      log("RESCAN error: " + err.message, "err");
+    }
+  });
 }
 
 // -- Scan Zone + Inference Status --
@@ -390,13 +459,19 @@ async function poll() {
     setStatus("connected", "Connected");
 
     if (data.count !== undefined) updateCount(data.count);
-    if (data.zones)               updateZones(data.zones);
+    if (data.zones)               updateZones(data.zones, data.scan_zone ?? null);
     if (data.mode)                updateModeUI(data.mode);
     if (data.pan_pct !== undefined) updateTurret(data.pan_pct, !!data.pan_moving);
     updateMotion(!!data.motion);
     if (data.watchdog)            updateWatchdog(data.watchdog);
     if (data.heatmap)             renderHeatmap(data.heatmap);
     updateScanStatus(data.scan_zone ?? null, !!data.scan_pending, data.mode ?? "");
+    updateZoneProgress(data.zones ?? null, data.scan_zone ?? null, data.mode ?? "");
+    if (data.cycle_complete) updateCycleBanner(true, data.count ?? 0);
+    // Show/hide rescan + progress row based on mode
+    const rescanRow = document.getElementById("rescan-row");
+    if (rescanRow) rescanRow.style.display = (data.mode === "ZONE_CHECK") ? "" : "none";
+    initRescanButton();
 
     // Only fall back to base64 snapshot if the live MJPEG stream failed or was disabled
     if (streamFailed) {
