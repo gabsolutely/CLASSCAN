@@ -46,6 +46,7 @@ _latest_telemetry: dict = {
     "pan_moving": False,
     "quadrant": 0,
     "heatmap": None,   # base64-encoded uint8 104x104 density map (throttled, nullable)
+    "cycle_complete": False,
     "watchdog": {
         "camera": True,
         "ai": True,
@@ -171,7 +172,8 @@ class DashboardServer:
              motion: bool = False, watchdog: dict | None = None,
              pan_pct: int = 50, pan_moving: bool = False, quadrant: int = 0,
              density_map: np.ndarray | None = None,
-             scan_zone: str | None = None, scan_pending: bool = False):
+             scan_zone: str | None = None, scan_pending: bool = False,
+             cycle_complete: bool = False):
         """Store latest count, annotated frame, and telemetry for polling & streaming."""
         global _latest_frame_jpg, _frame_id, _latest_snapshot_b64, _last_snapshot_ts, _last_heatmap_ts
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
@@ -212,6 +214,7 @@ class DashboardServer:
             _latest_telemetry["quadrant"] = quadrant
             _latest_telemetry["scan_zone"] = scan_zone
             _latest_telemetry["scan_pending"] = scan_pending
+            _latest_telemetry["cycle_complete"] = cycle_complete
             if heatmap_b64 is not None:
                 _latest_telemetry["heatmap"] = heatmap_b64
             if watchdog is not None:

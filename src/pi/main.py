@@ -25,6 +25,7 @@ Open http://localhost:8080 or http://<pi-ip>:8080 in your browser.
 """
 
 import argparse
+import os
 import threading
 import time
 import cv2
@@ -200,6 +201,9 @@ def main():
     # Zone scan status tracking (exposed to dashboard)
     current_scan_zone    = None   # e.g. "Q1" ... "Q4"; None while moving between zones
     zone_inference_pending = False  # True after zone_ready received, False after inference done
+    cycle_complete            = False  # True for one loop when all 4 zones scanned
+    _zones_scanned_this_cycle: set  = set()  # zones done in current cycle
+    _trial_log_path           = "trial_log.csv"  # appended every full scan cycle
 
     # ── Boot commands ─────────────────────────────────────────────────────────
     # SerialBridge.__init__ already waited 2 s for the ESP32 DTR-reset to
@@ -314,7 +318,14 @@ def main():
 
                 # 1. Primary AI Engine: v5 Density Model
                 if density_detector:
-                    result = density_detector.predict(infer_frame)
+                    # Zone mode: 3-shot median to suppress single-frame outliers
+                    if cfg.MODE == "ZONE_CHECK" and target_zone:
+                        result = density_detector.predict_multicapture(
+                            [infer_frame, infer_frame, infer_frame],
+                            zone_name=target_zone,
+                        )
+                    else:
+                        result = density_detector.predict(infer_frame)
                     raw_sum = result.get("calibrated_sum", result["raw_sum"])
                     d_map = result.get("density_map")
 
@@ -452,6 +463,24 @@ def main():
                 last_count = new_count
                 last_zone_counts = dict(zone_counts) if zone_counts else None
                 zone_inference_pending = False          # inference done for this zone
+                _zones_scanned_this_cycle.add(just_completed_zone)
+                cycle_complete = len(_zones_scanned_this_cycle) >= 4
+                if cycle_complete:
+                    import csv as _csv
+                    _ts = time.strftime("%Y-%m-%d %H:%M:%S")
+                    _row = [_ts, last_count,
+                            zone_counts.get("Q1", 0), zone_counts.get("Q2", 0),
+                            zone_counts.get("Q3", 0), zone_counts.get("Q4", 0)]
+                    try:
+                        _write_hdr = not os.path.exists(_trial_log_path)
+                        with open(_trial_log_path, "a", newline="") as _lf:
+                            _cw = _csv.writer(_lf)
+                            if _write_hdr:
+                                _cw.writerow(["timestamp", "total", "Q1", "Q2", "Q3", "Q4"])
+                            _cw.writerow(_row)
+                        print(f"[CLASSCAN][TrialLog] Cycle done: Total={last_count} | {zone_counts}")
+                    except Exception as _le:
+                        print(f"[CLASSCAN][TrialLog] Write error: {_le}")
                 serial_bridge.send_zones(zone_counts, last_count, active=just_completed_zone)
                 serial_bridge.send_command("NEXT_ZONE")
                 print(f"[CLASSCAN][ZoneAccumulator] Scanned {just_completed_zone} -> Zone: {zone_counts[just_completed_zone]} | Total: {last_count}")
@@ -525,7 +554,11 @@ def main():
                     density_map=latest_density_map,
                     scan_zone=current_scan_zone,
                     scan_pending=zone_inference_pending,
+                    cycle_complete=cycle_complete,
                 )
+                if cycle_complete:
+                    cycle_complete = False
+                    _zones_scanned_this_cycle.clear()
 
             # 7. Handle Inbound Dashboard Commands
             cmd = dashboard.poll_command()
@@ -539,6 +572,16 @@ def main():
                     cfg.MODE = "ZONE_CHECK"
                     if zone_counts:
                         serial_bridge.send_zones(zone_counts, last_count)
+                elif cmd == "RESCAN":
+                    for _zk in accumulated_zones:
+                        accumulated_zones[_zk] = 0
+                    _zones_scanned_this_cycle.clear()
+                    current_scan_zone = None
+                    zone_inference_pending = False
+                    cycle_complete = False
+                    serial_bridge.send_zones(accumulated_zones, 0)
+                    serial_bridge.send_command("RESCAN")
+                    print("[CLASSCAN] RESCAN triggered - zone accumulator reset")
 
             # Dynamic loop pacing: when a new frame is processed, sleep just enough
             # to hit target 30 FPS without artificial delay.
