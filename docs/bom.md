@@ -1,11 +1,11 @@
 # CLASSCAN — Bill of Materials (BOM) & Sourcing Specification
 
 **Project:** Intelligent Classroom Headcount Monitoring System  
-**Hardware Revision:** Phase 2 (Post-PoC, Oct 2026)  
+**Hardware Revision:** Phase 2 — Trial Build (Nov 2026)  
 **Currency Conversion Baseline:** ~₱56.00 PHP = $1.00 USD  
 
 > [!NOTE]
-> **Phase 2 Hardware Procurement:** Core compute and sensing hardware (Raspberry Pi 3B, ESP32 DevKit, OV4689 camera) is active and integrated. Phase 2 specifications cover the LCD2004 display, mini pan/tilt bracket kit with MG90S servos, discrete illumination driver, and modular battery power.
+> **Hardware Status (Nov 2026):** Core compute (Pi 3B, ESP32, OV4689 camera) is active and integrated. **ESP32 is soldered** to the perfboard. **18650 battery and charge/boost power circuit are soldered and assembled.** Remaining items: illumination module and final enclosure sealing.
 
 ---
 
@@ -20,8 +20,8 @@
 | **5** | Display Module | **LCD2004 I2C Character LCD (20×4, Blue Backlight)**<br>• 20 columns × 4 rows character LCD<br>• I2C interface (4 pins: VCC, GND, SDA, SCL) for low wiring complexity<br>• Blue backlight, white text | 1 | ₱273.58 | ₱273.58 | $4.88 | Electronics Distributor / Online | **In Hand** |
 | **6** | Ambient Sensor | **GL5528 Light Dependent Resistor (LDR)**<br>• 5mm Photoresistor + 10kΩ 1/4W pull-down resistor<br>• Analog voltage divider for ambient brightness reading | 1 | ₱15.00 | ₱15.00 | $0.27 | Local Electronics Store | **In Hand** |
 | **7** | Illumination Module | **2W 5V USB COB LED Bar + IRLZ44N MOSFET Driver**<br>• 2W 5V USB COB LED bar (white) — 81.91 PHP<br>• IRLZ44N Logic-Level N-Channel MOSFET — 99.88 PHP<br>• 2× 1000µF electrolytic capacitors — 25 PHP<br>• 2× screw terminals — 30 PHP<br>• Current-limiting & gate pull-down resistors | 1 set | ₱236.79 | ₱236.79 | $4.23 | Electronics Distributor / Online | **Procurement — Phase 2** |
-| **8** | Power Cells | **LG HG2 18650 Li-ion Cells (3.7V, ~3000mAh)**<br>• High-drain rechargeable 18650 cells<br>• Swappable design for continuous laboratory and classroom testing | 1 set | ₱198.00 | ₱198.00 | $3.54 | Battery Supply / Online | **Procurement — Phase 2** |
-| **9** | Power Regulation | **18650 Charge/Boost Module (Dual USB, 5V 2.4A, with Display)**<br>• Charges 18650 cell and outputs regulated 5V 2.4A<br>• Dual USB output; onboard battery level display<br>• 1-slot 18650 holder — 25 PHP<br>• 5A fuse holder — 45 PHP<br>• 2-pin rocker switch 5-pack — 50.53 PHP | 1 set | ₱216.56 | ₱216.56 | $3.87 | Electronics Distributor / Online | **Procurement — Phase 2** |
+| **8** | Power Cells | **LG HG2 18650 Li-ion Cells (3.7V, ~3000mAh)**<br>• High-drain rechargeable 18650 cells<br>• Swappable design for continuous laboratory and classroom testing | 1 set | ₱198.00 | ₱198.00 | $3.54 | Battery Supply / Online | **Soldered & Assembled** |
+| **9** | Power Regulation | **18650 Charge/Boost Module (Dual USB, 5V 2.4A, with Display)**<br>• Charges 18650 cell and outputs regulated 5V 2.4A<br>• Dual USB output; onboard battery level display<br>• 1-slot 18650 holder — 25 PHP<br>• 5A fuse holder — 45 PHP<br>• 2-pin rocker switch 5-pack — 50.53 PHP | 1 set | ₱216.56 | ₱216.56 | $3.87 | Electronics Distributor / Online | **Soldered & Assembled** |
 | **10** | Mechanical Enclosure | **Weather-Resistant Ceiling Junction Box**<br>• Box mounted fixed to ceiling; camera module moves via internal pan/tilt<br>• Weather-resistant ABS junction enclosure (approx. 174×174×73 mm, inner 160×160×63 mm)<br>• Modified with optical aperture for camera sweep<br>• 2× 5×7 cm double-sided perfboards — 48 PHP | 1 | ₱620.76 | ₱620.76 | $11.08 | Hardware Supply / Online | **Procurement — Phase 2** |
 | **11** | Interconnects & Misc | **Wiring, Fasteners & Mounting Hardware**<br>• Dupont jumper wires (M-M, M-F), M3 nylon/brass standoffs<br>• Cable ties, short Micro-USB sync cable (Pi ↔ ESP32)<br>• Expansion/breakout boards, resistors | 1 set | ₱180.00 | ₱180.00 | $3.20 | Hardware Supply / Lab Stock | **In Hand / Spec** |
 
@@ -31,8 +31,8 @@
 
 | Summary Category | Amount (PHP) | Amount (USD) |
 |---|:---:|:---:|
-| **In Hand (Pi 3B, ESP32, Camera, LDR, Bracket Kit + Servos, LCD2004)** | ₱4,028.58 | $71.94 |
-| **Remaining Phase 2 Components (Power, Illumination, Enclosure)** | ₱1,253.11 | $22.38 |
+| **Soldered & Active (Pi 3B, ESP32★, Camera, LDR, Bracket Kit + Servos, LCD2004, 18650 Battery★, Power Module★)** | ₱5,397.14 | $96.38 |
+| **Remaining (Illumination Module, Enclosure Sealing)** | ₱856.55 | $15.30 |
 | **Total Estimated Hardware Investment (all phases)** | **~₱5,281.69** | **~$94.32** |
 
 ---

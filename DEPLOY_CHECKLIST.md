@@ -1,12 +1,14 @@
 # CLASSCAN — Prototype Deployment Checklist
 > Operational validation checklist for physical turret bringup and field testing.
 > Work through this list top-to-bottom. Tick each box as you go.
+>
+> **Hardware Status (Nov 2026):** ESP32 soldered ✔ | 18650 battery & power circuit soldered ✔ | Enclosure assembled ✔
 
 ---
 
 ## 0 · Code & Tests (do once, on dev machine)
 
-- [ ] **All 31 unit tests pass** — `python -m pytest tests/ -v`
+- [ ] **All 33 unit tests pass** — `python -m pytest tests/ -v`
 - [ ] **No uncommitted changes** — `git status` is clean
 - [ ] **Push to remote** — `git push origin main` (backup before physical demo)
 
@@ -111,15 +113,15 @@ python scripts/export_to_tflite.py --mode density \
 
 ## 3 · ESP32 Firmware
 
-- [ ] ESP32 is **flashed** with latest firmware (`src/esp32/src/main.cpp` via PlatformIO)
-- [ ] ESP32 appears as serial device on Pi — `ls /dev/ttyUSB*` or `/dev/ttyACM*`
-- [ ] Serial port in `src/pi/config.py` matches actual device:
+- [x] ESP32 is **flashed** with latest firmware (`src/esp32/src/main.cpp` via PlatformIO) — soldered to board
+- [x] ESP32 appears as serial device on Pi — `ls /dev/ttyUSB*` or `/dev/ttyACM*`
+- [x] Serial port in `src/pi/config.py` matches actual device:
   ```python
   SERIAL_PORT = "/dev/ttyUSB0"   # <- update if different
   ```
 - [ ] Servo mechanism physically attached to pan/tilt bracket (genuine MG90S metal-gear servos) and free to rotate without obstruction
 - [ ] LDR and illumination LED circuit wired per `hardware/wiring_guide.md` (IRLZ44N logic-level MOSFET, 5V LED strip, 10k pulldown)
-- [ ] LCD2004 display (20×4 character LCD, PCF8574 I2C backpack) wired to ESP32 (GPIO 21 SDA, GPIO 22 SCL, 5V VCC, GND)
+- [x] LCD2004 display (20×4 character LCD, PCF8574 I2C backpack) wired to ESP32 (**GPIO 14 SDA, GPIO 27 SCL**, 5V VCC, GND) — soldered
 
 ---
 
@@ -158,8 +160,8 @@ python main.py
 
 ## 6 · Physical Integration Check
 
-- [ ] **Pre-order enclosure measurement:** Pi measured inside acrylic case (~90×60×30 mm + fan); ABS junction box (≥150×110×70 mm) confirmed to fit Pi, ESP32, and 18650 battery with convective airflow
-- [ ] **Power verification:** 18650 cell connected through 5V/2A boost converter (or charging module with integrated 5V ≥2A output); confirms stable 5.0V bus without undervoltage
+- [x] **Enclosure integration:** ESP32 and 18650 battery circuit are soldered and mounted. Pi, ESP32, and power module are secured inside the ABS junction box.
+- [x] **Power verification:** 18650 cell **soldered** to charge/boost module; confirms stable 5.0V bus without undervoltage — assembled
 - [ ] **Pan/tilt servos:** Dual-axis bracket platform fitted with verified metal-gear MG90S units (tested under load, 2 spares available)
 - [ ] Camera mounted to pan/tilt bracket and pointed at the classroom area of interest
 - [ ] ESP32 connected to Pi via short USB serial cable; reports `{"type":"state","value":"idle"}`
