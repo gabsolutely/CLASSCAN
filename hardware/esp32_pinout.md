@@ -2,6 +2,9 @@
 
 This document defines the physical GPIO pin assignments and electrical characteristics for the **ESP32-WROOM-32 DevKit V1 (30-Pin)** microcontroller used in CLASSCAN.
 
+> [!NOTE]
+> **Hardware Status (Nov 2026):** ESP32 DevKit V1 is **soldered and permanently integrated** into the CLASSCAN circuit board. All GPIO connections below reflect the final soldered pinout.
+
 All definitions in this document strictly align with `src/esp32/include/config.h` and the modular firmware drivers (`lcd_display.h`).
 
 ---
@@ -14,8 +17,8 @@ All definitions in this document strictly align with `src/esp32/include/config.h
 | **GPIO 25** | `GPIO 25` | Digital I/O | **Auxiliary Illumination Driver** | Output (Digital) | Drives gate of **IRLZ44N logic-level N-MOSFET** (or 2N2222 base via 1kΩ) to switch the 5V white LED strip. 10kΩ gate pulldown to GND. |
 | **GPIO 18** | `GPIO 18` | Hardware PWM (Timer 0) | **MG90S Pan Servo (Horizontal)** | Output (PWM) | 50 Hz PWM control pulse (1000 μs – 2000 μs pulse width). |
 | **GPIO 13** | `GPIO 13` | Hardware PWM | **MG90S Tilt Servo (Vertical Pitch)** | Output (PWM) | 50 Hz PWM speed command; 1500 μs is stop. Remapped from GPIO 21 (freed for LCD SDA). |
-| **GPIO 21** | `GPIO 21` | I2C SDA (Bus 1) | **LCD2004 SDA (PCF8574 backpack)** | Output (I2C) | I2C data line for LCD2004 20×4 character display. 400 kHz fast mode. |
-| **GPIO 22** | `GPIO 22` | I2C SCL (Bus 1) | **LCD2004 SCL (PCF8574 backpack)** | Output (I2C) | I2C clock line for LCD2004. Default PCF8574 address: 0x27 (try 0x3F if blank). |
+| **GPIO 14** | `GPIO 14` | I2C SDA (Bus 1) | **LCD2004 SDA (PCF8574 backpack)** | Output (I2C) | I2C data line for LCD2004 20×4 character display. 400 kHz fast mode. Remapped from GPIO 21 to free default I2C bus for other peripherals. |
+| **GPIO 27** | `GPIO 27` | I2C SCL (Bus 1) | **LCD2004 SCL (PCF8574 backpack)** | Output (I2C) | I2C clock line for LCD2004. Default PCF8574 address: 0x27 (try 0x3F if blank). Remapped from GPIO 22 (paired with SDA on GPIO 14, Wire.begin(14, 27)). |
 | **GPIO 1 (TX0)** | `GPIO 1` | UART0 TX | **USB-UART Bridge → Pi 3B** | Output (Serial) | Transmits JSON status (`{"type":"state","value":"idle"}`) to Pi 3B at 115200 baud. |
 | **GPIO 3 (RX0)** | `GPIO 3` | UART0 RX | **USB-UART Bridge → Pi 3B** | Input (Serial) | Receives JSON headcount/commands from Pi 3B at 115200 baud. |
 | **VIN** | — | Power Input | **5V Power Bus** | Power In | Regulated 5.0V DC input from 18650 step-up boost converter. Also powers LCD2004 VCC. |
@@ -32,10 +35,10 @@ All definitions in this document strictly align with `src/esp32/include/config.h
                        |                         |
             3.3V Rail -+ 3V3                 GND +- Common Ground Bus
                        | EN               GPIO23 +-
-     LDR Analog (ADC1)-+ GPIO34           GPIO22 +- LCD SCL (I2C Bus 1)
+     LDR Analog (ADC1)-+ GPIO34           GPIO27 +- LCD SCL (I2C Bus 1)
                        | GPIO35            GPIO1 +- UART0 TX (Serial to Pi)
                        | GPIO32            GPIO3 +- UART0 RX (Serial from Pi)
-                       | GPIO33           GPIO21 +- LCD SDA (I2C Bus 1)
+                       | GPIO33           GPIO14 +- LCD SDA (I2C Bus 1)
   Illumination (Gate) -+ GPIO25           GPIO18 +- Pan Servo Signal (PWM)
                        | GPIO27            GPIO5 +-
                        | GPIO14           GPIO17 +-
@@ -61,7 +64,7 @@ All definitions in this document strictly align with `src/esp32/include/config.h
 5. **I2C Pull-ups:**
    - The PCF8574 backpack typically includes onboard 4.7kΩ pull-up resistors. If not, add 4.7kΩ between SDA/SCL and the 3.3V rail. Do not pull up to 5V — the ESP32 I2C pins are 3.3V logic.
 6. **Tilt Servo GPIO Remap:**
-   - Tilt servo signal moved from GPIO 21 → **GPIO 13** to free GPIO 21 for LCD SDA. GPIO 13 is hardware-PWM capable on the ESP32 and has no boot-time strapping constraints.
+   - Tilt servo signal moved from GPIO 21 → **GPIO 13** to free GPIO 21. LCD I2C is on **GPIO 14 (SDA) / GPIO 27 (SCL)** — configured via `Wire.begin(14, 27)` in `lcd_display.h`. GPIO 13 is hardware-PWM capable and has no boot-time strapping constraints.
 7. **Serial Level Shifting:**
    - The onboard CP2102/CH340 USB-UART bridge provides compliant USB signaling to the Raspberry Pi 3B USB-A port without requiring external level shifters.
 

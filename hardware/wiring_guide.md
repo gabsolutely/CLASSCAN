@@ -1,5 +1,8 @@
 # CLASSCAN — Complete System Wiring & Circuit Guide
 
+> [!IMPORTANT]
+> **Assembly Status (Nov 2026):** The **ESP32 DevKit V1 is soldered** to the perfboard and permanently integrated. The **18650 battery and charge/boost power circuit are soldered** and assembled. All connections described below reflect the final soldered hardware — not breadboard prototypes.
+
 This document provides full hardware interconnections, circuit schematics, and power distribution diagrams for the CLASSCAN system.
 
 ---
@@ -27,7 +30,7 @@ This document provides full hardware interconnections, circuit schematics, and p
      │  USB Port 2 ────┼─────────────┐               │   GPIO 25 (OUT) ├──┐   │
      └─────────────────┘             │               │   GPIO 18 (PWM) ├┐ │   │
                                      │               │   GPIO 13 (PWM) ├┼┐│   │
-                                     ▼               │   GPIO 21/22 I2C├┼┼┐   │
+                                     ▼               │   GPIO 14/27 I2C├┼┼┐   │
                            [ OV4689 Camera Module ]  └─────────────────┘│││   │
                                                                         │││   │
   ┌─────────────────────────────────────────────────────────────────────┘││   │
@@ -35,7 +38,7 @@ This document provides full hardware interconnections, circuit schematics, and p
   ├──────────────────────────────────────────────────────────────────────┘│   │
   │ Tilt Servo (MG90S): Signal ── GPIO13, Power ── +5V, Ground ── GND     │   │
   ├───────────────────────────────────────────────────────────────────────┘   │
-  │ LCD2004 Display: SDA ── GPIO21, SCL ── GPIO22, Power ── +5V, GND ── GND   │
+  │ LCD2004 Display: SDA ── GPIO14, SCL ── GPIO27, Power ── +5V, GND ── GND   │
   ├───────────────────────────────────────────────────────────────────────────┤
   │ Illumination Driver (IRLZ44N): Gate ── GPIO25, Strip ── +5V, GND ── GND   │
   └───────────────────────────────────────────────────────────────────────────┘
@@ -127,18 +130,18 @@ The headcount is shown on a **LCD2004 20×4 character LCD module** with a solder
 |---|:---:|:---:|---|
 | **VCC** | `VIN` (5V) | Red | 5V backlight + logic power (**must be 5V**, not 3.3V) |
 | **GND** | `Common GND` | Black | Ground reference |
-| **SDA** | `GPIO 21` | Yellow | I2C data (Bus 1, 400 kHz) |
-| **SCL** | `GPIO 22` | Blue | I2C clock (Bus 1, 400 kHz) |
+| **SDA** | `GPIO 14` | Yellow | I2C data (Bus 1, 400 kHz) |
+| **SCL** | `GPIO 27` | Blue | I2C clock (Bus 1, 400 kHz) |
 
 ```
          +5V Power Bus ────────────────────────────────────► VCC (LCD2004)
          Common GND   ────────────────────────────────────► GND (LCD2004)
-ESP32 GPIO 21 (SDA)  ──────[4.7kΩ pull-up to 3.3V]───────► SDA (PCF8574)
-ESP32 GPIO 22 (SCL)  ──────[4.7kΩ pull-up to 3.3V]───────► SCL (PCF8574)
+ESP32 GPIO 14 (SDA)  ──────[4.7kΩ pull-up to 3.3V]───────► SDA (PCF8574)
+ESP32 GPIO 27 (SCL)  ──────[4.7kΩ pull-up to 3.3V]───────► SCL (PCF8574)
 ```
 
 > [!IMPORTANT]
-> **GPIO 21 Remap:** GPIO 21 was previously the tilt servo signal pin. It is now the LCD I2C SDA line. **Tilt servo has been remapped to GPIO 13** (`PIN_TILT` in `config.h`). Update your physical wiring accordingly before flashing.
+> **GPIO Remap (I2C):** LCD I2C is on **GPIO 14 (SDA) / GPIO 27 (SCL)** via `Wire.begin(14, 27)`. GPIO 21 was freed from tilt servo duty (tilt is on GPIO 13). **Tilt servo has been remapped to GPIO 13** (`PIN_TILT` in `config.h`). Update your physical wiring accordingly before flashing.
 
 > [!TIP]
 > **I2C Address:** The PCF8574 backpack ships at **0x27** by default. If the display stays blank, try **0x3F** — change `LCD_I2C_ADDR` in `src/esp32/include/config.h`. Pull-up resistors (4.7kΩ to 3.3V) are recommended if the bus cable run exceeds ~20 cm.
