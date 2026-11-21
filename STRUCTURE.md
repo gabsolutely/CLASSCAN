@@ -55,7 +55,10 @@ CLASSCAN/
 │   ├── test_detector.py
 │   └── test_postprocess.py
 ├── README.md
-└── ROADMAP.md
+├── ROADMAP.md
+├── TRIALS.md                         ← physical trial log (issues & fixes)
+├── DEPLOY_CHECKLIST.md
+└── NOTES.md
 ```
 
 ---
