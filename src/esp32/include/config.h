@@ -16,17 +16,15 @@
 // ── GPIO Pins ──────────────────────────────────────────────────────────
 #define PIN_LDR            34    // Analog input (ADC1_CH6) from GL5528 + 10k pull-down divider
 #define PIN_ILLUMINATION   25    // Digital output → IRLZ44N logic-level MOSFET gate (5V white LED strip, <=500mA draw)
-#define PIN_PAN            18    // PWM output → Pan Servo signal (MG90S 360° continuous)
+#define PIN_PAN            14    // PWM output → Pan Servo signal (MG90S 360° continuous)
 #define PIN_TILT           13    // PWM output → Tilt Servo signal (MG90S 180° positional)
-                                 // NOTE: remapped from GPIO21 to free GPIO21 for LCD SDA
-                                 // NOTE: PIN_PAN was wrongly set to 14 (conflicting with LCD SDA). Corrected to GPIO18.
 
 // ── LCD Display (LCD2004, I2C 20×4, PCF8574 backpack) ──────────────────────
 // Standard blue-backlight character LCD with soldered PCF8574 I2C backpack.
 // 4 wires only: VCC (5V), GND, SDA, SCL.
 // Default PCF8574 address is 0x27 (auto-fallbacks to 0x3F if 0x27 does not respond).
-#define PIN_LCD_SDA        14    // I2C Bus 1 SDA
-#define PIN_LCD_SCL        27    // I2C Bus 1 SCL
+#define PIN_LCD_SDA        21    // I2C Bus 1 SDA (Default ESP32 I2C SDA)
+#define PIN_LCD_SCL        22    // I2C Bus 1 SCL (Default ESP32 I2C SCL)
 #define LCD_I2C_ADDR     0x27   // PCF8574 default (0x3F for PCF8574A)
 
 // ── LDR Thresholds ─────────────────────────────────────────────────────

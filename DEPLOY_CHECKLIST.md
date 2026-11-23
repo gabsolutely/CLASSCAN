@@ -121,7 +121,7 @@ python scripts/export_to_tflite.py --mode density \
   ```
 - [ ] Servo mechanism physically attached to pan/tilt bracket (genuine MG90S metal-gear servos) and free to rotate without obstruction
 - [ ] LDR and illumination LED circuit wired per `hardware/wiring_guide.md` (IRLZ44N logic-level MOSFET, 5V LED strip, 10k pulldown)
-- [x] LCD2004 display (20×4 character LCD, PCF8574 I2C backpack) wired to ESP32 (**GPIO 14 SDA, GPIO 27 SCL**, 5V VCC, GND) — soldered
+- [x] LCD2004 display (20×4 character LCD, PCF8574 I2C backpack) wired to ESP32 (**GPIO 21 SDA, GPIO 22 SCL**, 5V VCC, GND) — soldered
 
 ---
 

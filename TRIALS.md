@@ -60,7 +60,7 @@ The ESP32 was placed on a **breadboard** (not yet soldered). Servos and LCD also
 | Inference during motion | `zone_ready` handshake: ESP32 signals Pi when turret is settled and stationary before inference fires | `servo_controller.h`, `serial_bridge.py`, `main.py` |
 | Each slice = room total | Option B 4-Quadrant Accumulator: each zone count is stored; total = sum of all 4 zones after full cycle | `main.py`, `serial_bridge.py` |
 | Camera upside-down | `CAMERA_FLIP = True` in `config.py`; frame is flipped 180° before inference | `detector.py`, `main.py` |
-| Pan servo on D12 | Remapped to **GPIO 18** (`PIN_PAN = 18` in `config.h`) | `config.h` |
+| Pan servo on D12 | Remapped to **GPIO 14** (`PIN_PAN = 14`, tilt on GPIO 13, LCD on GPIO 21/22) | `config.h` |
 | Servo too fast → blur | `SERVO_SWEEP_MOVE_MS` 4000 → **8000 ms**; speed 120 → **104** | `config.h` |
 | `NEXT_ZONE` handshake | Pi sends `NEXT_ZONE` command to ESP32 after inference completes; ESP32 advances to next quadrant | `main.cpp`, `serial_bridge.py` |
 | Noise floor (AND cutoff) | Noise cutoff changed from OR to AND (`raw_sum < 0.5 AND peak < 0.025`) to avoid dropping real low-angle detections | `detector.py` |
@@ -97,7 +97,7 @@ The system ran but produced unreliable headcounts due to the four issues above. 
 
 Planned configuration:
 - ESP32 soldered to perfboard
-- Pan servo on GPIO 18, tilt on GPIO 13
+- Pan servo on GPIO 14, tilt on GPIO 13, LCD on GPIO 21 (SDA) / GPIO 22 (SCL)
 - LCD debugging deferred — dashboard as primary display
 - `MODE = "ZONE_CHECK"` (4-Quadrant Accumulator, Option B)
 - `CAMERA_FLIP = True`

@@ -252,7 +252,7 @@ def verify_pan_tilt_servos(hw: Esp32HardwareInterface) -> bool:
     # Sends raw pan=90 (stop) with large tilt angle swings so the user can
     # confirm the TILT servo (MG90S 180°, signal on GPIO 13) is wired correctly.
     # If only the pan moves or nothing moves, the tilt signal wire is on the
-    # wrong pin — it must be on GPIO 13 (NOT GPIO 21, which is now LCD SDA).
+    # wrong pin — it must be on GPIO 13 (Pan is on GPIO 14, LCD on GPIO 21/22).
     print("  [Step 2/5] Tilt servo range sweep (GPIO 13) — pan stopped...")
     print("             Tilt should visibly move: 30° → 90° → 10° → 30°")
     tilt_sequence = [
@@ -269,7 +269,7 @@ def verify_pan_tilt_servos(hw: Esp32HardwareInterface) -> bool:
 
     print()
     print("     >> If tilt DID NOT move: check signal wire is on GPIO 13,")
-    print("        not GPIO 21 (GPIO 21 is now LCD SDA).")
+    print("        tilt must be on GPIO 13 and pan on GPIO 14.")
     print()
 
     # Step 3: Test discrete quadrant moves (Q1 -> Q2 -> Q3 -> Q4)
