@@ -143,20 +143,20 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 | Component | Status / Purpose |
 |---|---|
 | Raspberry Pi 3B (1GB RAM) | **In hand & running** — Main compute: Raspberry Pi OS Lite (64-bit) + TFLite inference; onboard Wi-Fi + Bluetooth |
-| ESP32 | **In hand** — Physical I/O controller: servos, LDR, illumination, character LCD display, USB serial link to Pi 3B |
+| ESP32 | **Soldered & Active** — Physical I/O controller (soldered to perfboard): servos (GPIO 14 pan, GPIO 13 tilt), LDR (GPIO 34), illumination (GPIO 25), LCD2004 display (GPIO 21/22), USB serial link to Pi 3B |
 | OV4689 4MP BSI USB Camera Module (UVC, Type-C/A) | **In hand & connected** — Video feed for detection; ~2×2 cm footprint, ~3 cm tall |
 | Light Sensor (LDR) | **In hand** — Detects ambient brightness, triggers illumination module |
 | Custom illumination LED module (self-built, LDR-triggered) | **Procurement** — 2W 5V USB COB LED bar + IRLZ44N MOSFET driver, driven by ESP32 |
-| Pan/Tilt Bracket + MG90S Servos | **In hand** — Mini ABS pan/tilt bracket kit with MG90S metal-gear servos (fits 28×28 mm cameras) for dual-axis positioning. |
-| **LCD2004 (I2C, 20×4 character LCD, blue backlight)** | **In hand** — 20×4 character LCD with I2C backpack interface (PCF8574, 4 pins: VCC, GND, SDA, SCL) for live headcount and system status display. |
-| 18650 Li-ion Cells + Charge/Boost Module | **Procurement (Phase 2)** — LG HG2 18650 rechargeable cells + dual-USB 5V 2.4A regulated charge/boost module with display for swappable power. |
+| Pan/Tilt Bracket + MG90S Servos | **In hand & active** — Mini ABS pan/tilt bracket kit with MG90S metal-gear servos (Pan on GPIO 14, Tilt on GPIO 13) for dual-axis positioning. |
+| **LCD2004 (I2C, 20×4 character LCD, blue backlight)** | **In hand & active** — 20×4 character LCD with I2C backpack interface (PCF8574, 4 pins: VCC, GND, SDA on GPIO 21, SCL on GPIO 22) for live headcount and system status display. |
+| 18650 Li-ion Cells + Charge/Boost Module | **Soldered & Assembled** — LG HG2 18650 rechargeable cells + dual-USB 5V 2.4A regulated charge/boost module with display for swappable battery power. |
 | **Modular Ceiling Enclosure** | **Procurement (Phase 2)** — Weather-resistant ABS junction enclosure mounted to ceiling; internal pan/tilt mechanism actuates camera aperture. |
 
 Full itemized BOM, search queries, and pre-purchase verification guide: see [`docs/bom.md`](docs/bom.md).
 
 **Current Progress & Open Items:**
 - [x] **Compute & OS:** Raspberry Pi 3B running headless Raspberry Pi OS Lite (64-bit, Trixie) with all dependencies (`ai-edge-litert`, OpenCV, NumPy, PySerial) in acrylic case with active cooling fan (GPIO Pins 4/6); Wi-Fi hardened (power-save disabled via `wifi-powersave-off.service`, cron watchdog `wifi-watchdog.sh` for auto-recovery).
-- [x] **Inference Pipeline:** Core `Detector` implementation verified on hardware; inference execution confirmed working on real test images (23/23 unit tests pass).
+- [x] **Inference Pipeline:** Core `Detector` implementation verified on hardware; inference execution confirmed working on real test images (33/33 unit tests pass).
 - [x] **Logic & Communications:** `ChangeTrigger`, `ZoneReconciler`, `DashboardServer`, and serial bridge modules implemented and unit tested.
 - [x] **Motion-trigger `None`-frame guard (Sept 30, 2026):** `trigger.check()` and `frame.copy()` in `main.py` are now guarded against `None` frames — a missed camera read no longer throws an exception mid-loop or resets the heartbeat counter.
 - [x] **Custom Model Training (Box):** Keras MobileNetV3-Large + 416×416 FPN head detector trained to epoch 60; locked in with 2×2 tiled inference + Soft-NMS (F1=31.8%, MAE=3.84, $r=0.986$).
@@ -173,12 +173,13 @@ Full itemized BOM, search queries, and pre-purchase verification guide: see [`do
 - [x] **Dashboard Event Log Download (Sept 30, 2026):** "⬇ Download Log" button. Exports full in-session log as timestamped CSV — client-side only.
 - [x] **Headless Connectivity (Oct 3, 2026):** USB gadget mode (RNDIS, Pi IP `192.168.7.1`) and direct ethernet (Pi IP `192.168.10.1`). Documented in `docs/direct_connection.md`.
 - [x] **Wi-Fi Hotspot (Oct 7, 2026):** `hotspot.sh` turns Pi wlan0 into standalone AP (SSID `CLASSCAN`, Pi IP `192.168.20.1`). One-shot and persistent modes. Documented in `docs/direct_connection.md` Option C.
-- [ ] **Pi v5 Output Validation:** Confirm `classcan_v5_final.tflite` counts on Pi match Colab counts.
+- [x] **Pi v5 Output Validation:** Confirmed `classcan_v5_final.tflite` counts on Pi hardware (test runs: 12.08 vs 11–12, 3.35 vs 3, 1.90 vs 1).
 - [ ] **Empty-Room False-Positive Test:** Hard-negative crops (595 items) missing from Drive — locate and re-run. v5 not yet tested on empty/clutter-only frames.
 - [ ] **5+ People Validation:** AI detection not yet tested with real classroom occupancy.
-- [ ] **ESP32 Serial Integration (Phase 2):** Wire headcount output to LCD2004 display via ESP32; integrate servo pan/tilt commands.
+- [x] **ESP32 Serial Integration (Phase 2):** Headcount output and zone synchronization integrated via ESP32 serial bridge; `zone_ready` settle handshake and `NEXT_ZONE` commands operational.
 - [ ] **Illumination Module (Phase 2):** 2W COB LED bar + IRLZ44N MOSFET + LDR circuit, wired to ESP32 ADC/GPIO.
-- [ ] **Turret & Quadrant Calibration (Phase 2):** Calibrate pan/tilt servo angles for Quadrants 1–4 once mounted in ceiling box.
+- [x] **Turret & Quadrant Calibration (Phase 2):** Option B 4-Quadrant Accumulator implemented — sequential Q1–Q4 quadrant scanning with stationary settle handshake and 3-shot median filtering.
+- [x] **4-Quadrant Accumulator & Dashboard Integration (Nov 2026):** Option B implemented — full-room scan across Q1–Q4 with active zone indicators, scan status badges, cycle-complete notifications, Rescan button, and `trial_log.csv` logging.
 - [ ] **Full-System Benchmarking:** Record end-to-end latency, temperature, and detection accuracy under live classroom conditions.
 
 ---
@@ -194,9 +195,9 @@ ESP32 loop (autonomous, runs independent of network):
     if mode == SWEEP:
         continuously sweep servos through pan/tilt pattern
     if mode == ZONE_CHECK:
-        step through calibrated quadrant lookup table,
-        report "moving" then "idle" over serial at each step,
-        hold briefly at each position for Pi 3B to detect
+        step through calibrated quadrant lookup table (Q1 -> Q4),
+        when turret settles for >=250ms, emit "zone_ready" handshake,
+        wait for "NEXT_ZONE" command from Pi 3B (with 6s fallback) before advancing
 
     if command received via serial: update mode / move to specific quadrant
     if new headcount received via serial: update LCD2004 display

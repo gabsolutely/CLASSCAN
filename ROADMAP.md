@@ -203,12 +203,12 @@ Prove the core detection pipeline works end-to-end on target hardware:
 |---|---|
 | Raspberry Pi 3B (1GB) | **In hand & running** (Raspberry Pi OS Lite 64-bit Trixie; hardened Wi-Fi + watchdog) |
 | Pi Acrylic Case (clear, enclosed, with active fan) | **✅ Installed & Wired** (GPIO Pin 4/6, ~36°C operating temp) |
-| ESP32 DevKit V1 | **In hand & active** (firmware operational) |
+| ESP32 DevKit V1 | **✅ Soldered & active** (firmware operational; GPIO 14 pan, GPIO 13 tilt, GPIO 21/22 LCD) |
 | OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure baseline configured; board ~2×2 cm footprint, ~3 cm tall) |
 | Light Sensor (LDR) + Illumination (2W COB LED + IRLZ44N) | **In hand / circuit designed** (5V COB LED bar, IRLZ44N gate pulldown, MOSFET driver) |
 | Pan/Tilt Bracket + MG90S Servos | **✅ In hand** (mini ABS bracket kit; MG90S metal-gear servos for dual-axis sweep) |
 | **LCD2004 (I2C, 20×4 character LCD)** | **✅ In hand** (20×4 character LCD with I2C backpack/PCF8574 for live headcount display) |
-| Power: 18650 cells + charge/boost module | **Procurement (Phase 2)** (LG HG2 18650 cells + dual-USB 5V 2.4A charge/boost with display for swappable power) |
+| Power: 18650 cells + charge/boost module | **✅ Soldered & assembled** (LG HG2 18650 cells + dual-USB 5V 2.4A charge/boost with display for swappable power) |
 | **Modular Ceiling Enclosure** | **Procurement (Phase 2)** (weather-resistant ABS junction enclosure with camera pan/tilt aperture) |
 
 ---
