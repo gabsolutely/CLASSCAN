@@ -48,6 +48,37 @@ Two TFLite models are deployed. Latency measured on physical Pi 3B CPU (XNNPACK 
 
 Both are within budget for the **periodic snapshot + change-triggered** architecture (not continuous stream).
 
+### Primary Engine Performance: `classcan_v5_final.tflite`
+
+Adopted as the primary headcount regression engine on Raspberry Pi 3B:
+- **Architecture:** MobileNetV3-Large backbone + progressive upsampling decoder (104×104 density map).
+- **Training Paradigm:** Count L1 loss + EMA weights with raw summation (unthresholded, `DENSITY_THRESHOLD = 0.0`).
+- **Preprocessing:** PIL bilinear gray-114 letterbox to 416×416, [0–255] float32 RGB input.
+- **Pi 3B Latency:** ~702 ms single-model forward pass (vs ~1400 ms for previous 2-model ensemble).
+- **Empirical Accuracy:** MAE = 1.47, Pearson correlation r = 0.86, within ±2 = 72% across 5-clip leave-one-out cross-validation.
+
+#### Empirical On-Hardware Validation (Raspberry Pi 3B):
+
+| Test Scenario | Ground Truth Count | Model Prediction (`classcan_v5_final`) | Error | Notes |
+|---|:---:|:---:|:---:|---|
+| **Multi-Subject Cluster** | 11 – 12 people | **12.08** | +0.08 | High density, overlapping seating resolved accurately |
+| **Small Group** | 3 people | **3.35** | +0.35 | Clean background suppression |
+| **Single Individual** | 1 person | **1.90** | +0.90 | Low-noise detection |
+
+#### Ceiling-Mount Orientation & Inversion Impact:
+
+During initial deployment tests, the camera's upside-down ceiling orientation was evaluated:
+- **Upright frame orientation:** 12 people detected.
+- **Inverted frame (upside-down):** 7 people detected (~42% undercounting).
+- **Finding & Fix:** Convolutional features for cranial apex and facial structure are non-rotation invariant. Enabling `CAMERA_FLIP = True` flips the captured frame 180° prior to inference, restoring full model accuracy.
+
+#### 4-Quadrant Accumulator (Option B) Timings:
+- **Quadrant Transition:** 2000 ms (`SERVO_ZONE_MOVE_MS = 2000`) at gentle pan speed (`SERVO_PAN_SWEEP_SPEED = 104`).
+- **Settle Handshake:** ESP32 asserts `zone_ready` once velocity reaches zero and position settles for $\ge 250	ext{ ms}$.
+- **Multi-Capture Filtering:** 3-shot median per quadrant (`predict_multicapture`) eliminates outlier frame artifacts.
+- **Cycle Reset / Logging:** Complete 4-zone scan cycles are automatically recorded into `trial_log.csv`.
+
+
 | Pipeline Stage | Module / Function | Density Model | Box Detector |
 |---|---|:---:|:---:|
 | **Frame Capture** | `cv2.VideoCapture.read()` (V4L2) | 12 – 18 ms | 12 – 18 ms |

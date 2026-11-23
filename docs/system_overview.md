@@ -24,8 +24,8 @@ OV4689 camera → Pi 3B TFLite inference (density ensemble) → headcount
 | Raspberry Pi 3B (1 GB RAM) | Main compute; runs OS, detection, dashboard server |
 | OV4689 4MP BSI USB camera | UVC driver; active at `/dev/video0`; MJPG up to 2688×1520@30fps |
 | ESP32 DevKit | Co-processor; serial JSON protocol; GPIO for servos, LDR, LCD2004 display (I2C, PCF8574) |
-| MG90S 360° servos ×2 | Pan + tilt for camera mount sweep |
-| **LCD2004** (I2C 20×4) | Shows live headcount (PCF8574 backpack; GPIO 21/22; addr 0x27) |
+| MG90S servos ×2 | Pan (MG90S 360° continuous, GPIO 14) + Tilt (MG90S 180° positional, GPIO 13) |
+| **LCD2004** (I2C 20×4) | Shows live headcount & zone status (PCF8574 backpack; GPIO 21 SDA / GPIO 22 SCL; addr 0x27) |
 | LDR + MOSFET + LEDs | Auto illumination: dims room lights when ambient lux drops |
 | Pi acrylic case + active fan | Thermal management; ~36°C operating temp |
 
@@ -109,7 +109,7 @@ OpenCV / V4L2 maintains an internal ring buffer (3–4 frames deep). TFLite infe
 
 ## 4 · AI Model
 
-### 4.1 Final Adopted Model — Weighted Ensemble
+### 4.1 Primary Adopted Model — `classcan_v5_final.tflite` (Density-Map Regression)
 
 ```
 count = max(0, round(
@@ -165,7 +165,7 @@ Served directly from the Pi on port 8080. No build step required — plain HTML/
 | Route | Description |
 |---|---|
 | `GET /` or `/index.html` | Dashboard UI |
-| `GET /status` | JSON: `{count, fps, top_conf, timestamp, snapshot (b64), zones, mode}` |
+| `GET /status` | JSON: `{count, fps, top_conf, timestamp, snapshot (b64), zones, mode, motion, pan_pct, pan_moving, quadrant, scan_zone, scan_pending, cycle_complete, heatmap, watchdog}` |
 | `GET /stream` | Multipart MJPEG live video stream |
 | `POST /command` | JSON body `{command: "..."}` → queued to main loop |
 
@@ -225,7 +225,7 @@ All deployment knobs in one place. Key values:
 | `HEARTBEAT_INTERVAL` | `10.0 s` | Minimum time between forced re-scans |
 | `LOOP_SLEEP` | `0.05 s` | Main loop sleep (~20 Hz frame poll) |
 | `CHANGE_THRESHOLD` | `0.15` | Frame-diff ratio to trigger immediate re-detect |
-| `MODE` | `"SWEEP"` | `"SWEEP"` or `"ZONE_CHECK"` |
+| `MODE` | `"ZONE_CHECK"` | Primary mode: `"ZONE_CHECK"` (Option B 4-Quadrant Accumulator) or `"SWEEP"` |
 | `DENSITY_THRESHOLD` | `0.15` | Per-frame density map noise floor fraction |
 
 ---
