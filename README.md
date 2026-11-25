@@ -23,7 +23,7 @@ Most schools still rely on manual headcount and attendance checking — slow, er
 - Custom LDR-triggered illumination module (own-built, not a packaged IR unit) — brightens the scene automatically in dim/evening conditions
 - Uses pan/tilt servos to sweep the room for wider coverage from a single ceiling-mounted unit
 - Runs on swappable battery power for flexible testing across rooms
-- Keeps functioning locally (sweep, lighting, LED count) even if Wi-Fi or the dashboard goes down
+- Keeps functioning locally (sweep, lighting, LCD display count) even if Wi-Fi or the dashboard goes down
 
 ## What It Does NOT Do
 

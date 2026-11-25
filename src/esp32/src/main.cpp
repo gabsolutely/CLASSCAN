@@ -5,7 +5,7 @@
  * Responsibilities:
  *   - Read LDR and toggle illumination module (with hysteresis — see ldr_illumination.h)
  *   - Drive pan servo (MG90S 360° continuous) and tilt servo (MG90S 180° positional)
- *   - Drive LCD2004 (I2C 20×4) with current headcount via led_matrix.h / lcd_display.h
+ *   - Drive LCD2004 (I2C 20×4) with current headcount via lcd_display.h
  *   - Receive commands from Pi 3B over USB serial (JSON, newline-delimited)
  *   - Report state ("idle" | "moving") back over serial
  *   - Report illumination state changes + periodic LDR value over serial
@@ -33,7 +33,7 @@
 #include "config.h"
 #include "ldr_illumination.h"
 #include "servo_controller.h"
-#include "led_matrix.h"
+#include "lcd_display.h"
 
 // ── State ──────────────────────────────────────────────────────────────────
 enum class Mode { SWEEP, ZONE_CHECK, MANUAL };
@@ -79,7 +79,7 @@ void handleIncoming(const String& line) {
     // ── count ──────────────────────────────────────────────────────────────
     if (strcmp(type, "count") == 0) {
         headcount = doc["value"].as<int>();
-        LedMatrix::showCount(headcount);
+        LcdDisplay::showCount(headcount);
 
     // ── zones (per-quadrant counts in ZONE_CHECK mode) ─────────────────────
     } else if (strcmp(type, "zones") == 0) {
@@ -89,7 +89,7 @@ void handleIncoming(const String& line) {
         int q4    = doc["Q4"]    | 0;
         int total = doc["total"] | 0;
         const char* active = doc.containsKey("active") ? doc["active"].as<const char*>() : nullptr;
-        LedMatrix::showZones(q1, q2, q3, q4, total, active);
+        LcdDisplay::showZones(q1, q2, q3, q4, total, active);
 
     // ── servo (pan 360 speed, tilt 180 angle) ──────────────────────────────
     } else if (strcmp(type, "servo") == 0) {
@@ -156,7 +156,7 @@ void setup() {
 
     LdrIllumination::begin(PIN_LDR, PIN_ILLUMINATION);
     ServoController::begin(PIN_PAN, PIN_TILT);
-    LedMatrix::begin();   // init I2C + LCD; prints "== CLASSCAN ==" splash
+    LcdDisplay::begin();  // init I2C + LCD; prints "== CLASSCAN ==" splash
 
     // Debug: report active LCD I2C address so Pi can confirm it over serial
     {
