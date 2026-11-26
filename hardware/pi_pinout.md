@@ -39,10 +39,10 @@ This document describes the physical ports, communication interfaces, power dist
 | Physical Port | Connected Device | OS Device Path | Configuration & Purpose |
 |---|---|---|---|
 | **USB 2.0 Port 1 (Top-Left)** | **ESP32 DevKit V1** (via Micro-USB to USB-A cable) | `/dev/ttyUSB0` (or `/dev/ttyACM0`) | Full-duplex serial communication @ **115200 baud**. Transfers JSON telemetry (`{"type":"state"}`) and headcount commands. |
-| **USB 2.0 Port 2 (Bottom-Left)** | **OmniVision OV4689 4MP Camera** (via Type-C / JST-to-USB-A cable) | `/dev/video0` (V4L2 capture device) | Driverless UVC video stream. Captures raw frames into OpenCV (`cv2.CAP_V4L2`) at 15–30 FPS. |
+| **USB 2.0 Port 2 (Bottom-Left)** | **OmniVision OV4689 4MP Camera** (via **soft flexible data-carrying Type-C cable**) | `/dev/video0` (V4L2 capture device) | Driverless UVC video stream at 15–30 FPS. Soft flexible jacket minimizes mechanical drag on MG90S pan/tilt servos. |
 | **GPIO Header (Pin 4 & Pin 6)** | **Acrylic Case 5V Cooling Fan** (Brushless DC 30mm/40mm) | Direct hardware rail | Active continuous forced-air cooling over BCM2837 SoC heatsink. |
 | **USB 2.0 Ports 3 & 4** | Unused / Reserved | — | Available for debugging peripherals (USB keyboard, diagnostics). |
-| **Micro-USB In** | **5V / ≥2A DC-DC Boost Output** | Main Power In | 5.0V regulated DC power input from 18650 step-up boost converter (or 5V ≥2A charger board). |
+| **Micro-USB In** | **External 5V Wall PSU (≥2.5A)** | Main Power In | 5.0V DC wall power via soft high-current cable (use USB-C→Micro-USB 5.1kΩ CC adapter/breakout if feeding from a USB-C wall charger). |
 | **Micro-SD Card Slot** | **32GB Class 10 Micro-SD Card** | `/dev/mmcblk0` | Stores OS rootfs, `ai-edge-litert` environment, Python source code, and TFLite model weights. |
 | **Onboard Wi-Fi (BCM43438)** | **Wireless Local Area Network** | `wlan0` interface | Hosts asynchronous HTTP Dashboard server (`http://0.0.0.0:8080`) on the local classroom subnet. |
 | **RJ45 Ethernet Port** | Diagnostic / Lab Wired Network | `eth0` interface | Optional high-speed wired SSH access during bench calibration. |
@@ -100,7 +100,7 @@ The Raspberry Pi 3B features a 40-pin standard GPIO header. The active cooling f
 | **Active Cooling Fan Draw** | ~60 mA – 110 mA | Brushless DC fan running continuously on 5V rail (~40 mA on 3.3V rail). |
 | **Peak Current Draw (Inference Burst)**| ~650 mA – 850 mA | Quad-core ARM Cortex-A53 executing quantized TFLite inference. |
 | **Camera Module Current Draw** | ~180 mA – 240 mA | OV4689 active UVC streaming. |
-| **Total System Peak Draw** | ~1.1 A – 1.3 A | Well within the ≥2.0A boost converter limit (leaves ~700–900 mA headroom for servos and sensors). |
+| **Total System Peak Draw** | ~1.1 A – 1.3 A | Easily sustained by a 5V ≥2.5A / 3A wall adapter (leaves ample headroom for servos, LED strip, and sensors when servos/LEDs tap the 5V wall splice directly). |
 | **Recommended Power Supply** | $\ge 2.5\text{A}$ (5V DC) | Ensures zero undervoltage warnings (`throttled=0x0`). |
 
 ---

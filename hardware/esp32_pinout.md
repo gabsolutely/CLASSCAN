@@ -5,7 +5,7 @@ This document defines the physical GPIO pin assignments and electrical character
 All definitions in this document strictly align with `src/esp32/include/config.h` and the modular firmware drivers (`lcd_display.h`).
 
 > [!NOTE]
-> **Hardware Status (Nov 2026):** ESP32 DevKit V1 is **soldered and permanently integrated** into the CLASSCAN circuit board. All GPIO connections below reflect the final soldered pinout.
+> **Hardware Status (Nov 2026):** No perfboard or battery module is used — the ESP32 DevKit V1 is wired directly with **part-side terminal leads hot-glued** at the pins (including LCD2004, servo signals, LDR, and inline IRLZ44N MOSFET) and **electrical-taped mid-span splices** for serviceability. Power comes from the tethered 5V wall supply (via Pi USB serial for logic, plus taped 5V/GND rail for servos/LCD/LED).
 
 > [!NOTE]
 > **Pin Configuration:** Pan Servo is assigned to **GPIO 14**, Tilt Servo to **GPIO 13**. LCD I2C interface uses the standard hardware I2C pins **GPIO 21 (SDA)** and **GPIO 22 (SCL)**, completely eliminating any pin conflicts between servos and display.
@@ -24,9 +24,9 @@ All definitions in this document strictly align with `src/esp32/include/config.h
 | **GPIO 22** | `GPIO 22` | I2C SCL (Bus 1) | **LCD2004 SCL (PCF8574 backpack)** | Output (I2C) | I2C clock line for LCD2004. Default PCF8574 address: 0x27 (try 0x3F if blank). Default ESP32 hardware I2C SCL. |
 | **GPIO 1 (TX0)** | `GPIO 1` | UART0 TX | **USB-UART Bridge → Pi 3B** | Output (Serial) | Transmits JSON status (`{"type":"state","value":"idle"}`) to Pi 3B at 115200 baud. |
 | **GPIO 3 (RX0)** | `GPIO 3` | UART0 RX | **USB-UART Bridge → Pi 3B** | Input (Serial) | Receives JSON headcount/commands from Pi 3B at 115200 baud. |
-| **VIN** | — | Power Input | **5V Power Bus** | Power In | Regulated 5.0V DC input from 18650 step-up boost converter. Also powers LCD2004 VCC. |
+| **VIN** | — | Power Input | **5V Power Bus** | Power In | Regulated 5.0V DC input from the taped wall-PSU 5V splice (or USB VBUS). Also powers LCD2004 VCC via the 5V bus. |
 | **3V3** | — | Regulated Output | **Sensor 3.3V Rail** | Power Out | 3.3V reference for LDR voltage divider. I2C pull-ups (4.7kΩ) reference this rail. |
-| **GND** | — | Common Ground | **System Ground Bus** | Ground | Common system ground shared with Pi 3B, servos, boost converter, and battery protection. |
+| **GND** | — | Common Ground | **System Ground Bus** | Ground | Common system ground shared with Pi 3B, servos, LED MOSFET source, LCD, and wall PSU ground splice. |
 
 ---
 
