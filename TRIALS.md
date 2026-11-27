@@ -96,7 +96,9 @@ The system ran but produced unreliable headcounts due to the four issues above. 
 > Status: Firmware and Pi software updated with all Trial 1 fixes. Awaiting physical run.
 
 Planned configuration:
-- ESP32 soldered to perfboard
+- **No perfboard and no 18650 battery / charge-boost modules** — powered from wall 5V PSU via a soft high-current Type-C power cable (+ 5.1kΩ Micro-USB adapter/tap) entering through the `15×10 mm` wall pass-through slot (unused charger hole omitted; rocker switch hole repurposed)
+- **Two-part wiring harness:** ESP32 and LCD2004 part-side terminal wires **hot-glued** directly at the pins/backpacks; mid-span wire-to-wire joints **electrical-taped (not glued)** so components can be disconnected for troubleshooting inside the enclosure
+- **Soft flexible data-carrying Type-C cable** for OV4689 camera so MG90S servos can pan/tilt freely without stiff-cable drag
 - Pan servo on GPIO 14, tilt on GPIO 13, LCD on GPIO 21 (SDA) / GPIO 22 (SCL)
 - LCD debugging deferred — dashboard as primary display
 - `MODE = "ZONE_CHECK"` (4-Quadrant Accumulator, Option B)

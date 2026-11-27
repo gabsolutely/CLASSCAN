@@ -22,7 +22,7 @@ Most schools still rely on manual headcount and attendance checking — slow, er
 - Streams count + periodic snapshot images to a wireless laptop dashboard; dashboard can also send commands (e.g. mode switch, check specific zone) back to the turret; supports one-click **event log CSV download** for the full monitoring session
 - Custom LDR-triggered illumination module (own-built, not a packaged IR unit) — brightens the scene automatically in dim/evening conditions
 - Uses pan/tilt servos to sweep the room for wider coverage from a single ceiling-mounted unit
-- Runs on swappable battery power for flexible testing across rooms
+- Runs on tethered 5V wall power via a soft high-current USB-C power cable (for continuous 12h+ daily school operation without battery sag or recharging downtime)
 - Keeps functioning locally (sweep, lighting, LCD display count) even if Wi-Fi or the dashboard goes down
 
 ## What It Does NOT Do
@@ -143,14 +143,14 @@ Initial smoke-testing of the software pipeline (`detector.py` with LiteRT/TFLite
 | Component | Status / Purpose |
 |---|---|
 | Raspberry Pi 3B (1GB RAM) | **In hand & running** — Main compute: Raspberry Pi OS Lite (64-bit) + TFLite inference; onboard Wi-Fi + Bluetooth |
-| ESP32 | **Soldered & Active** — Physical I/O controller (soldered to perfboard): servos (GPIO 14 pan, GPIO 13 tilt), LDR (GPIO 34), illumination (GPIO 25), LCD2004 display (GPIO 21/22), USB serial link to Pi 3B |
-| OV4689 4MP BSI USB Camera Module (UVC, Type-C/A) | **In hand & connected** — Video feed for detection; ~2×2 cm footprint, ~3 cm tall |
+| ESP32 | **Wired & Glued at Terminals** — Physical I/O controller (no perfboard; part leads hot-glued at ESP32 pins, mid-span splices electrical-taped for servicing): servos (GPIO 14 pan, GPIO 13 tilt), LDR (GPIO 34), illumination (GPIO 25), LCD2004 display (GPIO 21/22), USB serial link to Pi 3B |
+| OV4689 4MP BSI USB Camera Module (UVC, Type-C/A) | **In hand & connected** — Video feed for detection; ~2×2 cm footprint, ~3 cm tall (uses thin **soft data-carrying Type-C cable** so servos turn cleanly) |
 | Light Sensor (LDR) | **In hand** — Detects ambient brightness, triggers illumination module |
-| Custom illumination LED module (self-built, LDR-triggered) | **Procurement** — 2W 5V USB COB LED bar + IRLZ44N MOSFET driver, driven by ESP32 |
+| Custom illumination LED module (self-built, LDR-triggered) | **Procurement** — 2W 5V USB COB LED bar + IRLZ44N MOSFET driver, inline-wired to ESP32 (no perfboard) |
 | Pan/Tilt Bracket + MG90S Servos | **In hand & active** — Mini ABS pan/tilt bracket kit with MG90S metal-gear servos (Pan on GPIO 14, Tilt on GPIO 13) for dual-axis positioning. |
-| **LCD2004 (I2C, 20×4 character LCD, blue backlight)** | **In hand & active** — 20×4 character LCD with I2C backpack interface (PCF8574, 4 pins: VCC, GND, SDA on GPIO 21, SCL on GPIO 22) for live headcount and system status display. |
-| 18650 Li-ion Cells + Charge/Boost Module | **Soldered & Assembled** — LG HG2 18650 rechargeable cells + dual-USB 5V 2.4A regulated charge/boost module with display for swappable battery power. |
-| **Modular Ceiling Enclosure** | **Procurement (Phase 2)** — Weather-resistant ABS junction enclosure mounted to ceiling; internal pan/tilt mechanism actuates camera aperture. |
+| **LCD2004 (I2C, 20×4 character LCD, blue backlight)** | **In hand & active** — 20×4 character LCD with I2C backpack interface (PCF8574, 4 pins: VCC, GND, SDA on GPIO 21, SCL on GPIO 22; backpack leads glued, mid-span wire-to-wire splice taped). |
+| Wall 5V Power + Soft Type-C Cables | **Wall PSU in hand / Soft cables to acquire** — Tethered external 5V ≥3A / 45W USB-C wall adapter + soft high-current Type-C power cable (with 5.1kΩ CC Micro-USB adapter/tap) replacing the retired 18650/boost module. |
+| **Modular Ceiling Enclosure** | **Procurement (Phase 2)** — ABS junction enclosure (174×174×73 mm) mounted to ceiling; `15×10 mm` pass-through slot for wall power cable (replaces unused charger & rocker switch holes). |
 
 Full itemized BOM, search queries, and pre-purchase verification guide: see [`docs/bom.md`](docs/bom.md).
 

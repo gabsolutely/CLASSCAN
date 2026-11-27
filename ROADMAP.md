@@ -149,10 +149,10 @@ Prove the core detection pipeline works end-to-end on target hardware:
 
 ### Hardware Integration (Post-PoC)
 - Pan/tilt servos, sweep mode, quadrant/zone targeting (servo "radar" mount prototype on ESP32)
-- LCD2004 headcount display driven by ESP32 (I2C 20×4, PCF8574 backpack)
-- Custom LDR-triggered illumination LED module (IRLZ44N MOSFET + 5V white LED strip)
-- ABS junction box enclosure (150×110×70 mm) with pan/tilt bracket mount
-- 18650 battery power module + 5V/2A boost converter (steps 3.0V–4.2V to 5V)
+- LCD2004 headcount display driven by ESP32 (I2C 20×4, PCF8574 backpack; glued at pins, mid-span taped)
+- Custom LDR-triggered illumination LED module (IRLZ44N MOSFET + 5V white LED strip, inline wired without perfboard)
+- ABS junction box enclosure (174×174×73 mm) with pan/tilt bracket mount and `15×10 mm` wall-power pass-through
+- Tethered 5V wall power via soft high-current Type-C cable (+ 5.1kΩ Micro-USB adapter/tap) replacing retired 18650 battery/boost modules, plus soft data-carrying Type-C camera cable
 - Full hardware handshake between Pi 3B and ESP32 over serial (JSON telemetry @ 115200 baud)
 
 ### Model Optimization Pillars (Priority Order)
@@ -203,13 +203,13 @@ Prove the core detection pipeline works end-to-end on target hardware:
 |---|---|
 | Raspberry Pi 3B (1GB) | **In hand & running** (Raspberry Pi OS Lite 64-bit Trixie; hardened Wi-Fi + watchdog) |
 | Pi Acrylic Case (clear, enclosed, with active fan) | **✅ Installed & Wired** (GPIO Pin 4/6, ~36°C operating temp) |
-| ESP32 DevKit V1 | **✅ Soldered & active** (firmware operational; GPIO 14 pan, GPIO 13 tilt, GPIO 21/22 LCD) |
-| OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure baseline configured; board ~2×2 cm footprint, ~3 cm tall) |
-| Light Sensor (LDR) + Illumination (2W COB LED + IRLZ44N) | **In hand / circuit designed** (5V COB LED bar, IRLZ44N gate pulldown, MOSFET driver) |
+| ESP32 DevKit V1 | **✅ Active (Glued at terminals)** (no perfboard; part leads hot-glued, mid-span wire-to-wire splices taped; GPIO 14 pan, GPIO 13 tilt, GPIO 21/22 LCD) |
+| OV4689 4MP BSI USB Camera (UVC, Type-C/A) | **✅ In hand & active at /dev/video0** (exposure baseline configured; upgrading to **soft data Type-C cable** so servos turn cleanly) |
+| Light Sensor (LDR) + Illumination (2W COB LED + IRLZ44N) | **In hand / circuit designed** (5V COB LED bar, IRLZ44N gate pulldown, inline MOSFET driver without perfboard) |
 | Pan/Tilt Bracket + MG90S Servos | **✅ In hand** (mini ABS bracket kit; MG90S metal-gear servos for dual-axis sweep) |
-| **LCD2004 (I2C, 20×4 character LCD)** | **✅ In hand** (20×4 character LCD with I2C backpack/PCF8574 for live headcount display) |
-| Power: 18650 cells + charge/boost module | **✅ Soldered & assembled** (LG HG2 18650 cells + dual-USB 5V 2.4A charge/boost with display for swappable power) |
-| **Modular Ceiling Enclosure** | **Procurement (Phase 2)** (weather-resistant ABS junction enclosure with camera pan/tilt aperture) |
+| **LCD2004 (I2C, 20×4 character LCD)** | **✅ In hand (Terminals glued)** (20×4 character LCD with PCF8574 I2C backpack; part-side leads glued, mid-span taped) |
+| Power: Wall 5V PSU + Soft Type-C Cables | **Wall PSU in hand / Soft cables pending** (18650 battery & boost modules retired; tethered 5V wall PSU via soft Type-C cable through `15×10 mm` pass-through slot) |
+| **Modular Ceiling Enclosure** | **Procurement (Phase 2)** (174×174×73 mm ABS junction enclosure; `15×10 mm` power entry slot replaces unused charger & rocker switch holes) |
 
 ---
 
