@@ -26,7 +26,8 @@ OV4689 camera → Pi 3B TFLite inference (density ensemble) → headcount
 | ESP32 DevKit | Co-processor; serial JSON protocol; GPIO for servos, LDR, LCD2004 display (I2C, PCF8574) |
 | MG90S servos ×2 | Pan (MG90S 360° continuous, GPIO 14) + Tilt (MG90S 180° positional, GPIO 13) |
 | **LCD2004** (I2C 20×4) | Shows live headcount & zone status (PCF8574 backpack; GPIO 21 SDA / GPIO 22 SCL; addr 0x27) |
-| LDR + MOSFET + LEDs | Auto illumination: dims room lights when ambient lux drops |
+| LDR + MOSFET + LEDs | Auto illumination: inline wired/glued at ESP32 terminals (no perfboard) |
+| **Power & Cabling** | Tethered 5V wall PSU (≥3A) via soft USB-C power cable (+ Micro-USB 5.1kΩ adapter/tap) through `15×10 mm` pass-through slot; soft data Type-C camera cable; two-part glued-terminal / taped-splice harness |
 | Pi acrylic case + active fan | Thermal management; ~36°C operating temp |
 
 See [`hardware/wiring_guide.md`](hardware/wiring_guide.md) and [`hardware/esp32_pinout.md`](hardware/esp32_pinout.md) for wiring.

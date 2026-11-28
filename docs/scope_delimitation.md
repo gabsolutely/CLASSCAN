@@ -44,8 +44,8 @@ The system is designed and verified to perform the following core operations:
    - Continuously samples ambient classroom illumination via an analog Light Dependent Resistor (LDR).
    - Activates a dedicated custom white LED illumination module when ambient light drops below a calibrated threshold (`LDR_DIM_THRESHOLD`), ensuring consistent detection accuracy during overcast or evening sessions.
 
-7. **Swappable Battery Power:**
-   - Operates untethered using a dual 18650 Li-ion battery pack with onboard charge management (TP4056/BMS) and 5V step-up voltage regulation, enabling flexible mounting and field testing across various classrooms.
+7. **Tethered 5V Wall Power Supply:**
+   - Operates continuously across 12+ hour daily classroom schedules via an external 5V wall adapter (≥3A) routed into the enclosure through a `15×10 mm` pass-through slot using a soft high-current USB power cable, eliminating battery retention failures, boost current limits, and recharging downtime.
 
 ---
 

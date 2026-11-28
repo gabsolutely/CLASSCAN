@@ -99,7 +99,7 @@ During initial deployment tests, the camera's upside-down ceiling orientation wa
 | **Average CPU Utilization** | **4% – 7%** | **45% – 60%** (multi-threaded TFLite) |
 | **RAM Consumption (System + App)**| **~175 MB** / 920 MB available | **~210 MB** / 920 MB available |
 | **SoC Temperature (Passive Heatsink)**| $41.5^\circ\text{C} – 44.0^\circ\text{C}$ | $48.0^\circ\text{C} – 53.5^\circ\text{C}$ (No thermal throttling) |
-| **Estimated Battery Life (2× 18650 Cells)**| ~6.5 – 8.0 hours | ~4.0 – 5.5 hours (periodic scan mode) |
+| **Power Supply Architecture** | Tethered 5V wall PSU (soft high-current cable; 12h+ continuous classroom duty cycle) | Removes earlier 18650/2.4A boost runtime & servo-brownout constraints |
 
 ---
 

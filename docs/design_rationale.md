@@ -243,7 +243,7 @@ Replace the originally specified OLED / LED dot-matrix module with a **LCD2004 I
 
 ### Trade-offs Accepted
 - **No graphics:** The LCD2004 is character-only; it cannot render pixel graphics or icons. This is an acceptable limitation — the display's sole job is showing the count and mode in text.
-- **Backlight always-on:** The blue backlight is powered continuously (no automatic dimming without added circuitry). Power draw is ~80–120 mA, which is budgeted into the 18650 charge/boost rail.
+- **Backlight always-on:** The blue backlight is powered continuously (no automatic dimming without added circuitry). Power draw is ~80–120 mA, which is budgeted directly into the tethered 5V wall supply rail.
 - **5V logic requirement:** The LCD2004 backlight and contrast circuit requires 5V; the ESP32 GPIO is 3.3V, but the PCF8574 I2C backpack accepts 3.3V logic on its data lines, so no level-shifter is required.
 
 ### Revisit Condition
