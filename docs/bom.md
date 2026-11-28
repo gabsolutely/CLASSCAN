@@ -5,7 +5,7 @@
 **Currency Conversion Baseline:** ~₱56.00 PHP = $1.00 USD  
 
 > [!NOTE]
-> **Hardware Status (Nov 2026):** Core compute (Pi 3B, ESP32, OV4689 camera) is active and integrated. **ESP32 is soldered** to the perfboard. **18650 battery and charge/boost power circuit are soldered and assembled.** Remaining items: illumination module and final enclosure sealing.
+> **Hardware Status (Nov 2026):** Core compute (Pi 3B, ESP32, OV4689 camera) is active and integrated. **Battery/charge-boost modules and perfboard are retired** — the unit runs on **tethered 5V wall power** (for 12h+ school-day reliability without battery drop-out). **ESP32 and LCD2004 part-side terminal leads are hot-glued** directly at the pins/backpacks; mid-span wire-to-wire joints are **electrical-taped (not glued)** so wiring can still be opened for troubleshooting. Remaining purchases: **soft data-carrying Type-C cable** (lightweight camera lead for servos), **soft high-current Type-C power cable** (+ Micro-USB 5.1kΩ adapter/tap), and illumination/enclosure finalization.
 
 ---
 
@@ -14,16 +14,16 @@
 | Item | Category | Component & Specification | Qty | Unit Cost (PHP) | Total Cost (PHP) | Est. Cost (USD) | Sourcing / Vendor | Hardware Status |
 |---|---|---|:---:|:---:|:---:|:---:|---|:---:|
 | **1** | Compute Engine | **Raspberry Pi 3 Model B (1GB RAM)**<br>• Quad-core 64-bit ARM Cortex-A53 @ 1.2 GHz<br>• Onboard Wi-Fi (802.11n) & Bluetooth 4.1<br>• 4× USB 2.0, HDMI, CSI, DSI, Micro-SD | 1 | ₱1,400.00 | ₱1,400.00 | $25.00 | Used bundle (incl. 16GB SD card) / Local secondhand | **In Hand & Active** |
-| **2** | Microcontroller | **ESP32-WROOM-32 DevKit V1 (30-pin)**<br>• Dual-core Xtensa 32-bit LX6 @ 240 MHz<br>• 520 KB SRAM, 4 MB Flash<br>• Native ADC, PWM timers, Micro-USB UART | 1 | ₱190.00 | ₱190.00 | $3.40 | Shopee / Lazada / Makerlab | **In Hand & Active** |
-| **3** | Vision Sensor | **OmniVision OV4689 4MP USB Camera Module**<br>• 1/3" Back-Side Illuminated (BSI) sensor<br>• Driverless UVC compliance via USB Type-C/A<br>• Board footprint ~2×2 cm, ~3 cm tall<br>• Wide-angle M12 lens | 1 | ₱1,150.00 | ₱1,150.00 | $20.50 | Huang Li Electronics / Online Importer | **In Hand & Active** |
+| **2** | Microcontroller | **ESP32-WROOM-32 DevKit V1 (30-pin)**<br>• Dual-core Xtensa 32-bit LX6 @ 240 MHz<br>• 520 KB SRAM, 4 MB Flash<br>• Terminal leads **hot-glued directly** (no perfboard) | 1 | ₱190.00 | ₱190.00 | $3.40 | Shopee / Lazada / Makerlab | **Active & Glued at Terminals** |
+| **3** | Vision Sensor | **OmniVision OV4689 4MP USB Camera Module**<br>• 1/3" Back-Side Illuminated (BSI) sensor<br>• Driverless UVC compliance via USB Type-C/A<br>• Board footprint ~2×2 cm, ~3 cm tall<br>• Requires lightweight **soft data Type-C cable** for pan/tilt sweep | 1 | ₱1,150.00 | ₱1,150.00 | $20.50 | Huang Li Electronics / Online Importer | **In Hand & Active** |
 | **4** | Pan/Tilt Actuators | **Mini ABS Pan/Tilt Bracket Kit with MG90S Servos**<br>• Fits 28×28 mm cameras (OV4689 board fits)<br>• Dual-axis bracket with MG90S metal-gear servos | 1 set | ₱1,000.00 | ₱1,000.00 | $17.86 | Electronics Distributor / Online | **In Hand** |
-| **5** | Display Module | **LCD2004 I2C Character LCD (20×4, Blue Backlight)**<br>• 20 columns × 4 rows character LCD<br>• I2C interface (4 pins: VCC, GND, SDA, SCL) for low wiring complexity<br>• Blue backlight, white text | 1 | ₱273.58 | ₱273.58 | $4.88 | Electronics Distributor / Online | **In Hand** |
-| **6** | Ambient Sensor | **GL5528 Light Dependent Resistor (LDR)**<br>• 5mm Photoresistor + 10kΩ 1/4W pull-down resistor<br>• Analog voltage divider for ambient brightness reading | 1 | ₱15.00 | ₱15.00 | $0.27 | Local Electronics Store | **In Hand** |
-| **7** | Illumination Module | **2W 5V USB COB LED Bar + IRLZ44N MOSFET Driver**<br>• 2W 5V USB COB LED bar (white) — 81.91 PHP<br>• IRLZ44N Logic-Level N-Channel MOSFET — 99.88 PHP<br>• 2× 1000µF electrolytic capacitors — 25 PHP<br>• 2× screw terminals — 30 PHP<br>• Current-limiting & gate pull-down resistors | 1 set | ₱236.79 | ₱236.79 | $4.23 | Electronics Distributor / Online | **Procurement — Phase 2** |
-| **8** | Power Cells | **LG HG2 18650 Li-ion Cells (3.7V, ~3000mAh)**<br>• High-drain rechargeable 18650 cells<br>• Swappable design for continuous laboratory and classroom testing | 1 set | ₱198.00 | ₱198.00 | $3.54 | Battery Supply / Online | **Soldered & Assembled** |
-| **9** | Power Regulation | **18650 Charge/Boost Module (Dual USB, 5V 2.4A, with Display)**<br>• Charges 18650 cell and outputs regulated 5V 2.4A<br>• Dual USB output; onboard battery level display<br>• 1-slot 18650 holder — 25 PHP<br>• 5A fuse holder — 45 PHP<br>• 2-pin rocker switch 5-pack — 50.53 PHP | 1 set | ₱216.56 | ₱216.56 | $3.87 | Electronics Distributor / Online | **Soldered & Assembled** |
-| **10** | Mechanical Enclosure | **Weather-Resistant Ceiling Junction Box**<br>• Box mounted fixed to ceiling; camera module moves via internal pan/tilt<br>• Weather-resistant ABS junction enclosure (approx. 174×174×73 mm, inner 160×160×63 mm)<br>• Modified with optical aperture for camera sweep<br>• 2× 5×7 cm double-sided perfboards — 48 PHP | 1 | ₱620.76 | ₱620.76 | $11.08 | Hardware Supply / Online | **Procurement — Phase 2** |
-| **11** | Interconnects & Misc | **Wiring, Fasteners & Mounting Hardware**<br>• Dupont jumper wires (M-M, M-F), M3 nylon/brass standoffs<br>• Cable ties, short Micro-USB sync cable (Pi ↔ ESP32)<br>• Expansion/breakout boards, resistors | 1 set | ₱180.00 | ₱180.00 | $3.20 | Hardware Supply / Lab Stock | **In Hand / Spec** |
+| **5** | Display Module | **LCD2004 I2C Character LCD (20×4, Blue Backlight)**<br>• 20 columns × 4 rows character LCD<br>• I2C interface (4 pins: VCC, GND, SDA, SCL) — **backpack leads glued, mid-span taped**<br>• Blue backlight, white text | 1 | ₱273.58 | ₱273.58 | $4.88 | Electronics Distributor / Online | **In Hand (Terminals Glued)** |
+| **6** | Ambient Sensor | **GL5528 Light Dependent Resistor (LDR)**<br>• 5mm Photoresistor + 10kΩ 1/4W pull-down resistor<br>• Inline-wired to ESP32 GPIO 34 (no perfboard) | 1 | ₱15.00 | ₱15.00 | $0.27 | Local Electronics Store | **In Hand** |
+| **7** | Illumination Module | **2W 5V USB COB LED Bar + IRLZ44N MOSFET Driver**<br>• 2W 5V USB COB LED bar (white) — 81.91 PHP<br>• IRLZ44N Logic-Level N-Channel MOSFET — 99.88 PHP<br>• Electrolytic cap (100–1000µF) + 100Ω & 10kΩ resistors (inline taped/glued, no perfboard) | 1 set | ₱236.79 | ₱236.79 | $4.23 | Electronics Distributor / Online | **Procurement — Phase 2** |
+| **8** | Wall Power Supply | **External 5V Wall Power Adapter + Soft Power Cable Path**<br>• Existing **45W USB-C wall charger** (or ≥5V 3A wall adapter)<br>• Feeds Pi 3B Micro-USB (via USB-C→Micro-USB 5.1kΩ CC adapter / 5V tap) & inline taped 5V/GND servo+LED bus<br>• Enters enclosure through repurposed `15×10 mm` pass-through slot | 1 | ₱0.00 | ₱0.00 | $0.00 | On Hand (45W PSU); cable itemized in Item 11 | **Wall PSU On Hand** |
+| **9** | Retired Battery System | ~~**18650 Cell + Charge/Boost Power Modules + Rocker Switch**~~<br>• **RETIRED:** Dropped due to cell retention failure, 2.4A boost ceiling brownout risk, and 12h+ daily school-day duty cycle<br>• Previous switch cutout repurposed as wall power cable pass-through; old charger hole removed | — | *(₱414.56 sunk)* | — | — | Retired from active build | **Retired / Removed** |
+| **10** | Mechanical Enclosure | **Weather-Resistant Ceiling Junction Box**<br>• Fixed to ceiling; camera moves externally on pan/tilt head<br>• ABS junction enclosure (approx. 174×174×73 mm, inner 160×160×63 mm)<br>• Single `15×10 mm` pass-through slot (ex-switch hole) for wall power cable; unused USB-C charger slot omitted<br>• ~~Perfboards~~ **omitted** — ESP32 & LCD leads glued, wire-to-wire splices taped | 1 | ₱572.76 | ₱572.76 | $10.23 | Hardware Supply / Online | **Procurement — Phase 2** |
+| **11** | Interconnects & Soft Cables | **Soft Type-C Cables, Harness Tape & Fasteners**<br>• **1× Soft flexible data-carrying USB-C cable** (OV4689 camera → Pi USB-A; thin/lightweight so MG90S servos don't stall)<br>• **1× Soft high-current USB-C power cable** (+ USB-C→Micro-USB 5.1kΩ adapter or 5V breakout for Pi 3B)<br>• Short Micro-USB sync cable (Pi ↔ ESP32), Dupont leads, hot glue (terminals) + electrical tape (serviceable mid-span splices) | 1 set | ₱280.00 | ₱280.00 | $5.00 | Shopee / Hardware Supply | **To Acquire (Soft Cables)** |
 
 ---
 
@@ -31,9 +31,9 @@
 
 | Summary Category | Amount (PHP) | Amount (USD) |
 |---|:---:|:---:|
-| **Soldered & Active (Pi 3B, ESP32★, Camera, LDR, Bracket Kit + Servos, LCD2004, 18650 Battery★, Power Module★)** | ₱5,397.14 | $96.38 |
-| **Remaining (Illumination Module, Enclosure Sealing)** | ₱856.55 | $15.30 |
-| **Total Estimated Hardware Investment (all phases)** | **~₱5,281.69** | **~$94.32** |
+| **Active Hardware In Hand (Pi 3B, ESP32, Camera, LDR, Bracket Kit + Servos, LCD2004, Wall PSU)** | ₱4,028.58 | $71.94 |
+| **Remaining Active Purchases (Soft Data + Power Type-C Cables, Illumination, Enclosure)** | ₱1,089.55 | $19.46 |
+| **Total Active Build Cost (excl. retired battery/perfboard parts)** | **~₱5,118.13** | **~$91.40** |
 
 ---
 
@@ -48,12 +48,12 @@
 |---|---|---|
 | **LCD2004** | `LCD2004 I2C 20x4 character LCD blue` | Title says **I2C** (not parallel). Must have the I2C backpack module soldered on (4-pin: VCC GND SDA SCL). Blue backlight with white text is the standard. Avoid listings that show the 16-pin parallel version only. |
 | **Pan/Tilt Kit** | `mini ABS pan tilt bracket 28x28 camera MG90S` or `pan tilt platform MG90S kit` | Confirm it fits a ~28×28 mm camera board. Check that MG90S servos are included or sold alongside. Skip kits with obviously fake/plastic-gear "MG90S" clones. Package B sets on Lazada are an alternative. |
-| **Box/Enclosure** | `IP68 waterproof enclosure junction box 174x174` or `plastic project box ceiling mount` | Confirm inner dimensions fit the Pi (in acrylic case), ESP32, and wiring. IP68 174×174×73 mm (inner 160×160×63 mm) is the reference size. Check if cutouts are pre-drilled or if you'll need to cut. |
-| **COB LED Bar** | `2W 5V USB COB LED strip white bar` | Confirm 5V USB input, white light, COB type. Draw should stay ≤400mA so the charge/boost module can power everything. |
-| **18650 Cells** | `LG HG2 18650 3000mAh 20A` | Look for LG HG2 or Samsung 25R. Avoid no-name 18650s that claim 6000+ mAh (physically impossible). Buy from reputable Lazada/Shopee sellers with reviews. |
-| **Charge/Boost Module** | `18650 charge boost module dual USB 5V 2.4A display` | Must output 5V ≥2A for the Pi 3B. Dual USB preferred. A display showing battery % is helpful. Confirm it can charge AND output simultaneously (pass-through charging). |
+| **Box/Enclosure** | `IP68 waterproof enclosure junction box 174x174` or `plastic project box ceiling mount` | Confirm inner dimensions fit the Pi (in acrylic case), ESP32, and taped wire splices. IP68 174×174×73 mm (inner 160×160×63 mm) is the reference size. Drill one `15×10 mm` pass-through slot for wall power (repurposing the former switch hole). |
+| **Soft Data Type-C Cable (Camera)** | `soft silicone USB C data cable flexible` or `FPC soft USB-A to Type-C data` | **Must be DATA-CARRYING** (USB 2.0 `D+`/`D-` wires — NOT "charging-only") so OV4689 UVC video transmits. Must be thin, limp/silicone-jacketed so MG90S servos do not stall from cable stiffness. |
+| **Soft Power Type-C Cable (Wall PSU)** | `soft silicone 60W 100W USB C cable` + `USB C female to Micro USB male OTG power adapter 5.1k` (or `soft silicone USB-A to Micro-USB 3A`) | Use a thick-gauge soft silicone cable rated **≥3A**. **Pi 3B note:** Pi 3B power input is **Micro-USB** (not Type-C), so ensure either a **USB-C→Micro-USB adapter/5V breakout with 5.1kΩ CC pulldown resistors** or a **USB-A→Micro-USB 3A soft cable** is used so a 45W USB-C charger outputs clean 5V. |
+| **COB LED Bar** | `2W 5V USB COB LED strip white bar` | Confirm 5V USB input, white light, COB type, draw ≤400mA so it stays well within wall PSU headroom. |
 | **IRLZ44N MOSFET** | `IRLZ44N N-channel MOSFET TO-220` | Logic-level gate threshold ≤2V so ESP32 3.3V GPIO fully drives it. Don't substitute with IRF44N (higher $V_{GS(th)}$, won't saturate from 3.3V). |
-| **Misc** | `Dupont jumper wires`, `1000uF 25V electrolytic capacitor`, `screw terminal 2-pin`, `5x7 perfboard` | Standard components. Confirm capacitor voltage rating ≥10V. |
+| **Misc** | `Dupont jumper wires`, `100uF 25V electrolytic capacitor`, `electrical tape`, `hot glue sticks` | Standard components. Hot-glue wires only at part terminals (ESP32/LCD); use electrical tape at mid-span wire-to-wire splices so components stay serviceable. |
 
 ---
 
@@ -90,9 +90,9 @@ For electronics specifically, **Makerlab Electronics** and **e-Gizmo** are PH sh
 5. **LCD2004 I2C (20×4) vs. Alternative Displays:**
    - Evaluated against graphic OLED modules; selected for high character legibility from classroom distances and simple 4-wire I2C interface.
    - Sufficient for displaying headcount, zone status, and mode indicators.
-6. **18650 Cells + Charge/Boost Module vs. USB Power Banks:**
-   - Avoids automated low-current shutoff behavior present in commercial power banks.
-   - Swappable 18650 cells permit rapid exchange during field calibration without tethering the unit.
+6. **Tethered 5V Wall Power vs. 18650 Battery Pack:**
+   - Initial prototyping tested 18650 Li-ion cells + a 5V/2.4A boost module, which proved physically fragile (cell retention failures), current-limited during simultaneous servo actuation, and impractical for 12+ hour daily classroom sessions.
+   - Switching directly to an external 5V ≥3A wall PSU via a soft high-current power cable eliminates onboard power/boost PCBs, frees internal enclosure volume, and guarantees stable voltage without recharging downtime.
 7. **Ceiling-Mounted Junction Box vs. Fully Articulated Enclosure:**
    - Enclosing compute stationary while actuating the camera module only minimizes moving mass and servo fatigue.
    - Rigid ABS construction offers reliable mounting and ample internal volume for convection.
